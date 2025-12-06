@@ -125,6 +125,8 @@ app.post('/api/notify', async (req, res) => {
 
     const { recipeTitle, action, editorName, recipeId, targetChatId, notifyAll } = req.body;
     const db = getDb();
+    
+    console.log(`[NOTIFY] Action: ${action}, Title: ${recipeTitle}, NotifyAll: ${notifyAll}`);
 
     let message = '';
     const link = `${WEBHOOK_URL}/#/recipe/${recipeId}`;
@@ -139,10 +141,13 @@ app.post('/api/notify', async (req, res) => {
 
     let recipients = [];
     if (notifyAll && db.users) {
+        // Send to everyone except the editor (optional, but usually better to send to all including self for confirmation)
         recipients = Object.keys(db.users);
     } else if (targetChatId) {
         recipients = [targetChatId];
     }
+    
+    console.log(`[NOTIFY] Sending to ${recipients.length} users`);
 
     let sentCount = 0;
     const promises = recipients.map(chatId => {
@@ -173,7 +178,7 @@ if (TELEGRAM_TOKEN && bot) {
 
         const appUrl = WEBHOOK_URL || "https://google.com"; 
 
-        bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳\n\nНажмите кнопку ниже, чтобы открыть базу рецептов.", {
+        bot.sendMessage(chatId, "Добро пожаловать! 👨‍🍳\n\nНажмите кнопку ниже, чтобы открыть базу рецептов.", {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: "Открыть Приложение 📱", web_app: { url: appUrl } }]
