@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import TelegramBot from 'node-telegram-bot-api';
@@ -104,6 +105,17 @@ const saveLocalDb = (data) => {
     try { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); } catch (e) { console.error(e); }
 };
 
+// --- HELPER: Escape HTML ---
+const escapeHtml = (unsafe) => {
+    if (!unsafe) return "";
+    return String(unsafe)
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+};
+
 // --- API ENDPOINTS ---
 
 // 1. Recipes
@@ -204,25 +216,32 @@ app.post('/api/notify', async (req, res) => {
         recipients = [targetChatId];
     }
 
+    // Safety check for title
+    const safeTitle = escapeHtml(recipeTitle || "Без названия");
+
     let message = '';
     const appUrl = WEBHOOK_URL || "https://google.com";
     
-    if (action === 'create') message = `🍳 <b>Новая техкарта</b>\n\n"${recipeTitle}" добавлена в базу.`;
+    if (action === 'create') message = `🍳 <b>Новая техкарта</b>\n\n"${safeTitle}" добавлена в базу.`;
     else if (action === 'update') {
-        message = `📝 <b>Изменения в техкарте</b>\n"${recipeTitle}"`;
+        message = `📝 <b>Изменения в техкарте</b>\n"${safeTitle}"`;
         if (changes?.length > 0) {
+            // changes already HTML safe from context
             message += `\n\n🔻 <b>Что изменилось:</b>\n` + changes.map(c => `• ${c}`).join('\n');
         } else {
             message += `\n\nВнесены правки.`;
         }
-    } else if (action === 'delete') message = `🗑 <b>Техкарта удалена</b>\n\n"${recipeTitle}" была удалена.`;
+    } else if (action === 'delete') message = `🗑 <b>Техкарта удалена</b>\n\n"${safeTitle}" была удалена.`;
 
     const options = { parse_mode: 'HTML' };
     if (action !== 'delete') {
         options.reply_markup = { inline_keyboard: [[{ text: "📱 Открыть карту", web_app: { url: `${appUrl}/#/recipe/${recipeId}` } }]] };
     }
 
-    const promises = recipients.map(chatId => bot.sendMessage(chatId, message, options).catch(e => console.error(e.message)));
+    // Filter valid IDs and unique
+    recipients = [...new Set(recipients)].filter(id => id);
+
+    const promises = recipients.map(chatId => bot.sendMessage(chatId, message, options).catch(e => console.error(`Failed to msg ${chatId}: ${e.message}`)));
     await Promise.all(promises);
     res.json({ success: true, count: recipients.length });
 });
@@ -242,11 +261,16 @@ app.post('/api/share-recipe', async (req, res) => {
 
     if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
-    let caption = `👨‍🍳 <b>${recipe.title.toUpperCase()}</b>`;
-    if (recipe.category) caption += `\n📂 Категория: ${recipe.category}`;
-    if (recipe.outputWeight) caption += `\n⚖️ Выход: ${recipe.outputWeight}`;
-    caption += `\n\n📝 <b>Ингредиенты:</b>\n` + recipe.ingredients.map(ing => `▫️ ${ing.name}: <b>${ing.amount} ${ing.unit}</b>`).join('\n');
-    caption += `\n🔪 <b>Приготовление:</b>\n` + (recipe.steps.length ? recipe.steps.map((s,i) => `${i+1}. ${s}`).join('\n') : `См. в приложении`);
+    // Sanitize data
+    const safeTitle = escapeHtml(recipe.title);
+    const safeCategory = escapeHtml(recipe.category);
+    const safeOutput = escapeHtml(recipe.outputWeight);
+
+    let caption = `👨‍🍳 <b>${safeTitle.toUpperCase()}</b>`;
+    if (recipe.category) caption += `\n📂 Категория: ${safeCategory}`;
+    if (recipe.outputWeight) caption += `\n⚖️ Выход: ${safeOutput}`;
+    caption += `\n\n📝 <b>Ингредиенты:</b>\n` + recipe.ingredients.map(ing => `▫️ ${escapeHtml(ing.name)}: <b>${escapeHtml(ing.amount)} ${escapeHtml(ing.unit)}</b>`).join('\n');
+    caption += `\n🔪 <b>Приготовление:</b>\n` + (recipe.steps.length ? recipe.steps.map((s,i) => `${i+1}. ${escapeHtml(s)}`).join('\n') : `См. в приложении`);
 
     const appUrl = WEBHOOK_URL || "https://google.com";
     const options = {
@@ -257,8 +281,13 @@ app.post('/api/share-recipe', async (req, res) => {
     try {
         if (recipe.imageUrl?.startsWith('data:image')) {
             const buffer = Buffer.from(recipe.imageUrl.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+            // Check caption limit for photos (1024 chars)
+            if (caption.length > 1000) caption = caption.substring(0, 990) + "... (подробнее в приложении)";
+            
             await bot.sendPhoto(targetChatId, buffer, { caption, ...options });
         } else {
+            // Message limit 4096
+            if (caption.length > 4000) caption = caption.substring(0, 3990) + "...";
             await bot.sendMessage(targetChatId, caption, options);
         }
         res.json({ success: true });
