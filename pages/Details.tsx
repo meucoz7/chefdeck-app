@@ -8,7 +8,7 @@ import { useTelegram } from '../context/TelegramContext';
 
 const Details: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { getRecipe, deleteRecipe, toggleFavorite } = useRecipes();
+  const { getRecipe, deleteRecipe, toggleFavorite, recipes } = useRecipes();
   const { addToast } = useToast();
   const { isAdmin, user } = useTelegram();
   const navigate = useNavigate();
@@ -39,6 +39,15 @@ const Details: React.FC = () => {
       addToast("Карта удалена", "info");
       navigate('/', { replace: true });
     }
+  };
+
+  // Logic to find a linked recipe by ingredient name
+  const findLinkedRecipe = (ingredientName: string) => {
+      const normalize = (s: string) => s.trim().toLowerCase();
+      const targetName = normalize(ingredientName);
+      
+      // Find a recipe that matches the ingredient name (excluding the current recipe)
+      return recipes.find(r => normalize(r.title) === targetName && r.id !== recipe.id);
   };
 
   // New Share Logic: Send to Bot
@@ -185,15 +194,39 @@ const Details: React.FC = () => {
                   </h2>
               </div>
               <div className="flex flex-col">
-                  {recipe.ingredients.map((ing, idx) => (
-                      <div key={idx} className="flex justify-between items-center px-6 py-3 odd:bg-white dark:odd:bg-[#1e1e24] even:bg-gray-50/50 dark:even:bg-white/[0.02] border-b border-gray-50 dark:border-white/5 last:border-0">
-                          <span className="text-base font-medium text-gray-900 dark:text-gray-200 flex-1 pr-4">{ing.name}</span>
-                          <div className="text-right flex-shrink-0 font-mono">
-                              <span className="font-bold text-lg text-gray-900 dark:text-white">{ing.amount}</span>
-                              <span className="text-xs font-bold text-gray-400 ml-1">{ing.unit}</span>
+                  {recipe.ingredients.map((ing, idx) => {
+                      const linkedRecipe = findLinkedRecipe(ing.name);
+                      
+                      return (
+                          <div 
+                              key={idx} 
+                              onClick={() => linkedRecipe && navigate(`/recipe/${linkedRecipe.id}`)}
+                              className={`flex justify-between items-center px-6 py-3 border-b border-gray-50 dark:border-white/5 last:border-0 transition-all duration-200
+                                  ${linkedRecipe 
+                                      ? 'bg-sky-50/40 dark:bg-sky-500/10 cursor-pointer hover:bg-sky-100/50 dark:hover:bg-sky-500/20 active:bg-sky-100 dark:active:bg-sky-500/30' 
+                                      : 'odd:bg-white dark:odd:bg-[#1e1e24] even:bg-gray-50/50 dark:even:bg-white/[0.02]'
+                                  }`}
+                          >
+                              <div className="flex-1 pr-4 flex items-center gap-2">
+                                  <span className={`text-base font-medium ${linkedRecipe ? 'text-sky-600 dark:text-sky-400 font-bold underline decoration-sky-300/30 underline-offset-4 decoration-1' : 'text-gray-900 dark:text-gray-200'}`}>
+                                      {ing.name}
+                                  </span>
+                                  {linkedRecipe && (
+                                      <div className="bg-sky-100 dark:bg-sky-500/20 p-0.5 rounded text-sky-600 dark:text-sky-400">
+                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                            <path fillRule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17.25h-8.5A2.25 2.25 0 012 15V6.25a2.25 2.25 0 012.25-2.25h4a.75.75 0 010 1.5h-4z" clipRule="evenodd" />
+                                            <path fillRule="evenodd" d="M6.194 12.753a.75.75 0 001.06.053L16.5 4.44v2.81a.75.75 0 001.5 0v-4.5a.75.75 0 00-.75-.75h-4.5a.75.75 0 000 1.5h2.553l-9.056 8.194a.75.75 0 00-.053 1.06z" clipRule="evenodd" />
+                                          </svg>
+                                      </div>
+                                  )}
+                              </div>
+                              <div className="text-right flex-shrink-0 font-mono">
+                                  <span className={`font-bold text-lg ${linkedRecipe ? 'text-sky-700 dark:text-sky-300' : 'text-gray-900 dark:text-white'}`}>{ing.amount}</span>
+                                  <span className="text-xs font-bold text-gray-400 ml-1">{ing.unit}</span>
+                              </div>
                           </div>
-                      </div>
-                  ))}
+                      );
+                  })}
               </div>
           </div>
 
