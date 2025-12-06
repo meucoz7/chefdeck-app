@@ -66,37 +66,34 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const calculateChanges = (oldR: TechCard, newR: TechCard): string[] => {
       const changes: string[] = [];
       
-      if (oldR.title !== newR.title) changes.push(`Название: ${oldR.title} -> ${newR.title}`);
-      if (oldR.outputWeight !== newR.outputWeight) changes.push(`Выход: ${oldR.outputWeight || '-'} -> ${newR.outputWeight}`);
+      if (oldR.title !== newR.title) changes.push(`Название: ${oldR.title} -> <b>${newR.title}</b>`);
+      if (oldR.outputWeight !== newR.outputWeight) changes.push(`Выход: ${oldR.outputWeight || '-'} -> <b>${newR.outputWeight}</b>`);
       
       // Compare Ingredients intelligently
-      // 1. Check for modifications in existing ingredients (by name match mostly, but simple index match is safer for order sensitive lists)
-      const maxLen = Math.max(oldR.ingredients.length, newR.ingredients.length);
+      const oldMap = new Map(oldR.ingredients.map(i => [i.name, i]));
       
-      if (oldR.ingredients.length !== newR.ingredients.length) {
-          changes.push(`Кол-во ингредиентов: ${oldR.ingredients.length} -> ${newR.ingredients.length}`);
-      } else {
-          for (let i = 0; i < maxLen; i++) {
-              const oldI = oldR.ingredients[i];
-              const newI = newR.ingredients[i];
-              
-              if (!oldI) {
-                  changes.push(`Добавлен: ${newI.name} (${newI.amount} ${newI.unit})`);
-              } else if (!newI) {
-                   // removed (handled by length check usually)
-              } else {
-                  if (oldI.name !== newI.name) {
-                       changes.push(`Ингредиент ${i+1}: ${oldI.name} -> ${newI.name}`);
-                  } else if (oldI.amount !== newI.amount) {
-                       changes.push(`${oldI.name}: ${oldI.amount} -> ${newI.amount} ${newI.unit}`);
-                  }
-              }
+      newR.ingredients.forEach(newI => {
+          const oldI = oldMap.get(newI.name);
+          if (!oldI) {
+               changes.push(`Добавлен: <b>${newI.name}</b> (${newI.amount} ${newI.unit})`);
+          } else {
+               // Exists, check amount/unit
+               if (oldI.amount !== newI.amount || oldI.unit !== newI.unit) {
+                   changes.push(`${newI.name}: ${oldI.amount} ${oldI.unit} -> <b>${newI.amount} ${newI.unit}</b>`);
+               }
+               // Remove processed
+               oldMap.delete(newI.name);
           }
-      }
+      });
+      
+      // Remaining in oldMap are deleted
+      oldMap.forEach(oldI => {
+          changes.push(`Удален: ${oldI.name}`);
+      });
       
       // Compare steps length
       if (oldR.steps.length !== newR.steps.length) {
-          changes.push(`Шаги приготовления изменены`);
+          changes.push(`Шаги приготовления: ${oldR.steps.length} -> ${newR.steps.length}`);
       }
 
       return changes;
