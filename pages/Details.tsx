@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useToast } from '../context/ToastContext';
@@ -12,18 +12,15 @@ const Details: React.FC = () => {
   const { addToast } = useToast();
   const { isAdmin } = useTelegram();
   const navigate = useNavigate();
-  const location = useLocation();
   const recipe = getRecipe(id || '');
   
-  // Local state
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
 
   if (!recipe) return null;
 
   const handleBack = () => {
-    if (location.key !== 'default') navigate(-1);
-    else navigate('/');
+    navigate(-1);
   };
 
   const handleEdit = () => navigate(`/edit/${recipe.id}`);
@@ -47,17 +44,18 @@ const Details: React.FC = () => {
     }
   };
 
-  // Embed video Helper
   const getEmbedVideoUrl = (url: string) => {
       const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
       return ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}` : null;
   };
   const youtubeEmbed = recipe.videoUrl ? getEmbedVideoUrl(recipe.videoUrl) : null;
+  
+  // Only show steps block if there are actual steps
+  const hasSteps = recipe.steps.length > 0 && recipe.steps.some(s => s.trim().length > 0);
 
   return (
     <div className="animate-fade-in bg-[#f2f4f7] dark:bg-[#0f1115] min-h-screen relative pb-safe-bottom">
       
-      {/* Lightbox Modal */}
       {isImageOpen && createPortal(
           <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-fade-in backdrop-blur-md" onClick={() => setIsImageOpen(false)}>
              <button className="absolute top-safe-top right-4 p-2 bg-white/10 rounded-full text-white"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -65,7 +63,6 @@ const Details: React.FC = () => {
           </div>, document.body
       )}
 
-      {/* Video Modal */}
       {isVideoOpen && createPortal(
           <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 animate-fade-in backdrop-blur-md">
              <div className="w-full max-w-4xl flex justify-end mb-4 pt-safe-top">
@@ -171,22 +168,24 @@ const Details: React.FC = () => {
           </div>
 
           {/* Steps */}
-          <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up pb-5" style={{ animationDelay: '0.2s' }}>
-               <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
-                  <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
-                      Приготовление
-                  </h2>
-               </div>
-               <div className="p-6 space-y-6">
-                   {recipe.steps.map((step, idx) => (
-                      <div key={idx} className="flex gap-4">
-                           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold text-sm flex items-center justify-center border border-orange-100 dark:border-orange-500/20 mt-0.5">{idx + 1}</div>
-                           <p className="text-base leading-relaxed text-gray-800 dark:text-gray-200 flex-1">{step}</p>
-                      </div>
-                   ))}
-               </div>
-          </div>
+          {hasSteps && (
+              <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up pb-5" style={{ animationDelay: '0.2s' }}>
+                   <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
+                      <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                          Приготовление
+                      </h2>
+                   </div>
+                   <div className="p-6 space-y-6">
+                       {recipe.steps.map((step, idx) => step.trim() && (
+                          <div key={idx} className="flex gap-4">
+                               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold text-sm flex items-center justify-center border border-orange-100 dark:border-orange-500/20 mt-0.5">{idx + 1}</div>
+                               <p className="text-base leading-relaxed text-gray-800 dark:text-gray-200 flex-1">{step}</p>
+                          </div>
+                       ))}
+                   </div>
+              </div>
+          )}
 
           {isAdmin && (
             <div className="flex justify-center py-6 pb-20">
