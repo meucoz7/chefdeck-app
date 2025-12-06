@@ -26,9 +26,9 @@ if (TELEGRAM_TOKEN) {
 }
 
 // Middleware
-app.use(express.json()); // Use built-in express parser instead of body-parser
+app.use(express.json()); 
 
-// CORS middleware for development flexibility
+// CORS middleware
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
@@ -123,35 +123,73 @@ app.post('/api/sync-user', (req, res) => {
 app.post('/api/notify', async (req, res) => {
     if (!bot) return res.json({ success: false, error: 'No bot configured' });
 
-    const { recipeTitle, action, editorName, recipeId, targetChatId, notifyAll } = req.body;
+    const { recipeTitle, action, recipeId, targetChatId, notifyAll, changes, silent } = req.body;
+    
+    // If silent mode is requested (e.g. bulk import without notification), do nothing
+    if (silent) {
+        return res.json({ success: true, skipped: true });
+    }
+
     const db = getDb();
     
     console.log(`[NOTIFY] Action: ${action}, Title: ${recipeTitle}, NotifyAll: ${notifyAll}`);
 
     let message = '';
-    const link = `${WEBHOOK_URL}/#/recipe/${recipeId}`;
-
+    const appUrl = WEBHOOK_URL || "https://google.com";
+    // Direct deep link to recipe. Note: WebApp url needs to be the base url, startapp param handles routing if configured, 
+    // but for simple TWA, we just open the app. The app router handles URL persistence if user navigates manually.
+    // Ideally, startapp parameter is used: t.me/botname/appname?startapp=recipe_ID
+    
+    // Construct text
     if (action === 'create') {
-        message = `🍳 <b>Новая техкарта!</b>\n\nШеф ${editorName} добавил: "${recipeTitle}".\n\n<a href="${link}">Открыть карту</a>`;
+        message = `🍳 <b>Новая техкарта</b>\n\n"${recipeTitle}" добавлена в базу.`;
     } else if (action === 'update') {
-        message = `📝 <b>Обновление рецепта</b>\n\n${editorName} изменил техкарту "${recipeTitle}".\n\n<a href="${link}">Посмотреть изменения</a>`;
+        message = `📝 <b>Изменения в техкарте</b>\n"${recipeTitle}"`;
+        
+        if (changes && Array.isArray(changes) && changes.length > 0) {
+            message += `\n\n🔻 <b>Что изменилось:</b>\n`;
+            changes.forEach(change => {
+                message += `• ${change}\n`;
+            });
+        } else {
+            message += `\n\nБыли внесены правки.`;
+        }
     } else if (action === 'delete') {
-        message = `🗑 <b>Техкарта удалена</b>\n\n"${recipeTitle}" была удалена из базы.`;
+        message = `🗑 <b>Техкарта удалена</b>\n\n"${recipeTitle}" была удалена.`;
     }
 
+    // Prepare Recipients
     let recipients = [];
     if (notifyAll && db.users) {
-        // Send to everyone except the editor (optional, but usually better to send to all including self for confirmation)
         recipients = Object.keys(db.users);
     } else if (targetChatId) {
         recipients = [targetChatId];
+    }
+
+    // Prepare Keyboard (Web App Button)
+    // Note: For deletion, we don't show the open button
+    const options = {
+        parse_mode: 'HTML'
+    };
+
+    if (action !== 'delete') {
+        options.reply_markup = {
+            inline_keyboard: [
+                [
+                    { 
+                        text: "📱 Открыть карту", 
+                        web_app: { url: `${appUrl}/#/recipe/${recipeId}` } // Using HashRouter pattern
+                    }
+                ]
+            ]
+        };
     }
     
     console.log(`[NOTIFY] Sending to ${recipients.length} users`);
 
     let sentCount = 0;
     const promises = recipients.map(chatId => {
-        return bot.sendMessage(chatId, message, { parse_mode: 'HTML' })
+        return bot.sendMessage(chatId, message, options)
             .then(() => sentCount++)
             .catch(err => console.error(`Failed to send to ${chatId}:`, err.message));
     });
@@ -178,17 +216,17 @@ if (TELEGRAM_TOKEN && bot) {
 
         const appUrl = WEBHOOK_URL || "https://google.com"; 
 
-        bot.sendMessage(chatId, "Добро пожаловать! 👨‍🍳\n\nНажмите кнопку ниже, чтобы открыть базу рецептов.", {
+        bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳\n\nНажмите кнопку меню, чтобы открыть базу рецептов.", {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "Открыть Приложение 📱", web_app: { url: appUrl } }]
+                    [{ text: "Открыть ChefDeck 📱", web_app: { url: appUrl } }]
                 ]
             }
         });
     });
 }
 
-// Handle React Routing (Serve index.html for unknown routes)
+// Handle React Routing
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
