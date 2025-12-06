@@ -49,6 +49,8 @@ const Editor: React.FC = () => {
   // Import Mode State
   const [isParsing, setIsParsing] = useState(false);
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [importNotify, setImportNotify] = useState(false);
 
   // --- ACCESS CONTROL ---
   useEffect(() => {
@@ -181,13 +183,13 @@ const Editor: React.FC = () => {
               title: r.title,
               description: '',
               imageUrl: r.imageUrl,
-              category: r.category || 'Импорт',
+              category: (r.category && r.category !== '') ? r.category : (bulkCategory || 'Импорт'),
               outputWeight: r.outputWeight,
               isFavorite: false,
               ingredients: r.ingredients,
               steps: r.steps.filter(s => s.trim().length > 0),
               createdAt: Date.now()
-          }, shouldNotify); 
+          }, importNotify); 
       }
       
       addToast(`Импортировано: ${selected.length}`, "success");
@@ -199,8 +201,8 @@ const Editor: React.FC = () => {
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
        
-       {/* HEADER (Non-Sticky) */}
-       <div className="px-5 pt-safe-top mt-4 flex justify-between items-center mb-4">
+       {/* HEADER (Non-Sticky) - Reduced margins */}
+       <div className="px-5 pt-safe-top flex justify-between items-center mb-2 mt-2">
           <button onClick={handleBack} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
@@ -226,7 +228,7 @@ const Editor: React.FC = () => {
        </div>
 
        <div className="px-5 pb-10 space-y-6 max-w-lg mx-auto">
-          <h1 className="text-2xl font-black dark:text-white leading-none tracking-tight mb-6">
+          <h1 className="text-2xl font-black dark:text-white leading-none tracking-tight mb-4">
                 {mode === 'create' ? (id ? 'Редактирование' : 'Новое блюдо') : mode === 'import-upload' ? 'Импорт PDF' : 'Редактор'}
           </h1>
 
@@ -373,6 +375,23 @@ const Editor: React.FC = () => {
           
           {mode === 'import-staging' && (
               <div className="space-y-6 animate-slide-up pb-28">
+                 {/* BULK ACTIONS HEADER */}
+                 <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 space-y-3">
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Массовые действия</h3>
+                     <div className="flex gap-3 items-center">
+                         <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-sky-500/30 transition-all">
+                             <label className="text-[10px] uppercase font-bold text-gray-400">Категория для всех</label>
+                             <input type="text" className="w-full bg-transparent font-medium text-base dark:text-white outline-none placeholder-gray-300" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} placeholder="Напр. Меню Осень" />
+                        </div>
+                        <div className="flex items-center justify-between bg-gray-50 dark:bg-black/20 p-3 rounded-xl cursor-pointer border border-transparent" onClick={() => setImportNotify(!importNotify)}>
+                             <div className={`w-10 h-6 rounded-full transition-colors relative ${importNotify ? 'bg-blue-500' : 'bg-gray-300 dark:bg-white/10'}`}>
+                                 <div className={`w-4 h-4 bg-white rounded-full shadow absolute top-1 transition-transform ${importNotify ? 'left-5' : 'left-1'}`}></div>
+                             </div>
+                        </div>
+                     </div>
+                     <p className="text-[10px] text-gray-400 text-right pr-2">Уведомить пользователей</p>
+                 </div>
+
                  {stagedRecipes.map((recipe) => (
                      <div key={recipe.id} className={`bg-white dark:bg-[#1e1e24] rounded-3xl overflow-hidden border-2 transition-all duration-300 shadow-sm ${recipe.selected ? 'border-sky-500 shadow-sky-500/10' : 'border-transparent opacity-70'}`}>
                          {/* Card Header */}
