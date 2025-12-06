@@ -63,11 +63,26 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
   };
 
+  // Utility to prevent HTML injection in Telegram messages
+  const escapeHtml = (unsafe: string | undefined | null) => {
+    if (!unsafe) return "";
+    return String(unsafe)
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+  };
+
   const calculateChanges = (oldR: TechCard, newR: TechCard): string[] => {
       const changes: string[] = [];
       
-      if (oldR.title !== newR.title) changes.push(`Название: ${oldR.title} -> <b>${newR.title}</b>`);
-      if (oldR.outputWeight !== newR.outputWeight) changes.push(`Выход: ${oldR.outputWeight || '-'} -> <b>${newR.outputWeight}</b>`);
+      if (oldR.title !== newR.title) {
+          changes.push(`Название: ${escapeHtml(oldR.title)} -> <b>${escapeHtml(newR.title)}</b>`);
+      }
+      if (oldR.outputWeight !== newR.outputWeight) {
+          changes.push(`Выход: ${escapeHtml(oldR.outputWeight || '-')} -> <b>${escapeHtml(newR.outputWeight)}</b>`);
+      }
       
       // Compare Ingredients intelligently
       const oldMap = new Map(oldR.ingredients.map(i => [i.name, i]));
@@ -75,11 +90,11 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       newR.ingredients.forEach(newI => {
           const oldI = oldMap.get(newI.name);
           if (!oldI) {
-               changes.push(`Добавлен: <b>${newI.name}</b> (${newI.amount} ${newI.unit})`);
+               changes.push(`Добавлен: <b>${escapeHtml(newI.name)}</b> (${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)})`);
           } else {
                // Exists, check amount/unit
                if (oldI.amount !== newI.amount || oldI.unit !== newI.unit) {
-                   changes.push(`${newI.name}: ${oldI.amount} ${oldI.unit} -> <b>${newI.amount} ${newI.unit}</b>`);
+                   changes.push(`${escapeHtml(newI.name)}: ${escapeHtml(oldI.amount)} ${escapeHtml(oldI.unit)} -> <b>${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)}</b>`);
                }
                // Remove processed
                oldMap.delete(newI.name);
@@ -88,7 +103,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // Remaining in oldMap are deleted
       oldMap.forEach(oldI => {
-          changes.push(`Удален: ${oldI.name}`);
+          changes.push(`Удален: ${escapeHtml(oldI.name)}`);
       });
       
       // Compare steps length
