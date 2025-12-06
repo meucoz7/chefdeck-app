@@ -1,10 +1,13 @@
+import 'dotenv/config';
+import express from 'express';
+import TelegramBot from 'node-telegram-bot-api';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const TelegramBot = require('node-telegram-bot-api');
-const path = require('path');
-const fs = require('fs');
+// Fix for __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,7 +26,8 @@ if (TELEGRAM_TOKEN) {
 }
 
 // Middleware
-app.use(bodyParser.json());
+app.use(express.json()); // Use built-in express parser instead of body-parser
+
 // CORS middleware for development flexibility
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
@@ -35,7 +39,8 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(path.join(__dirname, 'dist'))); // Serve React Frontend
+// Serve React Frontend
+app.use(express.static(path.join(__dirname, 'dist'))); 
 
 // --- DATABASE HELPERS ---
 const getDb = () => {
@@ -45,7 +50,7 @@ const getDb = () => {
             fs.writeFileSync(DB_FILE, JSON.stringify(initial));
             return initial;
         }
-        return JSON.parse(fs.readFileSync(DB_FILE));
+        return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
     } catch (e) {
         console.error("DB Read Error", e);
         return { recipes: [], users: {} };
@@ -152,7 +157,7 @@ app.post('/api/notify', async (req, res) => {
 
 
 // --- TELEGRAM WEBHOOK ---
-if (TELEGRAM_TOKEN) {
+if (TELEGRAM_TOKEN && bot) {
     app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
         bot.processUpdate(req.body);
         res.sendStatus(200);
@@ -166,7 +171,7 @@ if (TELEGRAM_TOKEN) {
         db.users[chatId] = { id: chatId, first_name: msg.from.first_name, username: msg.from.username, lastSeen: Date.now() };
         saveDb(db);
 
-        const appUrl = WEBHOOK_URL || "https://google.com"; // Fallback if no URL set
+        const appUrl = WEBHOOK_URL || "https://google.com"; 
 
         bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳\n\nНажмите кнопку ниже, чтобы открыть базу рецептов.", {
             reply_markup: {
