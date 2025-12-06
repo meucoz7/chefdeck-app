@@ -10,17 +10,24 @@ const Details: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { getRecipe, deleteRecipe, toggleFavorite } = useRecipes();
   const { addToast } = useToast();
-  const { isAdmin } = useTelegram();
+  const { isAdmin, user } = useTelegram();
   const navigate = useNavigate();
   const recipe = getRecipe(id || '');
   
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   if (!recipe) return null;
 
   const handleBack = () => {
-    navigate(-1);
+    // Check if there is history state to go back to (e.g. came from home/search)
+    // If not (direct link), go to home
+    if (window.history.state && window.history.state.idx > 0) {
+        navigate(-1);
+    } else {
+        navigate('/', { replace: true });
+    }
   };
 
   const handleEdit = () => navigate(`/edit/${recipe.id}`);
@@ -34,13 +41,31 @@ const Details: React.FC = () => {
     }
   };
 
-  const handleShare = () => {
-    const text = `${recipe.title.toUpperCase()}\n\n${recipe.ingredients.map(i => `${i.name} - ${i.amount} ${i.unit}`).join('\n')}\n\nТехнология:\n${recipe.steps.map((s, i) => `${i+1}. ${s}`).join('\n')}`;
-    if (navigator.share) {
-      navigator.share({ title: recipe.title, text: text }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(text);
-      addToast("Скопировано", "success");
+  // New Share Logic: Send to Bot
+  const handleSendToChat = async () => {
+    if (!user) {
+        addToast("Недоступно в браузере", "error");
+        return;
+    }
+    setIsSending(true);
+    try {
+        const res = await fetch('/api/share-recipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                recipeId: recipe.id,
+                targetChatId: user.id
+            })
+        });
+        if (res.ok) {
+            addToast("Отправлено в чат", "success");
+        } else {
+            throw new Error("Failed");
+        }
+    } catch (e) {
+        addToast("Ошибка отправки", "error");
+    } finally {
+        setIsSending(false);
     }
   };
 
@@ -50,8 +75,8 @@ const Details: React.FC = () => {
   };
   const youtubeEmbed = recipe.videoUrl ? getEmbedVideoUrl(recipe.videoUrl) : null;
   
-  // Only show steps block if there are actual steps
   const hasSteps = recipe.steps.length > 0 && recipe.steps.some(s => s.trim().length > 0);
+  const hasDescription = recipe.description && recipe.description.trim().length > 0 && recipe.description !== 'Нет описания';
 
   return (
     <div className="animate-fade-in bg-[#f2f4f7] dark:bg-[#0f1115] min-h-screen relative pb-safe-bottom">
@@ -75,7 +100,7 @@ const Details: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
+      <div className="pt-safe-top px-4 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
           <div className="flex items-center justify-between pt-4">
               <div className="flex items-center gap-3 overflow-hidden">
                  <button onClick={handleBack} className="flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10">
@@ -97,8 +122,13 @@ const Details: React.FC = () => {
                     </button>
                  )}
                  
-                 <button onClick={handleShare} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-indigo-500 active:scale-90 transition-transform">
-                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" /></svg>
+                 {/* Share to Chat Button */}
+                 <button onClick={handleSendToChat} disabled={isSending} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-indigo-500 active:scale-90 transition-transform disabled:opacity-50">
+                   {isSending ? (
+                      <svg className="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                   ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+                   )}
                  </button>
               </div>
           </div>
@@ -120,10 +150,10 @@ const Details: React.FC = () => {
                    )}
               </div>
               
-              {/* Description */}
-              {recipe.description && (
+              {/* Description - Only Show if Exists */}
+              {hasDescription && (
                   <div className="bg-white dark:bg-[#1e1e24] rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-white/5">
-                      <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{recipe.description}</p>
+                      <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-line">{recipe.description}</p>
                   </div>
               )}
 
