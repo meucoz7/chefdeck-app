@@ -65,26 +65,32 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       {/* Floating Bottom Navigation */}
       {!hideNav && (
         <div className="fixed bottom-5 left-0 right-0 z-30 px-6 pointer-events-none">
-            <nav className={`max-w-[260px] mx-auto pointer-events-auto bg-white/95 dark:bg-[#1e1e24]/95 backdrop-blur-xl border border-gray-100 dark:border-white/5 rounded-[2rem] shadow-[0_15px_30px_rgba(0,0,0,0.08)] dark:shadow-black/50 p-1.5 flex items-center relative ${isAdmin ? 'justify-between' : 'justify-evenly'}`}>
+            <nav className={`max-w-[260px] mx-auto pointer-events-auto bg-white/95 dark:bg-[#1e1e24]/95 backdrop-blur-xl border border-gray-100 dark:border-white/5 rounded-[2rem] shadow-[0_15px_30px_rgba(0,0,0,0.08)] dark:shadow-black/50 p-1.5 relative`}>
                 
-                {/* Home */}
-                <NavLink to="/" end className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 group ${isActive ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
-                    <HomeIcon active={false} />
-                </NavLink>
+                <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} items-center`}>
+                    {/* Home */}
+                    <div className="flex justify-center">
+                        <NavLink to="/" end className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
+                            <HomeIcon active={false} />
+                        </NavLink>
+                    </div>
 
-                {/* Add Button - Only for Admins */}
-                {isAdmin && (
-                   <div className="relative -top-5 mx-2">
-                       <NavLink to="/add" className="flex items-center justify-center w-12 h-12 bg-gray-900 dark:bg-sky-500 text-white rounded-full shadow-[0_8px_16px_rgba(0,0,0,0.2)] dark:shadow-sky-500/30 transition-transform active:scale-90 hover:scale-105 duration-300 ring-4 ring-[#f2f4f7] dark:ring-[#0f1115]">
-                           <PlusIcon />
-                       </NavLink>
-                   </div>
-                )}
+                    {/* Add Button - Only for Admins */}
+                    {isAdmin && (
+                       <div className="flex justify-center -mt-8">
+                           <NavLink to="/add" className="flex items-center justify-center w-12 h-12 bg-gray-900 dark:bg-sky-500 text-white rounded-full shadow-[0_8px_16px_rgba(0,0,0,0.2)] dark:shadow-sky-500/30 transition-transform active:scale-90 hover:scale-105 duration-300 ring-4 ring-[#f2f4f7] dark:ring-[#0f1115]">
+                               <PlusIcon />
+                           </NavLink>
+                       </div>
+                    )}
 
-                {/* Favorites */}
-                <NavLink to="/favorites" className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 group ${isActive ? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
-                    <HeartIcon active={false} />
-                </NavLink>
+                    {/* Favorites */}
+                    <div className="flex justify-center">
+                        <NavLink to="/favorites" className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
+                            <HeartIcon active={false} />
+                        </NavLink>
+                    </div>
+                </div>
 
             </nav>
         </div>
@@ -94,4 +100,3 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 export default Layout;
-    
