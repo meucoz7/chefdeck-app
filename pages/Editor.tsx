@@ -58,6 +58,7 @@ const Editor: React.FC = () => {
   // Saving Progress
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+  const [isSaving, setIsSaving] = useState(false); // New state for single recipe save
 
   // --- ACCESS CONTROL ---
   useEffect(() => {
@@ -70,8 +71,12 @@ const Editor: React.FC = () => {
   // --- EFFECT: LOAD DATA FOR EDITING ---
   useEffect(() => {
       if (id) {
-          const recipe = getRecipe(id);
-          if (recipe) {
+          const recipeRef = getRecipe(id);
+          if (recipeRef) {
+              // DEEP COPY to prevent mutation of context state by reference
+              // This fixes the issue where oldRecipe === newRecipe during diff calculation
+              const recipe = JSON.parse(JSON.stringify(recipeRef));
+
               setTitle(recipe.title);
               setDescription(recipe.description);
               setCategory(recipe.category);
@@ -123,28 +128,39 @@ const Editor: React.FC = () => {
   const handleSave = async () => {
     if (!title) { addToast("Укажите название", "error"); return; }
     
-    const recipeData: TechCard = {
-      id: id || uuidv4(),
-      title,
-      description: description || 'Нет описания',
-      imageUrl,
-      videoUrl,
-      category: category || 'Без категории',
-      outputWeight: outputWeight || '',
-      isFavorite: isFavorite,
-      ingredients: ingredients.filter(i => i.name.trim() !== ''),
-      steps: steps.filter(s => s.trim() !== ''),
-      createdAt: id ? (getRecipe(id)?.createdAt || Date.now()) : Date.now()
-    };
+    setIsSaving(true);
+    // Allow UI to render loading state
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => setTimeout(r, 100));
 
-    if (id) {
-        await updateRecipe(recipeData, shouldNotify);
-        addToast("Обновлено", "success");
-        navigate(`/recipe/${id}`, { replace: true });
-    } else {
-        await addRecipe(recipeData, shouldNotify);
-        addToast("Сохранено", "success");
-        navigate('/', { replace: true });
+    try {
+        const recipeData: TechCard = {
+            id: id || uuidv4(),
+            title: title.trim(),
+            description: description || 'Нет описания',
+            imageUrl,
+            videoUrl,
+            category: category.trim() || 'Без категории',
+            outputWeight: outputWeight || '',
+            isFavorite: isFavorite,
+            ingredients: ingredients.map(i => ({...i, name: i.name.trim()})).filter(i => i.name !== ''),
+            steps: steps.map(s => s.trim()).filter(s => s !== ''),
+            createdAt: id ? (getRecipe(id)?.createdAt || Date.now()) : Date.now()
+        };
+
+        if (id) {
+            await updateRecipe(recipeData, shouldNotify);
+            addToast("Обновлено", "success");
+            navigate(`/recipe/${id}`, { replace: true });
+        } else {
+            await addRecipe(recipeData, shouldNotify);
+            addToast("Сохранено", "success");
+            navigate('/', { replace: true });
+        }
+    } catch (e) {
+        addToast("Ошибка сохранения", "error");
+    } finally {
+        setIsSaving(false);
     }
   };
 
@@ -158,7 +174,6 @@ const Editor: React.FC = () => {
         setParsingProgress(0);
         setParsingStatus('Загрузка файла...');
 
-        // Simulate progress for UX
         const interval = setInterval(() => {
             setParsingProgress(prev => {
                 if (prev >= 90) return prev;
@@ -166,7 +181,6 @@ const Editor: React.FC = () => {
             });
         }, 200);
 
-        // Actual Parsing
         setParsingStatus('Анализ структуры PDF...');
         const data = await parsePdfFile(file);
         
@@ -174,7 +188,7 @@ const Editor: React.FC = () => {
         setParsingProgress(100);
         setParsingStatus('Готово!');
 
-        await new Promise(r => setTimeout(r, 500)); // Small delay for visual completion
+        await new Promise(r => setTimeout(r, 500));
 
         const staged: StagedRecipe[] = data.map(item => ({
             ...item,
@@ -208,7 +222,6 @@ const Editor: React.FC = () => {
       setIsImporting(true);
       setImportProgress({ current: 0, total: selected.length });
       
-      // Allow browser paint cycle to show the overlay before blocking logic
       await new Promise(resolve => setTimeout(resolve, 100));
 
       try {
@@ -230,8 +243,6 @@ const Editor: React.FC = () => {
               }, importNotify, !importNotify); 
               
               setImportProgress(prev => ({ ...prev, current: i + 1 }));
-              
-              // Small delay to make progress visible and ensure order
               await new Promise(resolve => setTimeout(resolve, 50));
           }
           
@@ -251,19 +262,31 @@ const Editor: React.FC = () => {
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
        
        {/* Saving Overlay - High Z-Index to cover everything */}
-       {isImporting && (
+       {(isImporting || isSaving) && (
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
                 <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
-                    <h3 className="font-bold text-xl mb-6 dark:text-white">Сохранение...</h3>
-                    <div className="relative h-4 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden mb-4">
-                        <div 
-                            className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-indigo-500 transition-all duration-300"
-                            style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
-                        ></div>
-                    </div>
-                    <p className="font-mono text-lg font-bold text-sky-500">
-                        {importProgress.current} <span className="text-gray-400">/</span> {importProgress.total}
-                    </p>
+                    <h3 className="font-bold text-xl mb-6 dark:text-white">
+                        {isImporting ? 'Импорт...' : 'Сохранение...'}
+                    </h3>
+                    
+                    {isImporting ? (
+                        <>
+                            <div className="relative h-4 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden mb-4">
+                                <div 
+                                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-indigo-500 transition-all duration-300"
+                                    style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                                ></div>
+                            </div>
+                            <p className="font-mono text-lg font-bold text-sky-500">
+                                {importProgress.current} <span className="text-gray-400">/</span> {importProgress.total}
+                            </p>
+                        </>
+                    ) : (
+                        <div className="flex justify-center mb-4">
+                             <svg className="animate-spin h-10 w-10 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        </div>
+                    )}
+                    
                     <p className="text-xs text-gray-400 mt-2 uppercase tracking-wider">Не закрывайте приложение</p>
                 </div>
            </div>
@@ -271,7 +294,7 @@ const Editor: React.FC = () => {
 
        {/* HEADER (Non-Sticky) */}
        <div className="px-5 pt-safe-top flex justify-between items-center mb-2">
-          <button onClick={handleBack} disabled={isImporting} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
+          <button onClick={handleBack} disabled={isImporting || isSaving} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -362,9 +385,9 @@ const Editor: React.FC = () => {
                     <div className="space-y-3">
                         {ingredients.map((ing, i) => (
                         <div key={i} className="grid grid-cols-[1fr_4rem_3rem_2rem] gap-2 items-center">
-                            <input type="text" placeholder="Продукт" className="bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-3 text-sm font-medium outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.name} onChange={(e) => { const n = [...ingredients]; n[i].name = e.target.value; setIngredients(n); }} />
-                            <input type="text" placeholder="Кол-во" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i].amount = e.target.value; setIngredients(n); }} />
-                            <input type="text" placeholder="Ед." className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i].unit = e.target.value; setIngredients(n); }} />
+                            <input type="text" placeholder="Продукт" className="bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-3 text-sm font-medium outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.name} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], name: e.target.value}; setIngredients(n); }} />
+                            <input type="text" placeholder="Кол-во" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], amount: e.target.value}; setIngredients(n); }} />
+                            <input type="text" placeholder="Ед." className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], unit: e.target.value}; setIngredients(n); }} />
                             
                             <div className="flex justify-center">
                                 {ingredients.length > 1 && (
