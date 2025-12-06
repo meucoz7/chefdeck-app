@@ -54,6 +54,10 @@ const Editor: React.FC = () => {
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [importNotify, setImportNotify] = useState(false);
+  
+  // Saving Progress
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
 
   // --- ACCESS CONTROL ---
   useEffect(() => {
@@ -201,7 +205,11 @@ const Editor: React.FC = () => {
       const selected = stagedRecipes.filter(r => r.selected);
       if (selected.length === 0) { addToast("Ничего не выбрано", "error"); return; }
       
-      for (const r of selected) {
+      setIsImporting(true);
+      setImportProgress({ current: 0, total: selected.length });
+
+      for (let i = 0; i < selected.length; i++) {
+          const r = selected[i];
           const newId = uuidv4();
           await addRecipe({
               id: newId,
@@ -215,8 +223,11 @@ const Editor: React.FC = () => {
               steps: r.steps.filter(s => s.trim().length > 0),
               createdAt: Date.now()
           }, importNotify, !importNotify); // Send silent=true if notification unchecked
+          
+          setImportProgress(prev => ({ ...prev, current: i + 1 }));
       }
       
+      setIsImporting(false);
       addToast(`Импортировано: ${selected.length}`, "success");
       navigate('/', { replace: true });
   };
@@ -226,9 +237,28 @@ const Editor: React.FC = () => {
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
        
+       {/* Saving Overlay */}
+       {isImporting && (
+           <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
+                <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl">
+                    <h3 className="font-bold text-xl mb-6 dark:text-white">Сохранение...</h3>
+                    <div className="relative h-4 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden mb-4">
+                        <div 
+                            className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-indigo-500 transition-all duration-300"
+                            style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                        ></div>
+                    </div>
+                    <p className="font-mono text-lg font-bold text-sky-500">
+                        {importProgress.current} <span className="text-gray-400">/</span> {importProgress.total}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2 uppercase tracking-wider">Не закрывайте приложение</p>
+                </div>
+           </div>
+       )}
+
        {/* HEADER (Non-Sticky) */}
        <div className="px-5 pt-safe-top flex justify-between items-center mb-2">
-          <button onClick={handleBack} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
+          <button onClick={handleBack} disabled={isImporting} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -259,7 +289,6 @@ const Editor: React.FC = () => {
 
           {mode === 'create' && (
              <div className="space-y-5">
-                {/* ... (Create/Edit Form Code Omitted for Brevity - It remains unchanged) ... */}
                 {/* Image & Main Info */}
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 space-y-5">
                     {/* Image Input */}
