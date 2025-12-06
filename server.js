@@ -46,14 +46,14 @@ app.use(express.static(path.join(__dirname, 'dist')));
 const getDb = () => {
     try {
         if (!fs.existsSync(DB_FILE)) {
-            const initial = { recipes: [], users: {} };
+            const initial = { recipes: [], users: {}, schedule: [] };
             fs.writeFileSync(DB_FILE, JSON.stringify(initial));
             return initial;
         }
         return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
     } catch (e) {
         console.error("DB Read Error", e);
-        return { recipes: [], users: {} };
+        return { recipes: [], users: {}, schedule: [] };
     }
 };
 
@@ -231,6 +231,20 @@ app.post('/api/share-recipe', async (req, res) => {
         console.error("Share failed", e);
         res.status(500).json({ error: e.message });
     }
+});
+
+// 7. Schedule Endpoints
+app.get('/api/schedule', (req, res) => {
+    const db = getDb();
+    res.json(db.schedule || []);
+});
+
+app.post('/api/schedule', (req, res) => {
+    const schedule = req.body;
+    const db = getDb();
+    db.schedule = schedule;
+    saveDb(db);
+    res.json({ success: true });
 });
 
 
