@@ -14,15 +14,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme');
+    // If no saved theme, try to use Telegram theme, otherwise default to light
+    if (!saved && isTwa && webApp) {
+        return webApp.colorScheme;
+    }
     return (saved as Theme) || 'light';
   });
-
-  // Sync with Telegram Theme
-  useEffect(() => {
-    if (isTwa && webApp) {
-        setTheme(webApp.colorScheme);
-    }
-  }, [isTwa, webApp, webApp?.colorScheme]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -45,8 +42,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme, isTwa, webApp]);
 
   const toggleTheme = () => {
-    // If inside Telegram, we usually prefer to respect the OS/App theme, 
-    // but allowing toggle is fine for override.
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
