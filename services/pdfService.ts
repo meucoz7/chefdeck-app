@@ -20,58 +20,54 @@ interface TextItem {
 
 const cleanString = (str: string): string => {
   if (!str) return "";
-  // Critical: Replace underscores with spaces immediately as they break word boundaries
+  // Replace underscores with spaces
   let clean = str.replace(/_/g, ' ');
+  // Remove list numbering "1. ", "2. " at start
+  clean = clean.replace(/^\d+\.?\s+/, '');
   // Remove multiple spaces
   clean = clean.replace(/\s+/g, ' ');
   return clean.trim();
 };
 
 const cleanTitle = (rawTitle: string): string => {
-  let title = cleanString(rawTitle);
-  // Remove "Version 0", "Ver. 1", dates, etc.
+  let title = rawTitle.replace(/_/g, ' ');
   title = title.replace(/,?\s*(?:версия|ver|v\.)\s*\d+/gi, '');
   title = title.replace(/\d{2}[\.,]\d{2}[\.,]\d{2,4}/g, ''); // dates
-  // Remove trailing weight info like ", 200гр"
-  title = title.replace(/[,/]?\s*\d+(?:[\.,]\d+)?\s*(?:гр?|кг|мл|л|шт)\.?\s*$/gi, '');
-  // Remove leading numbering like "1. Pizza"
+  title = title.replace(/[,/]?\s*\d+(?:[\.,]\d+)?\s*(?:гр?|кг|мл|л|шт)\.?\s*$/gi, ''); // trailing weight
   title = title.replace(/^\d+[\.,]\s*/, '');
   return title.trim();
 };
 
-// Returns extracted data or null. 
-// Tries to find "Amount + Unit" OR "Just Amount (float)"
-const parseQuantityLine = (text: string): { amount: string, unit: string, remainder: string } | null => {
-    // 1. Try strict match: Number + Known Unit (e.g. "1шт", "0.5 кг")
-    // Note: We use ^ to prioritize start of string, but also check inside if columns are messy
-    const strictRegex = /([\d,.]+)\s*(кг|гр?|л|литр|мл|шт|упак|порц)/i;
-    const strictMatch = text.match(strictRegex);
+// Check if line is purely headers or junk info
+const isJunkLine = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    const keywords = [
+        'основание производства',
+        'технология приготовления',
+        'оформления блюда',
+        'директор',
+        'калькулятор',
+        'шеф-повар',
+        'утверждаю',
+        'организация',
+        'предприятие',
+        'вес брутто',
+        'вес нетто',
+        'вес готового',
+        'на 1 порция',
+        'ед. изм',
+        'дата печати',
+        'выход в готовом виде',
+        'версия 0',
+        'версия 1'
+    ];
+    return keywords.some(k => lower.includes(k));
+};
 
-    if (strictMatch) {
-        const amount = strictMatch[1].replace(',', '.');
-        const unit = strictMatch[2].toLowerCase();
-        // Remainder is everything NOT the match. 
-        // Example: "1шт Зира 3.000" -> match "1шт". Remainder " Зира 3.000"
-        const remainder = text.replace(strictMatch[0], '').trim();
-        return { amount, unit, remainder };
-    }
-
-    // 2. Try loose match: Just a float number at the start (e.g. "0,050 0,050")
-    // Only if it looks like a weight (contains dot/comma or is < 100 for kg)
-    const floatRegex = /^([\d,.]+)/;
-    const floatMatch = text.match(floatRegex);
-    
-    if (floatMatch) {
-        let valStr = floatMatch[1].replace(',', '.');
-        // Filter out list indexes like "1." or "2."
-        // A weight usually has decimal points OR is followed by other numbers
-        const isIndex = /^\d+\.$/.test(floatMatch[0]); // ends with dot
-        if (!isIndex) {
-            return { amount: valStr, unit: 'кг', remainder: text.replace(floatMatch[0], '').trim() };
-        }
-    }
-
-    return null;
+// Check if line is just numbers (Total line like "3,050 3,050")
+const isTotalLine = (text: string): boolean => {
+    // Matches strings containing only numbers, dots, commas, spaces
+    return /^[\d\s\.,]+$/.test(text);
 };
 
 export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
@@ -107,23 +103,25 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
       let currentLineStr = "";
       for (const item of items) {
         if (Math.abs(item.y - currentLineY) > Y_TOLERANCE) {
-          lines.push(cleanString(currentLineStr));
+          lines.push(currentLineStr); // Don't clean yet, need raw for regex sometimes
           currentLineStr = item.str;
           currentLineY = item.y;
         } else {
-           currentLineStr += " " + item.str;
+           // Add space if needed
+           currentLineStr += (currentLineStr.endsWith(" ") ? "" : " ") + item.str;
         }
       }
-      lines.push(cleanString(currentLineStr));
+      lines.push(currentLineStr);
     }
 
-    // Parsing State
+    // --- LINE PROCESSING STATE MACHINE ---
     let pendingName: string | null = null;
     
-    for (const line of lines) {
+    for (const rawLine of lines) {
+       const line = cleanString(rawLine);
        if (!line) continue;
 
-       // 1. Check for Recipe Title
+       // 1. Detect Recipe Start
        const titleRegex = /^(?:наименование блюда|блюдо|изделие):?\s*(.+)/i;
        const titleMatch = line.match(titleRegex);
        if (titleMatch) {
@@ -135,61 +133,89 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
          continue;
        }
 
-       // 2. Ingredient Parsing
-       // Attempt to parse Quantity info from this line
-       const qty = parseQuantityLine(line);
+       // 2. Skip Junk & Totals
+       if (isJunkLine(line)) {
+           pendingName = null; // Reset pending if we hit junk
+           continue; 
+       }
+       if (isTotalLine(line)) {
+           pendingName = null;
+           continue;
+       }
 
-       if (qty) {
-           // Case A: We have a pending name (e.g. "ПФ Чебуреки" from prev line), and now we found quantity ("1шт...")
-           if (pendingName) {
-               currentRecipe?.ingredients.push({
-                   name: pendingName,
-                   amount: qty.amount,
-                   unit: qty.unit
-               });
-               pendingName = null;
-           } 
-           // Case B: Everything on one line ("Tomato 1kg")
-           else {
-               // The name is likely in the remainder (or before the match?)
-               // With our regex, we matched the FIRST number. 
-               // If the line is "Tomato 1kg", parseQuantityLine might fail because regex is anchored ^ or looks for pattern.
-               // Let's rely on remainder cleaning.
+       // 3. Try to extract Weight/Amount
+       // Look for sequence of numbers at the end or middle: e.g. "0,050 0,050"
+       // We want the FIRST number in that sequence (Gross weight)
+       const weightRegex = /(\d+[\.,]\d{1,4}|\d{1,4})\s+(\d+[\.,]\d{1,4}|\d{1,4})/;
+       const weightMatch = line.match(weightRegex);
+
+       if (weightMatch) {
+           // Found a line with weights.
+           const amountVal = weightMatch[1].replace(',', '.');
+           let namePart = line.substring(0, weightMatch.index).trim();
+           let unitVal = 'кг'; // Default
+
+           // Check for specific unit attached to name start (e.g. "1шт", "10гр")
+           // Regex looks for Number + Unit at start of namePart
+           const stickyUnitRegex = /^(\d+[\.,]?\d*)\s*(шт|кг|л|мл|гр?)\s*(.*)/i;
+           const stickyMatch = namePart.match(stickyUnitRegex);
+
+           if (stickyMatch) {
+               // Case: "1шт_Зира..."
+               // override amount with the one found at start
+               const qty = stickyMatch[1].replace(',', '.');
+               const unit = stickyMatch[2].toLowerCase();
+               const remainder = stickyMatch[3]; // "_Зира" or " Зира"
                
-               // However, in your PDF format, lines often start with Name (no qty) OR Qty (if column based).
-               // If we found a Qty at the START, but no pending name, it implies we missed the name or it's a weird line.
-               // But let's verify if the line *started* with the qty.
+               // If we had a pending name (from prev line), use it as main name
+               // and maybe append remainder? 
+               // Usually pendingName is "ПФ Чебуреки", and this line is "1шт".
                
-               // If the line is "1kg Tomato", qty is found, remainder is "Tomato".
-               // If remainder is valid name, use it.
-               const possibleName = qty.remainder.replace(/^\d+[\.,]\s*/, '').trim(); // Remove "1. " list index
-               if (possibleName.length > 2) {
+               if (pendingName) {
                    currentRecipe?.ingredients.push({
-                       name: possibleName,
-                       amount: qty.amount,
-                       unit: qty.unit
+                       name: pendingName, // Ignore remainder if it looks like junk suffix
+                       amount: qty,
+                       unit: unit
+                   });
+                   pendingName = null;
+               } else {
+                   // Everything on one line? "1шт Булочка"
+                   currentRecipe?.ingredients.push({
+                       name: remainder || "Ингредиент",
+                       amount: qty,
+                       unit: unit
+                   });
+               }
+           } else {
+               // Normal Case: "Potato 0.500 0.500"
+               // Check if namePart ends with a unit
+               // or just assume kg
+               
+               let finalName = namePart;
+               if (pendingName) {
+                   finalName = pendingName + " " + namePart;
+                   pendingName = null;
+               }
+
+               if (finalName.length > 1) {
+                   currentRecipe?.ingredients.push({
+                       name: cleanString(finalName),
+                       amount: amountVal,
+                       unit: unitVal
                    });
                }
            }
        } else {
-           // No quantity found. This line is likely a NAME.
-           // Ignore junk headers
-           const isJunk = /организация|предприятие|утверждаю|руководитель|брутто|нетто|выход|версия/i.test(line);
-           const isHeader = /^№\s+наименование/i.test(line);
-
-           if (!isJunk && !isHeader && line.length > 2) {
-               // If we already had a pending name, it means the previous line was actually a name too (maybe list of names?)
-               // Or maybe a long name split on 2 lines?
-               // For safety, if we have a pending name, let's treat it as an ingredient without weight (or 0) to avoid losing it, 
-               // OR assume this line is a continuation of the name.
-               
-               if (pendingName) {
-                   // Merge lines for long names
-                   pendingName += " " + line;
-               } else {
-                   // Remove list numbering "1. "
-                   pendingName = line.replace(/^\d+[\.,]\s*/, '');
-               }
+           // 4. No weight found. 
+           // Likely a name continued on next line, OR just a name line.
+           // e.g. "ПФ Мини - чебуреки"
+           
+           // If we already have a pending name, append? Or replace? 
+           // Usually lines are short, so append is safer.
+           if (pendingName) {
+               pendingName += " " + line;
+           } else {
+               pendingName = line;
            }
        }
     }
@@ -198,7 +224,9 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
   if (currentRecipe && currentRecipe.ingredients.length > 0) results.push(currentRecipe);
 
   if (results.length === 0) {
-      throw new Error("Не удалось найти ингредиенты. Проверьте формат PDF.");
+      // Return empty array instead of throwing to avoid crashing UI, 
+      // let the UI show "0 imported" or handle gracefully.
+      return [];
   }
 
   return results;
