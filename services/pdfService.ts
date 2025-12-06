@@ -58,6 +58,7 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
   
   const results: ParsedPdfData[] = [];
   let currentRecipe: ParsedPdfData | null = null;
+  let pendingLine = ""; // Buffer for multi-line ingredient names
 
   // Process page by page
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -101,20 +102,19 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
     }
 
     // 4. Parse the lines
-    // Improved Regex:
-    // ^(?:\d+\.?\s*)?  -> Optional Index (1, 1., 10)
-    // (.+)             -> Name (Greedy capture, consumes everything until the unit)
-    // \s+              -> Space separator
-    // (кг|г|...)       -> Unit
-    // \.?              -> Optional dot after unit
-    // \s+              -> Space separator
-    // ([\d,.]+)        -> Amount (Gross weight)
-    const ingredientLineRegex = /^(?:\d+\.?\s*)?(.+)\s+(кг|г|гр|л|литр|мл|шт|упак|порц)\.?\s+([\d,.]+)/i;
+    // Strong Regex: Explicit Unit column
+    const ingredientLineRegex = /^(?:\d+\.?\s*)?(.+?)\s+(кг|г|гр|л|литр|мл|шт|упак|порц)\.?\s+([\d,.]+)/i;
+    // Weak Regex: Ends with number, assume number is amount. Unit might be stuck in name.
+    const weakIngredientRegex = /^(?:\d+\.?\s*)?(.+?)\s+([\d,.]+)\s*([\d,.\s]*)$/;
+    
     const titleRegex = /^(?:наименование блюда|блюдо|наименование):?\s*(.+)/i;
     
     for (const line of lines) {
        // Filter Junk first
-       if (isJunkLine(line)) continue;
+       if (isJunkLine(line)) {
+           pendingLine = ""; // Reset buffer on junk/section break
+           continue;
+       }
 
        // --- Check for Title ---
        const titleMatch = line.match(titleRegex);
@@ -123,21 +123,59 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
             results.push(currentRecipe);
          }
          currentRecipe = { title: cleanTitle(titleMatch[1]), ingredients: [] };
+         pendingLine = "";
          continue;
        }
 
-       // --- Check for Ingredient ---
-       const ingMatch = line.match(ingredientLineRegex);
+       // --- Check for Ingredient (Strong) ---
+       let ingMatch = line.match(ingredientLineRegex);
+       let rawName = "", unit = "", rawAmount = "";
+
+       if (ingMatch) {
+          rawName = ingMatch[1].trim();
+          unit = ingMatch[2].toLowerCase();
+          rawAmount = ingMatch[3].replace(',', '.');
+       } else {
+          // --- Check for Ingredient (Weak) ---
+          const weakMatch = line.match(weakIngredientRegex);
+          if (weakMatch) {
+              // It looks like "Name 3,000"
+              let potentialName = weakMatch[1].trim();
+              rawAmount = weakMatch[2].replace(',', '.');
+              
+              // Validate Amount: Must be a number and likely < 10000
+              if (!isNaN(parseFloat(rawAmount))) {
+                  // Try to extract unit from the end of the name (e.g. "1шт")
+                  // Look for "шт", "кг" at end of name
+                  const unitMatch = potentialName.match(/(\d+)?(шт|кг|г|л|мл)[_.\s]*$/i);
+                  if (unitMatch) {
+                      unit = unitMatch[2].toLowerCase();
+                      // We keep the unit in name usually if it's "1шт_Зира", 
+                      // but user wants "1шт_Зира" as name and implicit unit.
+                      // Let's just default unit to 'шт' or 'кг' if not found.
+                  } else {
+                      unit = 'кг'; // Default fallback
+                  }
+                  rawName = potentialName;
+                  ingMatch = weakMatch; // Flag as found
+              }
+          }
+       }
+
        if (ingMatch) {
           if (!currentRecipe) {
              currentRecipe = { title: `Новая техкарта`, ingredients: [] };
           }
 
-          const rawName = ingMatch[1].trim();
-          const unit = ingMatch[2].toLowerCase();
-          // Amount usually comes as "3,000" or "0.050". We take the first part.
-          const rawAmount = ingMatch[3].replace(',', '.');
-          
+          // Combine with pending line if exists
+          if (pendingLine) {
+              rawName = pendingLine + " " + rawName;
+              pendingLine = "";
+          }
+
+          // Cleanup Name (remove leading numbers if regex missed them)
+          rawName = rawName.replace(/^\d+\.?\s+/, '');
+
           // Safety: If name is suspiciously short or just punctuation, skip
           if (rawName.length < 2) continue;
 
@@ -147,6 +185,17 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
              amount: rawAmount
           });
           continue;
+       }
+
+       // --- Check for Orphan Line (Start of multi-line ingredient) ---
+       // Starts with digit, has text, no numbers at end
+       if (/^\d+\.?\s+[^\d]+/.test(line) && !/[\d,]+\s*$/.test(line)) {
+           // This is likely "1 ПФ Мини - чебуреки..."
+           // Remove index
+           const text = line.replace(/^\d+\.?\s+/, '').trim();
+           if (text.length > 3) {
+               pendingLine = text;
+           }
        }
     }
   }
