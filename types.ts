@@ -101,6 +101,16 @@ declare global {
     }
 }
 
+// Schedule Types
+export type ShiftType = 'work' | 'off' | 'sick' | 'vacation' | 'empty';
+
+export interface ChefScheduleItem {
+    id: string;
+    name: string;
+    station: string;
+    shifts: Record<string, ShiftType>; // Key is YYYY-MM-DD
+}
+
 // RD Calendar Types
 export type RDStatus = 'idea' | 'work' | 'tasting' | 'done';
 
