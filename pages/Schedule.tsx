@@ -95,22 +95,12 @@ const Schedule: React.FC = () => {
         }));
     };
 
-    const getCellColor = (type?: ShiftType) => {
-        switch(type) {
-            case 'work': return 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-500/30';
-            case 'off': return 'bg-red-50 dark:bg-red-500/20 text-red-500 border-red-100 dark:border-red-500/30';
-            case 'sick': return 'bg-orange-100 dark:bg-orange-500/20 text-orange-600 border-orange-200 dark:border-orange-500/30';
-            default: return 'bg-white dark:bg-[#1e1e24]';
-        }
+    const getShiftCount = (shifts: Record<string, ShiftType>, type: ShiftType) => {
+        return Object.values(shifts).filter(s => s === type).length;
     };
 
-    const getCellText = (type?: ShiftType) => {
-        switch(type) {
-            case 'work': return 'Р';
-            case 'off': return 'В';
-            case 'sick': return 'Б';
-            default: return '';
-        }
+    const getInitials = (name: string) => {
+        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
     };
 
     return (
@@ -138,6 +128,18 @@ const Schedule: React.FC = () => {
                         </button>
                     )}
                 </div>
+                
+                {/* Legend */}
+                <div className="flex gap-4 pb-2 px-1">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-md bg-green-500"></div>
+                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Смена</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-md bg-orange-500"></div>
+                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Больничный</span>
+                    </div>
+                </div>
              </div>
 
              {/* Content */}
@@ -158,17 +160,14 @@ const Schedule: React.FC = () => {
                                     <table className="min-w-full border-separate border-spacing-0">
                                         <thead className="bg-[#f2f4f7] dark:bg-[#0f1115] sticky top-0 z-30 shadow-sm">
                                             <tr>
-                                                <th scope="col" className="sticky left-0 z-20 bg-[#f2f4f7] dark:bg-[#0f1115] py-4 pl-4 pr-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-white/10 min-w-[140px]">
+                                                <th scope="col" className="sticky left-0 z-20 bg-[#f2f4f7] dark:bg-[#0f1115] py-4 pl-4 pr-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-white/10 min-w-[200px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10">
                                                     Сотрудник
                                                 </th>
-                                                <th scope="col" className="sticky left-[140px] z-20 bg-[#f2f4f7] dark:bg-[#0f1115] py-4 px-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-white/10 min-w-[100px] border-r border-gray-200 dark:border-white/10 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)]">
-                                                    Станция
-                                                </th>
                                                 {days.map(d => (
-                                                    <th key={d.dayNum} scope="col" className={`px-2 py-3 text-center text-xs font-bold border-b border-gray-200 dark:border-white/10 min-w-[48px] ${d.isWeekend ? 'text-red-400 bg-red-50/50 dark:bg-red-500/5' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                    <th key={d.dayNum} scope="col" className={`px-1 py-3 text-center text-xs font-bold border-b border-gray-200 dark:border-white/10 min-w-[50px] ${d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : ''}`}>
                                                         <div className="flex flex-col items-center">
-                                                            <span className="opacity-50 text-[9px] uppercase">{d.weekday}</span>
-                                                            <span className="text-sm">{d.dayNum}</span>
+                                                            <span className={`text-[9px] uppercase mb-0.5 ${d.isWeekend ? 'text-red-400' : 'text-gray-400'}`}>{d.weekday}</span>
+                                                            <span className={`text-sm ${d.isWeekend ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{d.dayNum}</span>
                                                         </div>
                                                     </th>
                                                 ))}
@@ -176,29 +175,42 @@ const Schedule: React.FC = () => {
                                         </thead>
                                         <tbody className="bg-white dark:bg-[#1e1e24]">
                                             {staff.map((person) => (
-                                                <tr key={person.id} className="group">
-                                                    <td className="sticky left-0 z-10 bg-white dark:bg-[#1e1e24] py-3 pl-4 pr-3 text-sm font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-white/5 whitespace-nowrap">
+                                                <tr key={person.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                                    <td className="sticky left-0 z-10 bg-white dark:bg-[#1e1e24] py-4 pl-4 pr-4 border-b border-gray-100 dark:border-white/5 whitespace-nowrap shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-100 dark:border-white/5 group-hover:bg-gray-50 dark:group-hover:bg-[#25252b] transition-colors">
                                                         {editMode ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <button onClick={() => removeChef(person.id)} className="w-6 h-6 rounded bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 shadow-sm">✕</button>
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <button onClick={() => removeChef(person.id)} className="w-6 h-6 rounded bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 shadow-sm flex-shrink-0">✕</button>
+                                                                    <input 
+                                                                        value={person.name} 
+                                                                        onChange={e => updateChef(person.id, 'name', e.target.value)} 
+                                                                        className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1.5 rounded-lg text-sm shadow-inner outline-none font-bold" 
+                                                                        placeholder="Имя"
+                                                                    />
+                                                                </div>
                                                                 <input 
-                                                                    value={person.name} 
-                                                                    onChange={e => updateChef(person.id, 'name', e.target.value)} 
-                                                                    className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1.5 rounded-lg text-sm shadow-inner outline-none" 
-                                                                    placeholder="Имя"
+                                                                    value={person.station} 
+                                                                    onChange={e => updateChef(person.id, 'station', e.target.value)} 
+                                                                    className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1.5 rounded-lg text-xs shadow-inner outline-none ml-8" 
+                                                                    placeholder="Станция"
                                                                 />
                                                             </div>
-                                                        ) : person.name}
-                                                    </td>
-                                                    <td className="sticky left-[140px] z-10 bg-white dark:bg-[#1e1e24] py-3 px-3 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-white/5 whitespace-nowrap border-r border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)]">
-                                                         {editMode ? (
-                                                            <input 
-                                                                value={person.station} 
-                                                                onChange={e => updateChef(person.id, 'station', e.target.value)} 
-                                                                className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1.5 rounded-lg text-xs shadow-inner outline-none" 
-                                                                placeholder="Цех"
-                                                            />
-                                                        ) : person.station}
+                                                        ) : (
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-xs font-black text-gray-500 dark:text-gray-400">
+                                                                    {getInitials(person.name)}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight">{person.name}</div>
+                                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                                        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wide">{person.station}</span>
+                                                                        <span className="text-[10px] bg-green-50 dark:bg-green-500/10 text-green-600 px-1.5 rounded font-bold">
+                                                                            {getShiftCount(person.shifts, 'work')} см
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     {days.map(d => {
                                                         const status = person.shifts[d.dateStr] || 'empty';
@@ -206,14 +218,16 @@ const Schedule: React.FC = () => {
                                                             <td 
                                                                 key={d.dateStr} 
                                                                 onClick={() => toggleShift(person.id, d.dateStr)}
-                                                                className={`border-b border-gray-100 dark:border-white/5 text-center p-1 relative transition-colors ${editMode ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5' : ''}`}
+                                                                className={`border-b border-gray-100 dark:border-white/5 text-center p-1 relative h-16 ${editMode ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''} ${d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : ''}`}
                                                             >
-                                                                {status !== 'empty' ? (
-                                                                    <div className={`w-9 h-9 mx-auto rounded-lg flex items-center justify-center text-sm font-bold border shadow-sm ${getCellColor(status)}`}>
-                                                                        {getCellText(status)}
-                                                                    </div>
-                                                                ) : (
-                                                                    editMode && <div className="w-9 h-9 mx-auto rounded-lg border border-dashed border-gray-200 dark:border-white/10 opacity-50"></div>
+                                                                {status === 'work' && (
+                                                                    <div className="w-full h-10 bg-green-500 rounded-lg shadow-sm mx-auto max-w-[40px]"></div>
+                                                                )}
+                                                                {status === 'sick' && (
+                                                                    <div className="w-full h-10 bg-orange-500 rounded-lg shadow-sm mx-auto max-w-[40px] flex items-center justify-center text-white font-bold text-xs">Б</div>
+                                                                )}
+                                                                {status === 'off' && editMode && (
+                                                                    <div className="w-2 h-2 bg-red-200 dark:bg-white/10 rounded-full mx-auto"></div>
                                                                 )}
                                                             </td>
                                                         );
