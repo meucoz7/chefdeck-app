@@ -63,7 +63,6 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
   };
 
-  // Utility to prevent HTML injection in Telegram messages
   const escapeHtml = (unsafe: string | undefined | null) => {
     if (!unsafe) return "";
     return String(unsafe)
@@ -77,40 +76,40 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const calculateChanges = (oldR: TechCard, newR: TechCard): string[] => {
       const changes: string[] = [];
       
-      if (oldR.title !== newR.title) {
+      const clean = (s: string) => (s || '').trim();
+      
+      if (clean(oldR.title) !== clean(newR.title)) {
           changes.push(`Название: ${escapeHtml(oldR.title)} -> <b>${escapeHtml(newR.title)}</b>`);
       }
-      if (oldR.outputWeight !== newR.outputWeight) {
+      if (clean(oldR.outputWeight) !== clean(newR.outputWeight)) {
           changes.push(`Выход: ${escapeHtml(oldR.outputWeight || '-')} -> <b>${escapeHtml(newR.outputWeight)}</b>`);
       }
       
-      // Compare Ingredients intelligently
-      const oldMap = new Map(oldR.ingredients.map(i => [i.name, i]));
+      const oldMap = new Map(oldR.ingredients.map(i => [clean(i.name), i]));
       
       newR.ingredients.forEach(newI => {
-          const oldI = oldMap.get(newI.name);
+          const name = clean(newI.name);
+          const oldI = oldMap.get(name);
+          
           if (!oldI) {
                changes.push(`Добавлен: <b>${escapeHtml(newI.name)}</b> (${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)})`);
           } else {
-               // Exists, check amount/unit
-               if (oldI.amount !== newI.amount || oldI.unit !== newI.unit) {
+               const oldAmount = clean(oldI.amount);
+               const newAmount = clean(newI.amount);
+               const oldUnit = clean(oldI.unit);
+               const newUnit = clean(newI.unit);
+
+               if (oldAmount !== newAmount || oldUnit !== newUnit) {
                    changes.push(`${escapeHtml(newI.name)}: ${escapeHtml(oldI.amount)} ${escapeHtml(oldI.unit)} -> <b>${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)}</b>`);
                }
-               // Remove processed
-               oldMap.delete(newI.name);
+               oldMap.delete(name);
           }
       });
       
-      // Remaining in oldMap are deleted
       oldMap.forEach(oldI => {
           changes.push(`Удален: ${escapeHtml(oldI.name)}`);
       });
       
-      // Compare steps length
-      if (oldR.steps.length !== newR.steps.length) {
-          changes.push(`Шаги приготовления: ${oldR.steps.length} -> ${newR.steps.length}`);
-      }
-
       return changes;
   };
 
@@ -140,7 +139,9 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateRecipe = async (updated: TechCard, notifyAll = false) => {
+    // Find old recipe from current state BEFORE updating state
     const oldRecipe = recipes.find(r => r.id === updated.id);
+    
     const enriched = { 
         ...updated, 
         lastModified: Date.now(),
@@ -161,7 +162,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         if(!res.ok) throw new Error("Server error");
         
-        // Calculate diff
+        // Use the captured oldRecipe for comparison
         const changes = oldRecipe ? calculateChanges(oldRecipe, enriched) : [];
         await sendNotification(enriched, 'update', notifyAll, changes);
     } catch (e) {
