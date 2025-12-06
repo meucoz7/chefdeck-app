@@ -22,11 +22,6 @@ export interface TechCard {
 
 export type Theme = 'light' | 'dark';
 
-export interface GeneratedInstructionsData {
-  description: string;
-  steps: string[];
-}
-
 export interface TelegramUser {
     id: number;
     first_name: string;
