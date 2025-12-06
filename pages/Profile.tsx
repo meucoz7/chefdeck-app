@@ -87,35 +87,22 @@ const Profile: React.FC = () => {
                     <div className="bg-white dark:bg-[#1e1e24] rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
                          
                          {/* Theme Toggle */}
-                         {!isTwa && (
-                             <div onClick={toggleTheme} className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition border-b border-gray-50 dark:border-white/5 last:border-0">
-                                 <div className="flex items-center gap-3">
-                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm transition-colors ${theme === 'dark' ? 'bg-indigo-500' : 'bg-orange-400'}`}>
-                                        {theme === 'dark' ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>}
-                                     </div>
-                                     <span className="font-bold dark:text-white text-sm">Оформление</span>
+                         <div onClick={toggleTheme} className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition border-b border-gray-50 dark:border-white/5 last:border-0">
+                             <div className="flex items-center gap-3">
+                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm transition-colors ${theme === 'dark' ? 'bg-indigo-500' : 'bg-orange-400'}`}>
+                                    {theme === 'dark' ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>}
                                  </div>
-                                 <div className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ${theme === 'dark' ? 'bg-indigo-500' : 'bg-gray-200'}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${theme === 'dark' ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                                 </div>
+                                 <span className="font-bold dark:text-white text-sm">Оформление</span>
                              </div>
-                         )}
-                         
-                         {isTwa && (
-                            <div className="p-4 flex items-center justify-between opacity-50 cursor-not-allowed">
-                                 <div className="flex items-center gap-3">
-                                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-white bg-gray-400">
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
-                                     </div>
-                                     <span className="font-bold dark:text-white text-sm">Тема синхронизирована с Telegram</span>
-                                 </div>
-                            </div>
-                         )}
+                             <div className={`w-11 h-6 rounded-full p-1 transition-colors duration-300 ${theme === 'dark' ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+                                <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${theme === 'dark' ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                             </div>
+                         </div>
                     </div>
                 </div>
 
                 <div className="text-center pt-6 opacity-50 pb-safe-bottom">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.7.0</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.0</p>
                     <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">{isTwa ? `Secure Connection via Telegram` : 'Web Mode'}</p>
                 </div>
 
