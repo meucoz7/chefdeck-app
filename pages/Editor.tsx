@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { useRecipes } from '../context/RecipeContext';
 import { useToast } from '../context/ToastContext';
 import { TechCard, Ingredient } from '../types';
-import { generateInstructions, refineInstructions } from '../services/geminiService';
 import { parsePdfFile, ParsedPdfData } from '../services/pdfService';
 import { useTelegram } from '../context/TelegramContext';
 
@@ -18,7 +17,6 @@ interface StagedRecipe extends ParsedPdfData {
   steps: string[];
   imageUrl?: string;
   selected: boolean;
-  isImproving?: boolean;
   collapsed: boolean;
 }
 
@@ -46,15 +44,11 @@ const Editor: React.FC = () => {
   
   // Notification Feature
   const [shouldNotify, setShouldNotify] = useState(true); 
-  
-  const [isGenerating, setIsGenerating] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
 
   // Import Mode State
   const [isParsing, setIsParsing] = useState(false);
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
-  const [globalCategory, setGlobalCategory] = useState('');
-  const [stagedUrlInputId, setStagedUrlInputId] = useState<string | null>(null);
 
   // --- ACCESS CONTROL ---
   useEffect(() => {
@@ -78,9 +72,6 @@ const Editor: React.FC = () => {
               setIngredients(recipe.ingredients.length > 0 ? recipe.ingredients : [{ name: '', amount: '', unit: '' }]);
               setSteps(recipe.steps.length > 0 ? recipe.steps : ['']);
               setIsFavorite(recipe.isFavorite);
-          } else {
-              // If loaded directly via URL and recipes not fetched yet, this might trigger prematurely.
-              // In a real app we'd handle loading state better.
           }
       }
   }, [id, getRecipe]);
@@ -117,18 +108,6 @@ const Editor: React.FC = () => {
           total += val;
       });
       return total > 0 ? `${total.toFixed(0)} г` : '';
-  };
-
-  // --- AI ACTIONS ---
-  const handleAiGenerate = async () => {
-    if (!title || ingredients.length === 0) { addToast("Заполните название и ингредиенты", "error"); return; }
-    setIsGenerating(true);
-    try {
-      const data = await generateInstructions(title, ingredients);
-      setDescription(data.description);
-      setSteps(data.steps);
-      addToast("Готово", "success");
-    } catch { addToast("Ошибка AI", "error"); } finally { setIsGenerating(false); }
   };
 
   // --- SAVE / UPDATE ---
@@ -175,7 +154,6 @@ const Editor: React.FC = () => {
             steps: [''], 
             imageUrl: '',
             selected: true,
-            isImproving: false,
             collapsed: true
         }));
         setStagedRecipes(staged);
@@ -190,17 +168,6 @@ const Editor: React.FC = () => {
 
   const updateStagedRecipe = (id: string, field: keyof StagedRecipe, value: any) => {
       setStagedRecipes(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-  };
-
-  const improveStagedInstructions = async (rId: string) => {
-      const recipe = stagedRecipes.find(r => r.id === rId);
-      if (!recipe) return;
-      updateStagedRecipe(rId, 'isImproving', true);
-      try {
-          const improvedSteps = await refineInstructions(recipe.title, recipe.steps, recipe.ingredients);
-          updateStagedRecipe(rId, 'steps', improvedSteps);
-          addToast("Улучшено", "success");
-      } catch { addToast("Ошибка AI", "error"); } finally { updateStagedRecipe(rId, 'isImproving', false); }
   };
 
   const handleSaveImport = async () => {
@@ -220,7 +187,7 @@ const Editor: React.FC = () => {
               ingredients: r.ingredients,
               steps: r.steps.filter(s => s.trim().length > 0),
               createdAt: Date.now()
-          }, shouldNotify); // Notify per recipe or logic could be bulk
+          }, shouldNotify); 
       }
       
       addToast(`Импортировано: ${selected.length}`, "success");
@@ -346,9 +313,6 @@ const Editor: React.FC = () => {
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Технология</h3>
-                        <button onClick={handleAiGenerate} disabled={isGenerating} className="text-[10px] font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-600 px-3 py-1.5 rounded-lg shadow-md active:scale-95 transition flex items-center gap-1">
-                            {isGenerating ? <span className="animate-spin">⌛</span> : <span>✨ AI Генератор</span>}
-                        </button>
                     </div>
                     
                     <textarea 
@@ -395,11 +359,10 @@ const Editor: React.FC = () => {
              </div>
           )}
 
-          {/* Import Modes remain largely unchanged visually */}
+          {/* Import Modes */}
           {mode === 'import-upload' && (
               <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
                  <div className="bg-white dark:bg-[#1e1e24] p-10 rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-white/5 text-center w-full relative overflow-hidden group">
-                     {/* ... upload UI ... */}
                      <h2 className="font-black dark:text-white text-2xl mb-2 tracking-tight">Загрузка PDF</h2>
                      <p className="text-sm text-gray-500 mb-8 max-w-xs mx-auto leading-relaxed">Система автоматически распознает блюда. Выберите файл.</p>
                      <input type="file" accept=".pdf" className="hidden" id="pdf-upload" onChange={handleFileUpload} disabled={isParsing} />
@@ -410,7 +373,6 @@ const Editor: React.FC = () => {
           
           {mode === 'import-staging' && (
               <div className="space-y-6 animate-slide-up pb-28">
-                 {/* ... Staging UI ... */}
                  {stagedRecipes.map((recipe) => (
                      <div key={recipe.id} className={`bg-white dark:bg-[#1e1e24] rounded-3xl overflow-hidden border-2 transition-all duration-300 shadow-sm ${recipe.selected ? 'border-sky-500 shadow-sky-500/10' : 'border-transparent opacity-70'}`}>
                          {/* Card Header */}
@@ -420,13 +382,33 @@ const Editor: React.FC = () => {
                              </div>
                              <div className="flex-1 min-w-0"><h3 className={`font-bold text-sm dark:text-white truncate ${!recipe.selected && 'text-gray-400 decoration-gray-400'}`}>{recipe.title}</h3></div>
                          </div>
-                         {/* Full Staging Editor (condensed for this response) */}
+                         
+                         {/* Staging Editor */}
                          {!recipe.collapsed && (
                              <div className="p-5 space-y-6 animate-fade-in bg-white dark:bg-[#1e1e24]">
-                                 {/* Editors for Title, Image, Ingredients, Steps... same as previous */}
                                   <div className="space-y-3">
                                       <input type="text" className="w-full bg-transparent text-base font-bold dark:text-white outline-none border-b border-gray-100 dark:border-white/10" value={recipe.title} onChange={e => updateStagedRecipe(recipe.id, 'title', e.target.value)} />
-                                      {/* ... ingredients grid ... */}
+                                      
+                                      {/* Ingredient Editor for Staging (Simplified) */}
+                                       <div className="space-y-2">
+                                            {recipe.ingredients.map((ing, i) => (
+                                                <div key={i} className="grid grid-cols-[1fr_3rem] gap-2">
+                                                    <span className="text-sm dark:text-gray-300 truncate">{ing.name}</span>
+                                                    <span className="text-sm font-bold text-right dark:text-white">{ing.amount} {ing.unit}</span>
+                                                </div>
+                                            ))}
+                                       </div>
+
+                                       <textarea 
+                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
+                                            rows={3} 
+                                            value={recipe.steps.join('\n')} 
+                                            onChange={(e) => updateStagedRecipe(recipe.id, 'steps', e.target.value.split('\n'))} 
+                                            placeholder="Шаги приготовления..."
+                                        />
+                                        <div className="flex justify-between items-center text-xs text-gray-400">
+                                            <button onClick={() => updateStagedRecipe(recipe.id, 'steps', [...recipe.steps, ''])} className="text-orange-500 font-bold">+ Шаг</button>
+                                        </div>
                                   </div>
                              </div>
                          )}
