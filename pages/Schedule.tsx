@@ -83,12 +83,13 @@ const Schedule: React.FC = () => {
             if (chef.id !== chefId) return chef;
             const current = chef.shifts[dateStr] || 'empty';
             
-            // Cycle: Empty -> Work -> Sick -> Empty
+            // Cycle: Empty -> Work -> Sick -> Vacation -> Empty
             let next: ShiftType = 'work';
             
             if (current === 'empty') next = 'work';
             else if (current === 'work') next = 'sick';
-            else if (current === 'sick') next = 'empty';
+            else if (current === 'sick') next = 'vacation';
+            else if (current === 'vacation') next = 'empty';
             else next = 'empty'; // fallback
             
             const newShifts = { ...chef.shifts };
@@ -99,6 +100,7 @@ const Schedule: React.FC = () => {
     };
 
     const getShiftCount = (shifts: Record<string, ShiftType>, type: ShiftType) => {
+        if (!shifts) return 0;
         return Object.values(shifts).filter(s => s === type).length;
     };
 
@@ -137,6 +139,10 @@ const Schedule: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                         <div className="w-3 h-3 rounded-md bg-orange-500"></div>
                         <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Больничный</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-md bg-blue-500 flex items-center justify-center text-[8px] text-white font-bold leading-none">О</div>
+                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Отпуск</span>
                     </div>
                      <div className="flex items-center gap-1.5">
                         <div className="w-3 h-3 rounded-md border border-gray-300 dark:border-white/20"></div>
@@ -225,6 +231,9 @@ const Schedule: React.FC = () => {
                                                             )}
                                                             {status === 'sick' && (
                                                                 <div className="w-full h-10 bg-orange-500 rounded-lg shadow-sm mx-auto max-w-[36px] flex items-center justify-center text-white font-bold text-xs">Б</div>
+                                                            )}
+                                                            {status === 'vacation' && (
+                                                                <div className="w-full h-10 bg-blue-500 rounded-lg shadow-sm mx-auto max-w-[36px] flex items-center justify-center text-white font-bold text-xs">О</div>
                                                             )}
                                                         </td>
                                                     );
