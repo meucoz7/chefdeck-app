@@ -1,6 +1,6 @@
 // Replace these with your actual Telegram User IDs
 export const ADMIN_IDS = [
-    123456789, // Your ID
+    255119585, // Your ID
     987654321, // Another admin
 ];
 
