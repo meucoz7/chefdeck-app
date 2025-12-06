@@ -189,7 +189,7 @@ const Editor: React.FC = () => {
               ingredients: r.ingredients,
               steps: r.steps.filter(s => s.trim().length > 0),
               createdAt: Date.now()
-          }, importNotify); 
+          }, importNotify, !importNotify); // Send silent=true if notification unchecked
       }
       
       addToast(`Импортировано: ${selected.length}`, "success");
@@ -201,9 +201,9 @@ const Editor: React.FC = () => {
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
        
-       {/* HEADER (Non-Sticky) - Reduced margins */}
-       <div className="px-5 pt-safe-top flex justify-between items-center mb-2 mt-2">
-          <button onClick={handleBack} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group">
+       {/* HEADER (Non-Sticky) */}
+       <div className="px-5 pt-safe-top flex justify-between items-center mb-2">
+          <button onClick={handleBack} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -344,7 +344,7 @@ const Editor: React.FC = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
                          </div>
                          <div>
-                             <p className="font-bold text-sm dark:text-white">Уведомить всех пользователей</p>
+                             <p className="font-bold text-sm dark:text-white">Уведомить пользователей</p>
                              <p className="text-[10px] text-gray-400">Бот разошлет сообщение в Telegram</p>
                          </div>
                      </div>
