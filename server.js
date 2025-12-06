@@ -25,8 +25,8 @@ if (TELEGRAM_TOKEN) {
     }
 }
 
-// Middleware
-app.use(express.json()); 
+// Middleware - INCREASED LIMIT for Base64 Images
+app.use(express.json({ limit: '50mb' })); 
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -119,28 +119,21 @@ app.post('/api/sync-user', (req, res) => {
     res.json({ success: true });
 });
 
-// 5. Notify Users
+// 5. Notify Users (Change Log)
 app.post('/api/notify', async (req, res) => {
     if (!bot) return res.json({ success: false, error: 'No bot configured' });
 
     const { recipeTitle, action, recipeId, targetChatId, notifyAll, changes, silent } = req.body;
     
-    // If silent mode is requested (e.g. bulk import without notification), do nothing
-    if (silent) {
-        return res.json({ success: true, skipped: true });
-    }
+    if (silent) return res.json({ success: true, skipped: true });
 
     const db = getDb();
     
-    console.log(`[NOTIFY] Action: ${action}, Title: ${recipeTitle}, NotifyAll: ${notifyAll}`);
+    console.log(`[NOTIFY] Action: ${action}, Title: ${recipeTitle}`);
 
     let message = '';
     const appUrl = WEBHOOK_URL || "https://google.com";
-    // Direct deep link to recipe. Note: WebApp url needs to be the base url, startapp param handles routing if configured, 
-    // but for simple TWA, we just open the app. The app router handles URL persistence if user navigates manually.
-    // Ideally, startapp parameter is used: t.me/botname/appname?startapp=recipe_ID
     
-    // Construct text
     if (action === 'create') {
         message = `🍳 <b>Новая техкарта</b>\n\n"${recipeTitle}" добавлена в базу.`;
     } else if (action === 'update') {
@@ -149,16 +142,16 @@ app.post('/api/notify', async (req, res) => {
         if (changes && Array.isArray(changes) && changes.length > 0) {
             message += `\n\n🔻 <b>Что изменилось:</b>\n`;
             changes.forEach(change => {
+                // Ensure nice formatting for changes
                 message += `• ${change}\n`;
             });
         } else {
-            message += `\n\nБыли внесены правки.`;
+            message += `\n\nВнесены правки (детали не указаны).`;
         }
     } else if (action === 'delete') {
         message = `🗑 <b>Техкарта удалена</b>\n\n"${recipeTitle}" была удалена.`;
     }
 
-    // Prepare Recipients
     let recipients = [];
     if (notifyAll && db.users) {
         recipients = Object.keys(db.users);
@@ -166,36 +159,78 @@ app.post('/api/notify', async (req, res) => {
         recipients = [targetChatId];
     }
 
-    // Prepare Keyboard (Web App Button)
-    // Note: For deletion, we don't show the open button
-    const options = {
-        parse_mode: 'HTML'
-    };
+    const options = { parse_mode: 'HTML' };
 
     if (action !== 'delete') {
         options.reply_markup = {
             inline_keyboard: [
-                [
-                    { 
-                        text: "📱 Открыть карту", 
-                        web_app: { url: `${appUrl}/#/recipe/${recipeId}` } // Using HashRouter pattern
-                    }
-                ]
+                [{ text: "📱 Открыть карту", web_app: { url: `${appUrl}/#/recipe/${recipeId}` } }]
             ]
         };
     }
     
-    console.log(`[NOTIFY] Sending to ${recipients.length} users`);
-
-    let sentCount = 0;
     const promises = recipients.map(chatId => {
         return bot.sendMessage(chatId, message, options)
-            .then(() => sentCount++)
             .catch(err => console.error(`Failed to send to ${chatId}:`, err.message));
     });
 
     await Promise.all(promises);
-    res.json({ success: true, sentTo: sentCount });
+    res.json({ success: true, count: recipients.length });
+});
+
+// 6. Share Recipe to Chat
+app.post('/api/share-recipe', async (req, res) => {
+    if (!bot) return res.status(503).json({ error: 'Bot not ready' });
+    
+    const { recipeId, targetChatId } = req.body;
+    const db = getDb();
+    const recipe = db.recipes?.find(r => r.id === recipeId);
+
+    if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
+
+    // Format Message
+    let caption = `👨‍🍳 <b>${recipe.title.toUpperCase()}</b>`;
+    if (recipe.category) caption += `\n📂 Категория: ${recipe.category}`;
+    if (recipe.outputWeight) caption += `\n⚖️ Выход: ${recipe.outputWeight}`;
+    
+    caption += `\n\n📝 <b>Ингредиенты:</b>\n`;
+    recipe.ingredients.forEach(ing => {
+        caption += `▫️ ${ing.name}: <b>${ing.amount} ${ing.unit}</b>\n`;
+    });
+
+    caption += `\n🔪 <b>Приготовление:</b>\n`;
+    if (recipe.steps && recipe.steps.length > 0) {
+        recipe.steps.forEach((step, i) => {
+            caption += `${i+1}. ${step}\n`;
+        });
+    } else {
+        caption += `См. в приложении`;
+    }
+
+    const appUrl = WEBHOOK_URL || "https://google.com";
+    const options = {
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: "📱 Открыть в приложении", web_app: { url: `${appUrl}/#/recipe/${recipeId}` } }]
+            ]
+        }
+    };
+
+    try {
+        if (recipe.imageUrl && recipe.imageUrl.startsWith('data:image')) {
+            // Convert base64 to buffer
+            const base64Data = recipe.imageUrl.replace(/^data:image\/\w+;base64,/, "");
+            const buffer = Buffer.from(base64Data, 'base64');
+            await bot.sendPhoto(targetChatId, buffer, { caption, ...options });
+        } else {
+            await bot.sendMessage(targetChatId, caption, options);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Share failed", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 
@@ -216,7 +251,7 @@ if (TELEGRAM_TOKEN && bot) {
 
         const appUrl = WEBHOOK_URL || "https://google.com"; 
 
-        bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳\n\nНажмите кнопку меню, чтобы открыть базу рецептов.", {
+        bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳\n\nБаза техкарт вашего ресторана.", {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: "Открыть ChefDeck 📱", web_app: { url: appUrl } }]
@@ -233,11 +268,9 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, async () => {
     console.log(`ChefDeck Server running on port ${PORT}`);
-    
     if (WEBHOOK_URL && bot) {
         try {
             await bot.setWebHook(`${WEBHOOK_URL}/bot${TELEGRAM_TOKEN}`);
-            console.log(`Webhook set: ${WEBHOOK_URL}/bot${TELEGRAM_TOKEN}`);
         } catch (e) {
             console.error("Webhook setup failed:", e.message);
         }
