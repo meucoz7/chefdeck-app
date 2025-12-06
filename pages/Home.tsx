@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useTelegram } from '../context/TelegramContext';
 
@@ -12,10 +12,12 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const { recipes } = useRecipes();
   const { user } = useTelegram();
   const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get category from URL or null
+  const selectedCategory = searchParams.get('category');
 
-  // Filter recipes logic
   const displayRecipes = favoritesOnly ? recipes.filter(r => r.isFavorite) : recipes;
   const categories = Array.from(new Set(displayRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории') as string[];
 
@@ -25,10 +27,16 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
     return matchesSearch && matchesCategory;
   });
 
-  // Determines if we show the folder grid or the recipe list
   const showCategoriesView = !selectedCategory && !search && !favoritesOnly;
 
-  // Helper for category gradients (Folder style)
+  const handleCategoryClick = (cat: string) => {
+      setSearchParams({ category: cat });
+  };
+
+  const clearCategory = () => {
+      setSearchParams({});
+  };
+
   const getCategoryColor = (index: number) => {
       const colors = [
           'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400',
@@ -47,7 +55,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       {/* Unified Header */}
       <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-30 transition-all duration-300">
           <div className="flex items-center justify-between pt-4 mb-3">
-             {/* Title on the Left */}
              <div>
                 <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">
                     {favoritesOnly ? 'Избранное' : 'Главная'}
@@ -57,7 +64,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                 </p>
              </div>
 
-             {/* Profile Button on the Right */}
              <button 
                 onClick={() => navigate('/profile')}
                 className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10 overflow-hidden"
@@ -70,7 +76,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
              </button>
           </div>
 
-          {/* Search Bar */}
           <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400 group-focus-within:text-sky-500 transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -87,13 +92,12 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             </div>
       </div>
 
-      {/* Main Content */}
       <div className="px-5 pt-4">
         
         {/* Navigation Breadcrumb */}
         {selectedCategory && !search && (
             <button 
-                onClick={() => setSelectedCategory(null)}
+                onClick={clearCategory}
                 className="mb-6 flex items-center gap-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition group animate-fade-in"
             >
                 <div className="w-8 h-8 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm group-active:scale-95 transition">
@@ -103,7 +107,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             </button>
         )}
 
-        {/* VIEW 1: CATEGORY FOLDERS (Default) */}
+        {/* VIEW 1: CATEGORY FOLDERS */}
         {showCategoriesView && (
             <div className="animate-slide-up">
                 <div className="grid grid-cols-2 gap-3">
@@ -114,7 +118,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                         return (
                             <div 
                                 key={cat}
-                                onClick={() => setSelectedCategory(cat)}
+                                onClick={() => handleCategoryClick(cat)}
                                 className="group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all duration-300 cursor-pointer hover:shadow-md flex flex-col justify-between h-32"
                             >
                                 <div className="flex justify-between items-start">
@@ -152,7 +156,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                         key={recipe.id}
                         className="group relative bg-white dark:bg-[#1e1e24] rounded-[1.8rem] p-2.5 shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all duration-300 flex flex-col hover:shadow-lg"
                     >
-                        {/* Image */}
                         <div className="aspect-square w-full relative overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 mb-3">
                             <img
                                 src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}&background=random`}
@@ -160,8 +163,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                 className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                                 loading="lazy"
                             />
-                            
-                            {/* Badges */}
                             <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
                                 {recipe.isFavorite && (
                                     <div className="bg-white/90 dark:bg-black/60 backdrop-blur-md p-1.5 rounded-full shadow-sm">
@@ -173,7 +174,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                             </div>
                         </div>
                         
-                        {/* Content */}
                         <div className="flex-1 flex flex-col px-1 pb-1">
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight mb-2 line-clamp-2 min-h-[2.5rem]">
                                 {recipe.title}
@@ -197,7 +197,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
         {!showCategoriesView && filteredRecipes.length === 0 && (
             <div className="flex flex-col items-center justify-center mt-20 text-center opacity-70">
                 <p className="text-lg font-bold dark:text-white">Ничего не найдено</p>
-                <button onClick={() => {setSearch(''); setSelectedCategory(null);}} className="mt-2 text-sky-500 font-bold text-sm">Сбросить фильтры</button>
+                <button onClick={() => {setSearch(''); clearCategory();}} className="mt-2 text-sky-500 font-bold text-sm">Сбросить фильтры</button>
             </div>
         )}
       </div>
