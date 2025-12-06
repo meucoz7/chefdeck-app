@@ -207,29 +207,42 @@ const Editor: React.FC = () => {
       
       setIsImporting(true);
       setImportProgress({ current: 0, total: selected.length });
-
-      for (let i = 0; i < selected.length; i++) {
-          const r = selected[i];
-          const newId = uuidv4();
-          await addRecipe({
-              id: newId,
-              title: r.title,
-              description: '',
-              imageUrl: r.imageUrl,
-              category: (r.category && r.category !== '') ? r.category : (bulkCategory || 'Импорт'),
-              outputWeight: r.outputWeight,
-              isFavorite: false,
-              ingredients: r.ingredients,
-              steps: r.steps.filter(s => s.trim().length > 0),
-              createdAt: Date.now()
-          }, importNotify, !importNotify); // Send silent=true if notification unchecked
-          
-          setImportProgress(prev => ({ ...prev, current: i + 1 }));
-      }
       
-      setIsImporting(false);
-      addToast(`Импортировано: ${selected.length}`, "success");
-      navigate('/', { replace: true });
+      // Allow browser paint cycle to show the overlay before blocking logic
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      try {
+          for (let i = 0; i < selected.length; i++) {
+              const r = selected[i];
+              const newId = uuidv4();
+              
+              await addRecipe({
+                  id: newId,
+                  title: r.title,
+                  description: '',
+                  imageUrl: r.imageUrl,
+                  category: (r.category && r.category !== '') ? r.category : (bulkCategory || 'Импорт'),
+                  outputWeight: r.outputWeight,
+                  isFavorite: false,
+                  ingredients: r.ingredients,
+                  steps: r.steps.filter(s => s.trim().length > 0),
+                  createdAt: Date.now()
+              }, importNotify, !importNotify); 
+              
+              setImportProgress(prev => ({ ...prev, current: i + 1 }));
+              
+              // Small delay to make progress visible and ensure order
+              await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          
+          addToast(`Импортировано: ${selected.length}`, "success");
+          navigate('/', { replace: true });
+      } catch (e) {
+          console.error(e);
+          addToast("Ошибка при сохранении", "error");
+      } finally {
+          setIsImporting(false);
+      }
   };
   
   if (!isAdmin) return null;
@@ -237,10 +250,10 @@ const Editor: React.FC = () => {
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
        
-       {/* Saving Overlay */}
+       {/* Saving Overlay - High Z-Index to cover everything */}
        {isImporting && (
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
-                <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl">
+                <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
                     <h3 className="font-bold text-xl mb-6 dark:text-white">Сохранение...</h3>
                     <div className="relative h-4 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden mb-4">
                         <div 
