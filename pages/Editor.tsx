@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useRecipes } from '../context/RecipeContext';
@@ -23,7 +23,7 @@ interface StagedRecipe extends ParsedPdfData {
 const Editor: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>(); 
-  const { addRecipe, getRecipe, updateRecipe } = useRecipes();
+  const { addRecipe, getRecipe, updateRecipe, recipes } = useRecipes();
   const { addToast } = useToast();
   const { isAdmin } = useTelegram();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +58,55 @@ const Editor: React.FC = () => {
   // Saving Progress
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
-  const [isSaving, setIsSaving] = useState(false); // New state for single recipe save
+  const [isSaving, setIsSaving] = useState(false); 
+
+  // --- AUTOCOMPLETE LOGIC ---
+  const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
+  
+  // Build a map of "Ingredient Name" -> "Last used Unit"
+  const ingredientDatabase = useMemo(() => {
+      const map = new Map<string, string>();
+      recipes.forEach(r => {
+          r.ingredients.forEach(i => {
+              const cleanName = i.name.trim();
+              if (cleanName) {
+                  // Prefer existing unit, or overwrite if current map value is empty
+                  if (!map.has(cleanName) || !map.get(cleanName)) {
+                      map.set(cleanName, i.unit);
+                  }
+              }
+          });
+      });
+      return map;
+  }, [recipes]);
+
+  const getSuggestions = (query: string) => {
+      if (!query || query.length < 2) return [];
+      const lowerQuery = query.toLowerCase();
+      // Convert map keys to array and filter
+      return Array.from(ingredientDatabase.keys())
+          .filter(name => name.toLowerCase().includes(lowerQuery) && name.toLowerCase() !== lowerQuery)
+          .slice(0, 5); // Limit to 5 suggestions
+  };
+
+  const handleIngredientNameChange = (index: number, value: string) => {
+      const n = [...ingredients];
+      n[index] = { ...n[index], name: value };
+      setIngredients(n);
+      setActiveIngIndex(index);
+  };
+
+  const selectSuggestion = (index: number, name: string) => {
+      const suggestedUnit = ingredientDatabase.get(name) || '';
+      const n = [...ingredients];
+      n[index] = { 
+          ...n[index], 
+          name: name,
+          unit: suggestedUnit || n[index].unit // Only auto-fill unit if found
+      };
+      setIngredients(n);
+      setActiveIngIndex(null); // Close dropdown
+  };
 
   // --- ACCESS CONTROL ---
   useEffect(() => {
@@ -73,8 +121,6 @@ const Editor: React.FC = () => {
       if (id) {
           const recipeRef = getRecipe(id);
           if (recipeRef) {
-              // DEEP COPY to prevent mutation of context state by reference
-              // This fixes the issue where oldRecipe === newRecipe during diff calculation
               const recipe = JSON.parse(JSON.stringify(recipeRef));
 
               setTitle(recipe.title);
@@ -129,7 +175,6 @@ const Editor: React.FC = () => {
     if (!title) { addToast("Укажите название", "error"); return; }
     
     setIsSaving(true);
-    // Allow UI to render loading state
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => setTimeout(r, 100));
 
@@ -261,7 +306,7 @@ const Editor: React.FC = () => {
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
        
-       {/* Saving Overlay - High Z-Index to cover everything */}
+       {/* Saving Overlay */}
        {(isImporting || isSaving) && (
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
                 <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
@@ -292,7 +337,7 @@ const Editor: React.FC = () => {
            </div>
        )}
 
-       {/* HEADER (Non-Sticky) */}
+       {/* HEADER */}
        <div className="px-5 pt-safe-top flex justify-between items-center mb-2">
           <button onClick={handleBack} disabled={isImporting || isSaving} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
@@ -383,21 +428,53 @@ const Editor: React.FC = () => {
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Ингредиенты</h3>
                     <div className="space-y-3">
-                        {ingredients.map((ing, i) => (
-                        <div key={i} className="grid grid-cols-[1fr_4rem_3rem_2rem] gap-2 items-center">
-                            <input type="text" placeholder="Продукт" className="bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-3 text-sm font-medium outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.name} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], name: e.target.value}; setIngredients(n); }} />
-                            <input type="text" placeholder="Кол-во" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], amount: e.target.value}; setIngredients(n); }} />
-                            <input type="text" placeholder="Ед." className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], unit: e.target.value}; setIngredients(n); }} />
+                        {ingredients.map((ing, i) => {
+                            const suggestions = activeIngIndex === i ? getSuggestions(ing.name) : [];
                             
-                            <div className="flex justify-center">
-                                {ingredients.length > 1 && (
-                                    <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                        ))}
+                            return (
+                                <div key={i} className="grid grid-cols-[1fr_4rem_3rem_2rem] gap-2 items-center relative z-20">
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Продукт" 
+                                            className="bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-3 text-sm font-medium outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" 
+                                            value={ing.name} 
+                                            onChange={(e) => handleIngredientNameChange(i, e.target.value)}
+                                            onFocus={() => setActiveIngIndex(i)}
+                                            onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
+                                        />
+                                        {/* Autocomplete Dropdown */}
+                                        {suggestions.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-xl border border-gray-100 dark:border-white/10 z-50 overflow-hidden">
+                                                {suggestions.map((suggestion) => (
+                                                    <div 
+                                                        key={suggestion}
+                                                        onMouseDown={() => selectSuggestion(i, suggestion)}
+                                                        className="px-4 py-2.5 hover:bg-sky-50 dark:hover:bg-white/10 cursor-pointer flex justify-between items-center group"
+                                                    >
+                                                        <span className="text-sm font-medium dark:text-white">{suggestion}</span>
+                                                        <span className="text-xs text-gray-400 font-bold bg-gray-100 dark:bg-black/40 px-1.5 py-0.5 rounded group-hover:bg-sky-100 dark:group-hover:bg-white/20 transition">
+                                                            {ingredientDatabase.get(suggestion)}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <input type="text" placeholder="Кол-во" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], amount: e.target.value}; setIngredients(n); }} />
+                                    <input type="text" placeholder="Ед." className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], unit: e.target.value}; setIngredients(n); }} />
+                                    
+                                    <div className="flex justify-center">
+                                        {ingredients.length > 1 && (
+                                            <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                     <button onClick={() => setIngredients([...ingredients, {name:'', amount:'', unit:''}])} className="mt-4 text-xs font-bold uppercase tracking-wider text-sky-600 w-full py-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl hover:bg-sky-100 transition border border-dashed border-sky-200 dark:border-sky-500/30">+ Добавить ряд</button>
                 </div>
