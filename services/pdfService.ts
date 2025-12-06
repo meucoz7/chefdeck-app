@@ -13,44 +13,44 @@ export interface ParsedPdfData {
 interface TextItem {
   str: string;
   x: number;
-  y: number;
+  y: number; // PDF coordinates: 0,0 is usually bottom-left
   w: number;
   h: number;
 }
 
-const cleanString = (str: string): string => {
-  if (!str) return "";
-  // Normalize spaces
-  return str.replace(/\s+/g, ' ').trim();
-};
-
-const cleanName = (str: string): string => {
-    // Remove leading numbering like "1 ", "1.", "2 "
-    let name = str.replace(/^\d+[\.\s]\s*/, '');
-    // Replace underscores with spaces for readability, or keep them if preferred.
-    // User example had "1шт_Зира", probably better to keep meaningful chars but ensure spacing.
-    name = name.replace(/_/g, ' '); 
-    return name.trim();
-};
-
 const cleanTitle = (rawTitle: string): string => {
-  let title = rawTitle.replace(/_/g, ' ');
+  let title = rawTitle;
+  
+  // Remove "Version 0", "Ver. 1", etc.
   title = title.replace(/,?\s*(?:версия|ver|v\.)\s*\d+/gi, '');
-  title = title.replace(/\d{2}[\.,]\d{2}[\.,]\d{2,4}/g, ''); // dates
+  
+  // Remove trailing weight info like ", 200гр", " 250 г", "/ 0.5 л"
+  title = title.replace(/[,/]?\s*\d+(?:[\.,]\d+)?\s*(?:гр?|кг|мл|л|шт)\.?\s*$/gi, '');
+  
+  // Remove leading numbering like "1. Pizza"
+  title = title.replace(/^\d+[\.,]\s*/, '');
+
   return title.trim();
 };
 
-// Check if line is junk
-const isJunkLine = (text: string): boolean => {
-    const lower = text.toLowerCase();
-    const keywords = [
-        'основание производства', 'технология приготовления', 'оформления блюда',
-        'директор', 'калькулятор', 'шеф-повар', 'утверждаю', 'организация',
-        'предприятие', 'вес брутто', 'вес нетто', 'вес готового', 'на 1 порция',
-        'ед. изм', 'дата печати', 'выход в готовом виде', 'версия 0'
-    ];
-    return keywords.some(k => lower.includes(k));
-};
+const isJunkLine = (line: string): boolean => {
+    const lower = line.toLowerCase();
+    // Filter out standard tech card headers/footers
+    if (lower.includes("основание производства")) return true;
+    if (lower.includes("технология приготовления")) return true;
+    if (lower.includes("директор")) return true;
+    if (lower.includes("калькулятор")) return true;
+    if (lower.includes("шеф-повар")) return true;
+    if (lower.includes("утверждаю")) return true;
+    if (lower.includes("организация")) return true;
+    if (lower.includes("вес брутто")) return true;
+    if (lower.includes("вес нетто")) return true;
+    if (lower.includes("выход в готовом виде")) return true;
+    // Filter out lines that are just numbers (Totals row) like "3,050 3,050"
+    if (/^[\d\s,.]+$/.test(line)) return true;
+    
+    return false;
+}
 
 export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
   const arrayBuffer = await file.arrayBuffer();
@@ -59,11 +59,12 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
   const results: ParsedPdfData[] = [];
   let currentRecipe: ParsedPdfData | null = null;
 
+  // Process page by page
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
     
-    // Sort items to reconstruct lines
+    // 1. Convert items to a structured format
     const items: TextItem[] = textContent.items.map((item: any) => ({
       str: item.str,
       x: item.transform[4],
@@ -72,37 +73,50 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
       h: item.height
     })).filter(item => item.str.trim().length > 0);
 
-    const Y_TOLERANCE = 4; // Tight tolerance for same line
+    // 2. Sort items by Y (descending - top to bottom) then X (ascending - left to right)
+    const Y_TOLERANCE = 5; 
     items.sort((a, b) => {
-      if (Math.abs(a.y - b.y) < Y_TOLERANCE) return a.x - b.x;
-      return b.y - a.y; // Top to bottom
+      if (Math.abs(a.y - b.y) < Y_TOLERANCE) {
+        return a.x - b.x;
+      }
+      return b.y - a.y; // PDF Y grows upwards
     });
 
+    // 3. Group into lines
     const lines: string[] = [];
     if (items.length > 0) {
       let currentLineY = items[0].y;
       let currentLineStr = "";
+      
       for (const item of items) {
         if (Math.abs(item.y - currentLineY) > Y_TOLERANCE) {
-          lines.push(currentLineStr);
+          lines.push(currentLineStr.trim());
           currentLineStr = item.str;
           currentLineY = item.y;
         } else {
-           // Heuristic: Add space if items are far apart visually, otherwise join
-           // For tables, usually there is spacing.
            currentLineStr += " " + item.str;
         }
       }
-      lines.push(currentLineStr);
+      lines.push(currentLineStr.trim());
     }
 
-    for (const rawLine of lines) {
-       const line = cleanString(rawLine);
-       if (!line) continue;
+    // 4. Parse the lines
+    // Improved Regex:
+    // ^(?:\d+\.?\s*)?  -> Optional Index (1, 1., 10)
+    // (.+)             -> Name (Greedy capture, consumes everything until the unit)
+    // \s+              -> Space separator
+    // (кг|г|...)       -> Unit
+    // \.?              -> Optional dot after unit
+    // \s+              -> Space separator
+    // ([\d,.]+)        -> Amount (Gross weight)
+    const ingredientLineRegex = /^(?:\d+\.?\s*)?(.+)\s+(кг|г|гр|л|литр|мл|шт|упак|порц)\.?\s+([\d,.]+)/i;
+    const titleRegex = /^(?:наименование блюда|блюдо|наименование):?\s*(.+)/i;
+    
+    for (const line of lines) {
+       // Filter Junk first
+       if (isJunkLine(line)) continue;
 
-       // 1. Detect Title
-       // "Наименование блюда: Пицца..."
-       const titleRegex = /^(?:наименование|блюдо|изделие)(?:\s+блюда)?:?\s*(.+)/i;
+       // --- Check for Title ---
        const titleMatch = line.match(titleRegex);
        if (titleMatch) {
          if (currentRecipe && currentRecipe.ingredients.length > 0) {
@@ -112,69 +126,38 @@ export const parsePdfFile = async (file: File): Promise<ParsedPdfData[]> => {
          continue;
        }
 
-       // 2. Junk Filter
-       if (isJunkLine(line)) continue;
+       // --- Check for Ingredient ---
+       const ingMatch = line.match(ingredientLineRegex);
+       if (ingMatch) {
+          if (!currentRecipe) {
+             currentRecipe = { title: `Новая техкарта`, ingredients: [] };
+          }
 
-       // 3. Ingredient Parsing Strategy
-       // Pattern we expect: [Index?] [Full Name] [Unit] [Weight1] [Weight2]...
-       // The Anchor is the Unit or the Weight.
-       
-       if (!currentRecipe) continue;
+          const rawName = ingMatch[1].trim();
+          const unit = ingMatch[2].toLowerCase();
+          // Amount usually comes as "3,000" or "0.050". We take the first part.
+          const rawAmount = ingMatch[3].replace(',', '.');
+          
+          // Safety: If name is suspiciously short or just punctuation, skip
+          if (rawName.length < 2) continue;
 
-       // Strategy A: Look for Unit Column (Кг, Шт, Л, Г, Гр, Мл, Упак, Порц)
-       // This regex looks for a Unit keyword surrounded by spaces, followed by a number
-       const unitRegex = /\s+(Кг|Шт|Л|Мл|Гр?|Упак|Порц)\.?\s+(\d+(?:[\.,]\d+)?)/i;
-       const unitMatch = line.match(unitRegex);
-
-       if (unitMatch) {
-           // We found a unit and a number! 
-           // Everything BEFORE the unit is the name.
-           const unitIndex = unitMatch.index!;
-           const rawName = line.substring(0, unitIndex).trim();
-           const unit = unitMatch[1];
-           const amount = unitMatch[2].replace(',', '.');
-
-           // If rawName contains the index number "1 ", clean it
-           const name = cleanName(rawName);
-
-           if (name.length > 1) { // Avoid noise
-               currentRecipe.ingredients.push({ name, amount, unit });
-           }
-           continue;
-       }
-
-       // Strategy B: No Unit found (maybe OCR missed it or it's implicitly KG), but found a Weight Pattern
-       // Look for the first float-like number towards the end of string
-       // Regex: Space + Digit(.,)Digit
-       const weightRegex = /\s+(\d+[\.,]\d{1,4}|\d{1,4})\s*$/; // End of line weight
-       // Or find sequence of weights and take first
-       const multiWeightRegex = /\s+(\d+[\.,]\d{1,4})\s+(\d+[\.,]\d{1,4})/;
-       
-       let weightMatch = line.match(multiWeightRegex);
-       if (!weightMatch) weightMatch = line.match(weightRegex);
-
-       if (weightMatch) {
-           // We found a weight.
-           // Name is everything before it.
-           const weightIndex = weightMatch.index!;
-           const rawName = line.substring(0, weightIndex).trim();
-           const amount = weightMatch[1].replace(',', '.');
-           const unit = 'кг'; // Default assumption
-
-           // Safety check: Name shouldn't be just digits (like total line "3.050 3.050")
-           if (/^[\d\s\.,]+$/.test(rawName)) continue;
-
-           const name = cleanName(rawName);
-           if (name.length > 1) {
-                currentRecipe.ingredients.push({ name, amount, unit });
-           }
-           continue;
+          currentRecipe.ingredients.push({
+             name: rawName,
+             unit: unit,
+             amount: rawAmount
+          });
+          continue;
        }
     }
   }
 
-  // Push last recipe
-  if (currentRecipe && currentRecipe.ingredients.length > 0) results.push(currentRecipe);
+  if (currentRecipe && currentRecipe.ingredients.length > 0) {
+    results.push(currentRecipe);
+  }
+
+  if (results.length === 0) {
+      throw new Error("Не удалось найти ингредиенты. Убедитесь, что в PDF есть колонки 'Наименование', 'Ед. изм.' и 'Вес брутто'.");
+  }
 
   return results;
 };
