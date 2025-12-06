@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRecipes } from '../context/RecipeContext';
@@ -55,25 +54,27 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       {/* Unified Header */}
       <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-30 transition-all duration-300">
           <div className="flex items-center justify-between pt-4 mb-3">
-             <div>
-                <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">
-                    {favoritesOnly ? 'Избранное' : 'Главная'}
-                </h1>
-                <p className="text-xs text-gray-400 font-bold tracking-wider uppercase">
-                    {favoritesOnly ? 'Ваши рецепты' : 'База знаний'}
-                </p>
+             <div className="flex items-center justify-between w-full">
+                <div>
+                    <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">
+                        {favoritesOnly ? 'Избранное' : 'Главная'}
+                    </h1>
+                    <p className="text-xs text-gray-400 font-bold tracking-wider uppercase">
+                        {favoritesOnly ? 'Ваши рецепты' : 'База знаний'}
+                    </p>
+                </div>
+                
+                <button 
+                    onClick={() => navigate('/profile')}
+                    className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10 overflow-hidden"
+                >
+                    {user?.photo_url ? (
+                        <img src={user.photo_url} alt="User" className="w-full h-full object-cover" />
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                    )}
+                </button>
              </div>
-
-             <button 
-                onClick={() => navigate('/profile')}
-                className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10 overflow-hidden"
-             >
-                {user?.photo_url ? (
-                    <img src={user.photo_url} alt="User" className="w-full h-full object-cover" />
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
-                )}
-             </button>
           </div>
 
           <div className="relative group">
@@ -92,8 +93,25 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             </div>
       </div>
 
-      <div className="px-5 pt-4">
-        
+      <div className="px-5 pt-2">
+        {/* SCHEDULE BANNER - Only on main view */}
+        {!search && !favoritesOnly && !selectedCategory && (
+            <div onClick={() => navigate('/schedule')} className="mb-6 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[1.8rem] p-4 text-white shadow-lg shadow-indigo-500/20 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-sm leading-tight">График смен</h3>
+                        <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Расписание поваров</p>
+                    </div>
+                </div>
+                <div className="bg-white/20 p-2 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                </div>
+            </div>
+        )}
+
         {/* Navigation Breadcrumb */}
         {selectedCategory && !search && (
             <button 
