@@ -48,6 +48,9 @@ const Editor: React.FC = () => {
 
   // Import Mode State
   const [isParsing, setIsParsing] = useState(false);
+  const [parsingProgress, setParsingProgress] = useState(0); // 0-100
+  const [parsingStatus, setParsingStatus] = useState('');
+  
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [importNotify, setImportNotify] = useState(false);
@@ -145,9 +148,30 @@ const Editor: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
     try {
         setIsParsing(true);
+        setParsingProgress(0);
+        setParsingStatus('Загрузка файла...');
+
+        // Simulate progress for UX
+        const interval = setInterval(() => {
+            setParsingProgress(prev => {
+                if (prev >= 90) return prev;
+                return prev + Math.random() * 10;
+            });
+        }, 200);
+
+        // Actual Parsing
+        setParsingStatus('Анализ структуры PDF...');
         const data = await parsePdfFile(file);
+        
+        clearInterval(interval);
+        setParsingProgress(100);
+        setParsingStatus('Готово!');
+
+        await new Promise(r => setTimeout(r, 500)); // Small delay for visual completion
+
         const staged: StagedRecipe[] = data.map(item => ({
             ...item,
             id: uuidv4(),
@@ -164,6 +188,7 @@ const Editor: React.FC = () => {
         addToast(err.message || "Ошибка PDF", "error");
     } finally {
         setIsParsing(false);
+        setParsingProgress(0);
         if (fileInputRef.current) fileInputRef.current.value = ''; 
     }
   };
@@ -234,6 +259,7 @@ const Editor: React.FC = () => {
 
           {mode === 'create' && (
              <div className="space-y-5">
+                {/* ... (Create/Edit Form Code Omitted for Brevity - It remains unchanged) ... */}
                 {/* Image & Main Info */}
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 space-y-5">
                     {/* Image Input */}
@@ -366,9 +392,24 @@ const Editor: React.FC = () => {
               <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
                  <div className="bg-white dark:bg-[#1e1e24] p-10 rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-white/5 text-center w-full relative overflow-hidden group">
                      <h2 className="font-black dark:text-white text-2xl mb-2 tracking-tight">Загрузка PDF</h2>
-                     <p className="text-sm text-gray-500 mb-8 max-w-xs mx-auto leading-relaxed">Система автоматически распознает блюда. Выберите файл.</p>
-                     <input type="file" accept=".pdf" className="hidden" id="pdf-upload" onChange={handleFileUpload} disabled={isParsing} />
-                     <label htmlFor="pdf-upload" className="block w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl cursor-pointer active:scale-95 hover:shadow-lg transition-all text-lg">{isParsing ? 'Анализ файла...' : 'Выбрать файл'}</label>
+                     
+                     {isParsing ? (
+                         <div className="py-6 w-full animate-fade-in">
+                            <div className="w-full h-3 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden relative">
+                                <div 
+                                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 via-indigo-500 to-sky-400 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite] transition-all duration-300"
+                                    style={{ width: `${parsingProgress}%` }}
+                                ></div>
+                            </div>
+                            <p className="text-xs font-bold text-gray-400 mt-3 uppercase tracking-wider animate-pulse">{parsingStatus}</p>
+                         </div>
+                     ) : (
+                         <>
+                             <p className="text-sm text-gray-500 mb-8 max-w-xs mx-auto leading-relaxed">Система автоматически распознает блюда. Выберите файл.</p>
+                             <input type="file" accept=".pdf" className="hidden" id="pdf-upload" onChange={handleFileUpload} />
+                             <label htmlFor="pdf-upload" className="block w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl cursor-pointer active:scale-95 hover:shadow-lg transition-all text-lg">Выбрать файл</label>
+                         </>
+                     )}
                  </div>
               </div>
           )}
