@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { ChefScheduleItem, ShiftType } from '../types';
 import { useTelegram } from '../context/TelegramContext';
@@ -14,6 +15,7 @@ const Schedule: React.FC = () => {
     const [staff, setStaff] = useState<ChefScheduleItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     
     // Dates Logic (Current Month)
     const today = new Date();
@@ -104,15 +106,18 @@ const Schedule: React.FC = () => {
         return Object.values(shifts).filter(s => s === type).length;
     };
 
-    return (
-        <div className="pb-32 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] flex flex-col h-screen overflow-hidden">
+    // Component for the Table Content to reuse or render in portal
+    const ScheduleContent = (
+        <div className={`flex flex-col h-full ${isFullscreen ? 'bg-[#f2f4f7] dark:bg-[#0f1115]' : ''}`}>
              {/* Header */}
-             <div className="pt-safe-top px-4 pb-2 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md z-50 shadow-sm border-b border-gray-100 dark:border-white/5 flex-shrink-0">
+             <div className={`pt-safe-top px-4 pb-2 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md z-50 shadow-sm border-b border-gray-100 dark:border-white/5 flex-shrink-0 ${isFullscreen ? 'px-6' : ''}`}>
                 <div className="flex items-center justify-between pt-4 mb-2">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => navigate('/')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-                        </button>
+                        {!isFullscreen && (
+                            <button onClick={() => navigate('/')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                            </button>
+                        )}
                         <div>
                             <h1 className="text-xl font-black text-gray-900 dark:text-white leading-none">График</h1>
                             <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">
@@ -120,14 +125,28 @@ const Schedule: React.FC = () => {
                             </p>
                         </div>
                     </div>
-                    {isAdmin && (
+                    <div className="flex gap-2">
+                        {/* Fullscreen Toggle */}
                         <button 
-                           onClick={() => editMode ? handleSave() : setEditMode(true)}
-                           className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition shadow-sm ${editMode ? 'bg-green-500 text-white shadow-green-500/30' : 'bg-white dark:bg-[#1e1e24] text-gray-900 dark:text-white border border-gray-100 dark:border-white/10'}`}
+                            onClick={() => setIsFullscreen(!isFullscreen)}
+                            className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/10 active:scale-95 transition"
                         >
-                            {editMode ? 'Сохранить' : 'Редактировать'}
+                            {isFullscreen ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" /></svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+                            )}
                         </button>
-                    )}
+
+                        {isAdmin && (
+                            <button 
+                            onClick={() => editMode ? handleSave() : setEditMode(true)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition shadow-sm ${editMode ? 'bg-green-500 text-white shadow-green-500/30' : 'bg-white dark:bg-[#1e1e24] text-gray-900 dark:text-white border border-gray-100 dark:border-white/10'}`}
+                            >
+                                {editMode ? 'Сохранить' : 'Редактировать'}
+                            </button>
+                        )}
+                    </div>
                 </div>
                 
                 {/* Legend */}
@@ -262,6 +281,18 @@ const Schedule: React.FC = () => {
              </div>
         </div>
     );
+
+    // If Fullscreen, render via Portal to document.body
+    if (isFullscreen) {
+        return createPortal(
+            <div className="fixed inset-0 z-[100] bg-[#f2f4f7] dark:bg-[#0f1115] animate-fade-in overflow-hidden">
+                {ScheduleContent}
+            </div>,
+            document.body
+        );
+    }
+
+    return <div className="pb-32 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] flex flex-col h-screen overflow-hidden">{ScheduleContent}</div>;
 };
 
 export default Schedule;
