@@ -6,6 +6,8 @@ import { useRecipes } from '../context/RecipeContext';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
 
+const TEXT_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
+
 const Details: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { getRecipe, deleteRecipe, toggleFavorite, recipes } = useRecipes();
@@ -17,12 +19,13 @@ const Details: React.FC = () => {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  
+  // Font Size State (Default index 2 = text-base)
+  const [textSizeIndex, setTextSizeIndex] = useState(2);
 
   if (!recipe) return null;
 
   const handleBack = () => {
-    // Check if there is history state to go back to (e.g. came from home/search)
-    // If not (direct link), go to home
     if (window.history.state && window.history.state.idx > 0) {
         navigate(-1);
     } else {
@@ -41,16 +44,12 @@ const Details: React.FC = () => {
     }
   };
 
-  // Logic to find a linked recipe by ingredient name
   const findLinkedRecipe = (ingredientName: string) => {
       const normalize = (s: string) => s.trim().toLowerCase();
       const targetName = normalize(ingredientName);
-      
-      // Find a recipe that matches the ingredient name (excluding the current recipe)
       return recipes.find(r => normalize(r.title) === targetName && r.id !== recipe.id);
   };
 
-  // New Share Logic: Send to Bot
   const handleSendToChat = async () => {
     if (!user) {
         addToast("Недоступно в браузере", "error");
@@ -86,6 +85,8 @@ const Details: React.FC = () => {
   
   const hasSteps = recipe.steps.length > 0 && recipe.steps.some(s => s.trim().length > 0);
   const hasDescription = recipe.description && recipe.description.trim().length > 0 && recipe.description !== 'Нет описания';
+
+  const currentTextSize = TEXT_SIZES[textSizeIndex];
 
   return (
     <div className="animate-fade-in bg-[#f2f4f7] dark:bg-[#0f1115] min-h-screen relative pb-safe-bottom">
@@ -174,7 +175,7 @@ const Details: React.FC = () => {
                   </button>
                   {recipe.videoUrl ? (
                       <button onClick={() => setIsVideoOpen(true)} className="flex-1 bg-white dark:bg-[#1e1e24] border border-gray-200 dark:border-white/10 rounded-2xl py-3 px-4 shadow-sm active:scale-95 transition hover:shadow-md flex items-center justify-center gap-2">
-                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-500"><path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" /></svg>
+                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-red-500"><path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" /></svg>
                          <span className="font-bold text-xs text-gray-900 dark:text-white uppercase">Видео</span>
                       </button>
                   ) : (
@@ -187,11 +188,30 @@ const Details: React.FC = () => {
 
           {/* Ingredients */}
           <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up" style={{ animationDelay: '0.1s' }}>
-              <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
+              <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 flex justify-between items-center">
                   <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
                       Состав ({recipe.ingredients.length})
                   </h2>
+                  
+                  {/* Font Size Controls */}
+                  <div className="flex items-center gap-1 bg-white dark:bg-[#2a2a35] rounded-lg p-0.5 border border-gray-100 dark:border-white/5">
+                      <button 
+                        onClick={() => setTextSizeIndex(prev => Math.max(0, prev - 1))}
+                        disabled={textSizeIndex === 0}
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition"
+                      >
+                          <span className="text-xs font-bold">A-</span>
+                      </button>
+                      <div className="w-[1px] h-4 bg-gray-200 dark:bg-white/10"></div>
+                      <button 
+                        onClick={() => setTextSizeIndex(prev => Math.min(TEXT_SIZES.length - 1, prev + 1))}
+                        disabled={textSizeIndex === TEXT_SIZES.length - 1}
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition"
+                      >
+                          <span className="text-sm font-bold">A+</span>
+                      </button>
+                  </div>
               </div>
               <div className="flex flex-col">
                   {recipe.ingredients.map((ing, idx) => {
@@ -208,7 +228,7 @@ const Details: React.FC = () => {
                                   }`}
                           >
                               <div className="flex-1 pr-4 flex items-center gap-2">
-                                  <span className={`text-base font-medium ${linkedRecipe ? 'text-sky-600 dark:text-sky-400 font-bold underline decoration-sky-300/30 underline-offset-4 decoration-1' : 'text-gray-900 dark:text-gray-200'}`}>
+                                  <span className={`${currentTextSize} font-medium ${linkedRecipe ? 'text-sky-600 dark:text-sky-400 font-bold underline decoration-sky-300/30 underline-offset-4 decoration-1' : 'text-gray-900 dark:text-gray-200'}`}>
                                       {ing.name}
                                   </span>
                                   {linkedRecipe && (
@@ -221,7 +241,7 @@ const Details: React.FC = () => {
                                   )}
                               </div>
                               <div className="text-right flex-shrink-0 font-mono">
-                                  <span className={`font-bold text-lg ${linkedRecipe ? 'text-sky-700 dark:text-sky-300' : 'text-gray-900 dark:text-white'}`}>{ing.amount}</span>
+                                  <span className={`font-bold ${currentTextSize} ${linkedRecipe ? 'text-sky-700 dark:text-sky-300' : 'text-gray-900 dark:text-white'}`}>{ing.amount}</span>
                                   <span className="text-xs font-bold text-gray-400 ml-1">{ing.unit}</span>
                               </div>
                           </div>
