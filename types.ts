@@ -108,6 +108,7 @@ export interface ChefScheduleItem {
     id: string;
     name: string;
     station: string;
+    color?: string; // Hex color for row
     shifts: Record<string, ShiftType>; // Key is YYYY-MM-DD
 }
 
