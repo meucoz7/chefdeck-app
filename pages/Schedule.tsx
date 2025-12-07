@@ -19,17 +19,20 @@ const Schedule: React.FC = () => {
     
     // Dates Logic (Current Month)
     const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     
     const days = Array.from({ length: daysInMonth }, (_, i) => {
         const date = new Date(currentYear, currentMonth, i + 1);
+        const dStr = date.toISOString().split('T')[0];
         return {
-            dateStr: date.toISOString().split('T')[0], // YYYY-MM-DD
+            dateStr: dStr, // YYYY-MM-DD
             dayNum: i + 1,
             weekday: date.toLocaleDateString('ru-RU', { weekday: 'short' }),
-            isWeekend: date.getDay() === 0 || date.getDay() === 6
+            isWeekend: date.getDay() === 0 || date.getDay() === 6,
+            isToday: dStr === todayStr
         };
     });
 
@@ -66,7 +69,7 @@ const Schedule: React.FC = () => {
     };
 
     const addChef = () => {
-        setStaff([...staff, { id: uuidv4(), name: 'Сотрудник', station: 'Должность', shifts: {} }]);
+        setStaff([...staff, { id: uuidv4(), name: 'Сотрудник', station: 'Должность', shifts: {}, color: '#3b82f6' }]);
     };
 
     const removeChef = (id: string) => {
@@ -183,18 +186,18 @@ const Schedule: React.FC = () => {
                                 {isAdmin && <p className="text-xs text-gray-500">Нажмите "Редактировать", чтобы создать</p>}
                              </div>
                         ) : (
-                            <div className="flex-1 overflow-auto">
+                            <div className="flex-1 overflow-auto bg-white dark:bg-[#1e1e24] scrollbar-thin">
                                 <table className="border-separate border-spacing-0 min-w-full">
                                     <thead className="bg-[#f2f4f7] dark:bg-[#0f1115] sticky top-0 z-30">
                                         <tr>
-                                            <th scope="col" className="sticky left-0 z-40 bg-[#f2f4f7] dark:bg-[#0f1115] py-3 pl-4 pr-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-white/10 min-w-[160px] max-w-[180px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-14">
+                                            <th scope="col" className="sticky left-0 z-40 bg-[#f2f4f7] dark:bg-[#0f1115] py-3 pl-4 pr-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-white/10 min-w-[160px] max-w-[180px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-12">
                                                 Сотрудник
                                             </th>
                                             {days.map(d => (
-                                                <th key={d.dayNum} scope="col" className={`px-1 py-2 text-center text-xs font-bold border-b border-gray-200 dark:border-white/10 min-w-[45px] h-14 ${d.isWeekend ? 'bg-red-50/50 dark:bg-red-500/10' : 'bg-[#f2f4f7] dark:bg-[#0f1115]'}`}>
+                                                <th key={d.dayNum} scope="col" className={`px-1 py-1 text-center text-xs font-bold border-b border-gray-200 dark:border-white/10 border-r min-w-[42px] h-12 transition-colors ${d.isToday ? 'bg-sky-50 dark:bg-sky-500/10' : (d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : 'bg-[#f2f4f7] dark:bg-[#0f1115]')}`}>
                                                     <div className="flex flex-col items-center justify-center h-full">
-                                                        <span className={`text-[9px] uppercase mb-0.5 leading-none ${d.isWeekend ? 'text-red-400' : 'text-gray-400'}`}>{d.weekday}</span>
-                                                        <span className={`text-sm leading-none ${d.isWeekend ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{d.dayNum}</span>
+                                                        <span className={`text-[9px] uppercase mb-0.5 leading-none ${d.isToday ? 'text-sky-600' : (d.isWeekend ? 'text-red-400' : 'text-gray-400')}`}>{d.weekday}</span>
+                                                        <span className={`text-sm leading-none ${d.isToday ? 'text-sky-600 font-black' : (d.isWeekend ? 'text-red-500' : 'text-gray-900 dark:text-white')}`}>{d.dayNum}</span>
                                                     </div>
                                                 </th>
                                             ))}
@@ -202,33 +205,43 @@ const Schedule: React.FC = () => {
                                     </thead>
                                     <tbody className="bg-white dark:bg-[#1e1e24]">
                                         {staff.map((person) => (
-                                            <tr key={person.id} className="group hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                            <tr key={person.id} className="group transition-colors" style={{ backgroundColor: person.color ? `${person.color}08` : undefined }}>
                                                 {/* Sticky Employee Column */}
-                                                <td className="sticky left-0 z-20 bg-white dark:bg-[#1e1e24] py-3 pl-4 pr-4 border-b border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-100 dark:border-white/5 group-hover:bg-gray-50 dark:group-hover:bg-[#25252b] transition-colors align-middle h-16">
+                                                <td className="sticky left-0 z-20 bg-white dark:bg-[#1e1e24] py-1 pl-4 pr-4 border-b border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-12 group-hover:bg-gray-50 dark:group-hover:bg-[#25252b] transition-colors align-middle relative overflow-hidden">
+                                                    {/* Color Marker Strip */}
+                                                    <div className="absolute top-0 left-0 bottom-0 w-1" style={{ backgroundColor: person.color || 'transparent' }}></div>
+                                                    
                                                     {editMode ? (
-                                                        <div className="flex flex-col gap-1.5 w-full">
+                                                        <div className="flex flex-col gap-1 w-full">
                                                             <div className="flex items-center gap-2">
                                                                 <button onClick={() => removeChef(person.id)} className="w-5 h-5 rounded bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 shadow-sm flex-shrink-0 text-xs font-bold">✕</button>
                                                                 <input 
                                                                     value={person.name} 
                                                                     onChange={e => updateChef(person.id, 'name', e.target.value)} 
-                                                                    className="w-full bg-gray-100 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1 rounded text-sm font-bold shadow-inner outline-none text-gray-900 dark:text-white" 
+                                                                    className="w-full bg-gray-100 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-sm font-bold shadow-inner outline-none text-gray-900 dark:text-white" 
                                                                     placeholder="Имя"
+                                                                />
+                                                                <input 
+                                                                    type="color"
+                                                                    value={person.color || '#3b82f6'}
+                                                                    onChange={e => updateChef(person.id, 'color', e.target.value)}
+                                                                    className="w-5 h-5 rounded-full overflow-hidden border-0 p-0 cursor-pointer flex-shrink-0"
+                                                                    title="Цвет строки"
                                                                 />
                                                             </div>
                                                             <input 
                                                                 value={person.station} 
                                                                 onChange={e => updateChef(person.id, 'station', e.target.value)} 
-                                                                className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1 rounded text-xs shadow-inner outline-none ml-7" 
+                                                                className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-[10px] shadow-inner outline-none ml-7" 
                                                                 placeholder="Должность"
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <div className="flex flex-col justify-center h-full">
+                                                        <div className="flex flex-col justify-center h-full pl-1">
                                                             <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight mb-0.5">{person.name}</div>
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wide truncate max-w-[80px]">{person.station}</span>
-                                                                <span className="text-[10px] bg-green-50 dark:bg-green-500/10 text-green-600 px-1.5 rounded font-bold whitespace-nowrap">
+                                                                <span className="text-[9px] bg-green-50 dark:bg-green-500/10 text-green-600 px-1.5 rounded font-bold whitespace-nowrap">
                                                                     {getShiftCount(person.shifts, 'work')} см
                                                                 </span>
                                                             </div>
@@ -243,16 +256,19 @@ const Schedule: React.FC = () => {
                                                         <td 
                                                             key={d.dateStr} 
                                                             onClick={() => toggleShift(person.id, d.dateStr)}
-                                                            className={`border-b border-gray-100 dark:border-white/5 text-center p-1 relative h-16 align-middle ${editMode ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''} ${d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : ''}`}
+                                                            className={`border-b border-gray-100 dark:border-white/5 border-r dark:border-r-white/5 text-center p-0.5 relative h-12 align-middle 
+                                                                ${editMode ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''} 
+                                                                ${d.isToday ? 'bg-sky-50/50 dark:bg-sky-500/5' : (d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : '')}
+                                                            `}
                                                         >
                                                             {status === 'work' && (
-                                                                <div className="w-full h-10 bg-green-500 rounded-lg shadow-sm mx-auto max-w-[36px]"></div>
+                                                                <div className="w-full h-8 bg-green-500 rounded-md shadow-sm mx-auto max-w-[32px]"></div>
                                                             )}
                                                             {status === 'sick' && (
-                                                                <div className="w-full h-10 bg-orange-500 rounded-lg shadow-sm mx-auto max-w-[36px] flex items-center justify-center text-white font-bold text-xs">Б</div>
+                                                                <div className="w-full h-8 bg-orange-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">Б</div>
                                                             )}
                                                             {status === 'vacation' && (
-                                                                <div className="w-full h-10 bg-blue-500 rounded-lg shadow-sm mx-auto max-w-[36px] flex items-center justify-center text-white font-bold text-xs">О</div>
+                                                                <div className="w-full h-8 bg-blue-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">О</div>
                                                             )}
                                                         </td>
                                                     );
