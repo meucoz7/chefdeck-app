@@ -3,6 +3,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
+import { useRecipes } from '../context/RecipeContext';
 
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth={active ? 0 : 2} className={`w-6 h-6 transition-all duration-300 ${active ? 'scale-105' : ''}`}>
@@ -26,6 +27,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const { toasts, removeToast } = useToast();
   const { isAdmin } = useTelegram();
+  const { recipes } = useRecipes();
+  
+  // Calculate favorites count
+  const favoritesCount = recipes.filter(r => r.isFavorite).length;
   
   // Hide nav on Editor and Recipe Details to give max screen space
   const hideNav = location.pathname.includes('add') || location.pathname.includes('recipe') || location.pathname.includes('edit');
@@ -85,9 +90,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     )}
 
                     {/* Favorites */}
-                    <div className="flex justify-center">
-                        <NavLink to="/favorites" className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
+                    <div className="flex justify-center relative">
+                        <NavLink to="/favorites" className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 relative ${isActive ? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
                             <HeartIcon active={false} />
+                            {favoritesCount > 0 && (
+                                <span className="absolute top-2 right-3 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full shadow-sm border border-white dark:border-[#1e1e24] animate-scale-in">
+                                    {favoritesCount > 9 ? '9+' : favoritesCount}
+                                </span>
+                            )}
                         </NavLink>
                     </div>
                 </div>
