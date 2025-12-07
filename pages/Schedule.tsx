@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -7,16 +6,22 @@ import { ChefScheduleItem, ShiftType } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
 
-// Custom Pastel Palette
+// Extended Pastel Palette
 const PASTEL_PALETTE = [
-    '#3b82f6', // Blue (Default)
+    '#3b82f6', // Blue
     '#10b981', // Emerald
     '#f59e0b', // Amber
     '#ef4444', // Red
     '#8b5cf6', // Violet
     '#ec4899', // Pink
     '#06b6d4', // Cyan
-    '#64748b'  // Slate
+    '#64748b', // Slate
+    '#84cc16', // Lime
+    '#14b8a6', // Teal
+    '#f43f5e', // Rose
+    '#a855f7', // Purple
+    '#eab308', // Yellow
+    '#6366f1'  // Indigo
 ];
 
 const Schedule: React.FC = () => {
@@ -28,7 +33,9 @@ const Schedule: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [openColorPicker, setOpenColorPicker] = useState<string | null>(null);
+    
+    // Popover State for Color Picker
+    const [pickerState, setPickerState] = useState<{ id: string; top: number; left: number } | null>(null);
     
     const todayHeaderRef = useRef<HTMLTableHeaderCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -69,7 +76,6 @@ const Schedule: React.FC = () => {
     // Auto-scroll to today
     useEffect(() => {
         if (!isLoading && todayHeaderRef.current) {
-            // Add a small delay to ensure layout is fully painted
             setTimeout(() => {
                 todayHeaderRef.current?.scrollIntoView({ 
                     behavior: 'smooth', 
@@ -92,7 +98,7 @@ const Schedule: React.FC = () => {
                 body: JSON.stringify(staff)
             });
             setEditMode(false);
-            setOpenColorPicker(null);
+            setPickerState(null);
             addToast("График сохранен", "success");
         } catch (e) {
             addToast("Ошибка сохранения", "error");
@@ -110,7 +116,7 @@ const Schedule: React.FC = () => {
     };
 
     const updateChef = (id: string, field: keyof ChefScheduleItem, val: string) => {
-        setStaff(staff.map(s => s.id === id ? { ...s, [field]: val } : s));
+        setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
     };
 
     const toggleShift = (chefId: string, dateStr: string) => {
@@ -140,15 +146,24 @@ const Schedule: React.FC = () => {
         return Object.values(shifts).filter(s => s === type).length;
     };
 
+    const handleColorClick = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (pickerState?.id === id) {
+            setPickerState(null);
+        } else {
+            const rect = (e.target as HTMLElement).getBoundingClientRect();
+            setPickerState({
+                id,
+                top: rect.bottom + window.scrollY + 5,
+                left: rect.left + window.scrollX
+            });
+        }
+    };
+
     // Component for the Table Content to reuse or render in portal
     const ScheduleContent = (
         <div className={`flex flex-col h-full ${isFullscreen ? 'bg-[#f2f4f7] dark:bg-[#0f1115]' : ''}`}>
              
-             {/* Invisible backdrop to close color picker */}
-             {openColorPicker && (
-                 <div className="fixed inset-0 z-[60]" onClick={() => setOpenColorPicker(null)}></div>
-             )}
-
              {/* Header */}
              <div className={`pt-safe-top px-4 pb-2 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md z-50 shadow-sm border-b border-gray-100 dark:border-white/5 flex-shrink-0 ${isFullscreen ? 'px-6' : ''}`}>
                 <div className="flex items-center justify-between pt-4 mb-2">
@@ -246,93 +261,96 @@ const Schedule: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white dark:bg-[#1e1e24]">
-                                        {staff.map((person) => (
-                                            <tr key={person.id} className="group transition-colors" style={{ backgroundColor: person.color ? `${person.color}08` : undefined }}>
-                                                {/* Sticky Employee Column */}
-                                                <td className="sticky left-0 z-20 bg-white dark:bg-[#1e1e24] py-1 pl-4 pr-4 border-b border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-12 group-hover:bg-gray-50 dark:group-hover:bg-[#25252b] transition-colors align-middle relative overflow-visible">
-                                                    {/* Color Marker Strip */}
-                                                    <div className="absolute top-0 left-0 bottom-0 w-1" style={{ backgroundColor: person.color || '#3b82f6' }}></div>
-                                                    
-                                                    {editMode ? (
-                                                        <div className="flex flex-col gap-1 w-full relative">
-                                                            <div className="flex items-center gap-2">
-                                                                <button onClick={() => removeChef(person.id)} className="w-5 h-5 rounded bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 shadow-sm flex-shrink-0 text-xs font-bold">✕</button>
-                                                                <input 
-                                                                    value={person.name} 
-                                                                    onChange={e => updateChef(person.id, 'name', e.target.value)} 
-                                                                    className="w-full bg-gray-100 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-sm font-bold shadow-inner outline-none text-gray-900 dark:text-white" 
-                                                                    placeholder="Имя"
-                                                                />
-                                                                
-                                                                {/* Custom Color Picker Trigger */}
-                                                                <div className="relative">
+                                        {staff.map((person) => {
+                                            const rowStyle = person.color ? { backgroundColor: `${person.color}08` } : {};
+                                            // Apply mixed background for sticky column: white base + color tint
+                                            const stickyStyle = person.color ? { 
+                                                backgroundImage: `linear-gradient(${person.color}08, ${person.color}08), linear-gradient(var(--bg-color), var(--bg-color))` 
+                                            } : {};
+
+                                            return (
+                                                <tr key={person.id} className="group transition-colors" style={rowStyle}>
+                                                    {/* Sticky Employee Column */}
+                                                    <td 
+                                                        className="sticky left-0 z-20 py-1 pl-4 pr-4 border-b border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-12 transition-colors align-middle relative overflow-visible"
+                                                        style={{
+                                                            '--bg-color': '#ffffff',
+                                                            ...stickyStyle,
+                                                            backgroundColor: 'var(--bg-color)' // Fallback
+                                                        } as unknown as React.CSSProperties}
+                                                    >
+                                                        {/* Dark mode override via class */}
+                                                        <div className="absolute inset-0 bg-white dark:bg-[#1e1e24] -z-10"></div>
+                                                        <div className="absolute inset-0 -z-10" style={{ backgroundColor: person.color ? `${person.color}08` : 'transparent' }}></div>
+
+                                                        {/* Color Marker Strip */}
+                                                        <div className="absolute top-0 left-0 bottom-0 w-1" style={{ backgroundColor: person.color || '#3b82f6' }}></div>
+                                                        
+                                                        {editMode ? (
+                                                            <div className="flex flex-col gap-1 w-full relative">
+                                                                <div className="flex items-center gap-2">
+                                                                    <button onClick={() => removeChef(person.id)} className="w-5 h-5 rounded bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 shadow-sm flex-shrink-0 text-xs font-bold">✕</button>
+                                                                    <input 
+                                                                        value={person.name} 
+                                                                        onChange={e => updateChef(person.id, 'name', e.target.value)} 
+                                                                        className="w-full bg-gray-100 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-sm font-bold shadow-inner outline-none text-gray-900 dark:text-white" 
+                                                                        placeholder="Имя"
+                                                                    />
+                                                                    
+                                                                    {/* Color Picker Trigger */}
                                                                     <div 
-                                                                        onClick={() => setOpenColorPicker(openColorPicker === person.id ? null : person.id)}
-                                                                        className="w-5 h-5 rounded-full cursor-pointer shadow-sm border border-gray-200 dark:border-white/20 hover:scale-110 transition"
+                                                                        onClick={(e) => handleColorClick(e, person.id)}
+                                                                        className="w-5 h-5 rounded-full cursor-pointer shadow-sm border border-gray-200 dark:border-white/20 hover:scale-110 transition flex-shrink-0"
                                                                         style={{ backgroundColor: person.color || '#3b82f6' }}
                                                                     ></div>
-                                                                    
-                                                                    {/* Color Popover */}
-                                                                    {openColorPicker === person.id && (
-                                                                        <div className="absolute top-full left-0 mt-2 bg-white dark:bg-[#1e1e24] p-2 rounded-xl shadow-xl border border-gray-100 dark:border-white/10 z-[70] grid grid-cols-4 gap-1.5 w-32 animate-scale-in">
-                                                                            {PASTEL_PALETTE.map(c => (
-                                                                                <div 
-                                                                                    key={c}
-                                                                                    onClick={() => { updateChef(person.id, 'color', c); setOpenColorPicker(null); }}
-                                                                                    className="w-6 h-6 rounded-full cursor-pointer hover:scale-110 transition border border-transparent hover:border-gray-300"
-                                                                                    style={{ backgroundColor: c }}
-                                                                                ></div>
-                                                                            ))}
-                                                                        </div>
-                                                                    )}
+                                                                </div>
+                                                                <input 
+                                                                    value={person.station} 
+                                                                    onChange={e => updateChef(person.id, 'station', e.target.value)} 
+                                                                    className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-[10px] shadow-inner outline-none ml-7" 
+                                                                    placeholder="Должность"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col justify-center h-full pl-1">
+                                                                <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight mb-0.5">{person.name}</div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wide truncate max-w-[80px]">{person.station}</span>
+                                                                    <span className="text-[9px] bg-green-50 dark:bg-green-500/10 text-green-600 px-1.5 rounded font-bold whitespace-nowrap">
+                                                                        {getShiftCount(person.shifts, 'work')} см
+                                                                    </span>
                                                                 </div>
                                                             </div>
-                                                            <input 
-                                                                value={person.station} 
-                                                                onChange={e => updateChef(person.id, 'station', e.target.value)} 
-                                                                className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-[10px] shadow-inner outline-none ml-7" 
-                                                                placeholder="Должность"
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col justify-center h-full pl-1">
-                                                            <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight mb-0.5">{person.name}</div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wide truncate max-w-[80px]">{person.station}</span>
-                                                                <span className="text-[9px] bg-green-50 dark:bg-green-500/10 text-green-600 px-1.5 rounded font-bold whitespace-nowrap">
-                                                                    {getShiftCount(person.shifts, 'work')} см
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                
-                                                {/* Calendar Days */}
-                                                {days.map(d => {
-                                                    const status = person.shifts[d.dateStr] || 'empty';
-                                                    return (
-                                                        <td 
-                                                            key={d.dateStr} 
-                                                            onClick={() => toggleShift(person.id, d.dateStr)}
-                                                            className={`border-b border-gray-100 dark:border-white/5 border-r dark:border-r-white/5 text-center p-0.5 relative h-12 align-middle 
-                                                                ${editMode ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''} 
-                                                                ${d.isToday ? 'bg-sky-50/50 dark:bg-sky-500/5' : (d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : '')}
-                                                            `}
-                                                        >
-                                                            {status === 'work' && (
-                                                                <div className="w-full h-8 bg-green-500 rounded-md shadow-sm mx-auto max-w-[32px]"></div>
-                                                            )}
-                                                            {status === 'sick' && (
-                                                                <div className="w-full h-8 bg-orange-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">Б</div>
-                                                            )}
-                                                            {status === 'vacation' && (
-                                                                <div className="w-full h-8 bg-blue-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">О</div>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
-                                        ))}
+                                                        )}
+                                                    </td>
+                                                    
+                                                    {/* Calendar Days */}
+                                                    {days.map(d => {
+                                                        const status = person.shifts[d.dateStr] || 'empty';
+                                                        return (
+                                                            <td 
+                                                                key={d.dateStr} 
+                                                                onClick={() => toggleShift(person.id, d.dateStr)}
+                                                                className={`border-b border-gray-100 dark:border-white/5 border-r dark:border-r-white/5 text-center p-0.5 relative h-12 align-middle 
+                                                                    ${editMode ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''} 
+                                                                    ${d.isToday ? 'bg-sky-50/50 dark:bg-sky-500/5' : (d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : '')}
+                                                                `}
+                                                            >
+                                                                {status === 'work' && (
+                                                                    <div className="w-full h-8 bg-green-500 rounded-md shadow-sm mx-auto max-w-[32px]"></div>
+                                                                )}
+                                                                {status === 'sick' && (
+                                                                    <div className="w-full h-8 bg-orange-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">Б</div>
+                                                                )}
+                                                                {status === 'vacation' && (
+                                                                    <div className="w-full h-8 bg-blue-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">О</div>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -353,6 +371,29 @@ const Schedule: React.FC = () => {
                     </>
                 )}
              </div>
+
+             {/* COLOR PICKER PORTAL */}
+             {pickerState && createPortal(
+                 <>
+                    {/* Backdrop to close */}
+                    <div className="fixed inset-0 z-[9998]" onClick={() => setPickerState(null)}></div>
+                    {/* Popover */}
+                    <div 
+                        className="fixed z-[9999] bg-white dark:bg-[#1e1e24] p-3 rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 grid grid-cols-4 gap-2 w-48 animate-scale-in"
+                        style={{ top: pickerState.top, left: Math.min(pickerState.left, window.innerWidth - 200) }}
+                    >
+                        {PASTEL_PALETTE.map(c => (
+                            <div 
+                                key={c}
+                                onClick={() => { updateChef(pickerState.id, 'color', c); setPickerState(null); }}
+                                className="w-8 h-8 rounded-full cursor-pointer hover:scale-110 transition border-2 border-transparent hover:border-gray-300 dark:hover:border-white/50 shadow-sm"
+                                style={{ backgroundColor: c }}
+                            ></div>
+                        ))}
+                    </div>
+                 </>,
+                 document.body
+             )}
         </div>
     );
 
