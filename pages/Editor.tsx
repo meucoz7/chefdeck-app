@@ -18,6 +18,7 @@ interface StagedRecipe extends ParsedPdfData {
   imageUrl?: string;
   selected: boolean;
   collapsed: boolean;
+  isDuplicate: boolean; // New flag
 }
 
 const Editor: React.FC = () => {
@@ -235,16 +236,23 @@ const Editor: React.FC = () => {
 
         await new Promise(r => setTimeout(r, 500));
 
-        const staged: StagedRecipe[] = data.map(item => ({
-            ...item,
-            id: uuidv4(),
-            category: '',
-            outputWeight: calculateWeightValue(item.ingredients),
-            steps: [''], 
-            imageUrl: '',
-            selected: true,
-            collapsed: true
-        }));
+        // Prepare set of existing normalized titles for duplicate detection
+        const existingTitles = new Set(recipes.map(r => r.title.toLowerCase().trim()));
+
+        const staged: StagedRecipe[] = data.map(item => {
+            const isDuplicate = existingTitles.has(item.title.toLowerCase().trim());
+            return {
+                ...item,
+                id: uuidv4(),
+                category: '',
+                outputWeight: calculateWeightValue(item.ingredients),
+                steps: [''], 
+                imageUrl: '',
+                selected: !isDuplicate, // Uncheck if already exists
+                collapsed: true,
+                isDuplicate: isDuplicate
+            };
+        });
         setStagedRecipes(staged);
         setMode('import-staging');
     } catch (err: any) {
@@ -582,7 +590,12 @@ const Editor: React.FC = () => {
                              <div onClick={(e) => { e.stopPropagation(); updateStagedRecipe(recipe.id, 'selected', !recipe.selected); }} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${recipe.selected ? 'bg-sky-500 border-sky-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-white/5'}`}>
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-3.5 h-3.5 text-white transition-all ${recipe.selected ? 'scale-100' : 'scale-0'}`}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
                              </div>
-                             <div className="flex-1 min-w-0"><h3 className={`font-bold text-sm dark:text-white truncate ${!recipe.selected && 'text-gray-400 decoration-gray-400'}`}>{recipe.title}</h3></div>
+                             <div className="flex-1 min-w-0">
+                                <h3 className={`font-bold text-sm dark:text-white truncate ${!recipe.selected && 'text-gray-400 decoration-gray-400'}`}>{recipe.title}</h3>
+                             </div>
+                             {recipe.isDuplicate && (
+                                <span className="text-[9px] bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 px-2 py-0.5 rounded font-bold uppercase whitespace-nowrap">УЖЕ В БАЗЕ</span>
+                             )}
                          </div>
                          
                          {/* Staging Editor */}
