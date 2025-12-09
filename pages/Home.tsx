@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useTelegram } from '../context/TelegramContext';
@@ -10,24 +10,46 @@ interface HomeProps {
 
 const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const { recipes, isLoading } = useRecipes();
-  const { user } = useTelegram();
+  const { user, isAdmin } = useTelegram();
   const [search, setSearch] = useState('');
   const [includeArchive, setIncludeArchive] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
+  // --- REORDERING STATE ---
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
+      const saved = localStorage.getItem('category_order');
+      return saved ? JSON.parse(saved) : [];
+  });
+  const [isReordering, setIsReordering] = useState(false);
+  const [selectedSwap, setSelectedSwap] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Get category from URL or null
   const selectedCategory = searchParams.get('category');
 
   // Filter Active vs Archived
-  const activeRecipes = recipes.filter(r => !r.isArchived);
+  const activeRecipes = recipes.filter(r => r.isArchived === false); // Strict check
   
   // Base list to filter from
   const displayRecipes = favoritesOnly 
       ? activeRecipes.filter(r => r.isFavorite) 
       : (includeArchive && search ? recipes : activeRecipes);
 
-  const categories = Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории') as string[];
+  // Get unique categories
+  const uniqueCategories = Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории');
+
+  // Sort Categories based on saved order
+  const sortedCategories = uniqueCategories.sort((a, b) => {
+      const idxA = categoryOrder.indexOf(a);
+      const idxB = categoryOrder.indexOf(b);
+      // If both new, alphabetical
+      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+      // If one new, put at end
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+  });
 
   const filteredRecipes = displayRecipes.filter(r => {
     const matchesSearch = r.title.toLowerCase().includes(search.toLowerCase());
@@ -37,8 +59,45 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
 
   const showCategoriesView = !selectedCategory && !search && !favoritesOnly;
 
+  // --- HANDLERS ---
+
   const handleCategoryClick = (cat: string) => {
-      setSearchParams({ category: cat });
+      if (isReordering) {
+          if (!selectedSwap) {
+              setSelectedSwap(cat);
+          } else {
+              // SWAP LOGIC
+              if (selectedSwap === cat) {
+                  setSelectedSwap(null);
+                  return;
+              }
+              const newOrder = [...sortedCategories];
+              const idx1 = newOrder.indexOf(selectedSwap);
+              const idx2 = newOrder.indexOf(cat);
+              
+              if (idx1 !== -1 && idx2 !== -1) {
+                  [newOrder[idx1], newOrder[idx2]] = [newOrder[idx2], newOrder[idx1]];
+                  setCategoryOrder(newOrder);
+                  localStorage.setItem('category_order', JSON.stringify(newOrder));
+              }
+              setSelectedSwap(null);
+          }
+      } else {
+          setSearchParams({ category: cat });
+      }
+  };
+
+  const startLongPress = (cat: string) => {
+      if (!isAdmin || isReordering) return; // Only admin starts, and only if not already started
+      longPressTimer.current = setTimeout(() => {
+          setIsReordering(true);
+          if (window.navigator.vibrate) window.navigator.vibrate(50);
+          setSelectedSwap(cat); // Auto select the one pressed
+      }, 800);
+  };
+
+  const cancelLongPress = () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
 
   const clearCategory = () => {
@@ -79,28 +138,37 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
              <div className="flex items-center justify-between w-full">
                 <div>
                     <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">
-                        {favoritesOnly ? 'Избранное' : 'Главная'}
+                        {favoritesOnly ? 'Избранное' : (isReordering ? 'Сортировка' : 'Главная')}
                     </h1>
                     <p className="text-xs text-gray-400 font-bold tracking-wider uppercase">
-                        {favoritesOnly ? 'Ваши рецепты' : 'База знаний'}
+                        {favoritesOnly ? 'Ваши рецепты' : (isReordering ? 'Нажмите чтобы поменять' : 'База знаний')}
                     </p>
                 </div>
                 
-                <button 
-                    onClick={() => navigate('/profile')}
-                    className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10 overflow-hidden"
-                >
-                    {user?.photo_url ? (
-                        <img src={user.photo_url} alt="User" className="w-full h-full object-cover" />
-                    ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
-                    )}
-                </button>
+                {isReordering ? (
+                    <button 
+                        onClick={() => { setIsReordering(false); setSelectedSwap(null); }}
+                        className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-green-500/30 active:scale-95 transition"
+                    >
+                        Готово
+                    </button>
+                ) : (
+                    <button 
+                        onClick={() => navigate('/profile')}
+                        className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10 overflow-hidden"
+                    >
+                        {user?.photo_url ? (
+                            <img src={user.photo_url} alt="User" className="w-full h-full object-cover" />
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                        )}
+                    </button>
+                )}
              </div>
           </div>
 
           <div className="space-y-2">
-            <div className="relative group">
+            <div className={`relative group transition-opacity duration-300 ${isReordering ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <svg className="h-5 w-5 text-gray-400 group-focus-within:text-sky-500 transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -133,7 +201,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
         ) : (
             <>
                 {/* BANNERS: Schedule (2/3) + Archive (1/3) */}
-                {!search && !favoritesOnly && !selectedCategory && (
+                {!search && !favoritesOnly && !selectedCategory && !isReordering && (
                     <div className="grid grid-cols-3 gap-3 mb-6">
                         {/* Schedule - 2 Columns (Horizontal Layout) */}
                         <div onClick={() => navigate('/schedule')} className="col-span-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[1.8rem] px-5 py-4 text-white shadow-lg shadow-indigo-500/20 flex items-center h-24 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden group">
@@ -175,17 +243,27 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                 {showCategoriesView && (
                     <div className="animate-slide-up">
                         <div className="grid grid-cols-2 gap-3">
-                            {categories.map((cat, idx) => {
-                                const count = recipes.filter(r => r.category === cat && !r.isArchived).length;
+                            {sortedCategories.map((cat, idx) => {
+                                const count = activeRecipes.filter(r => r.category === cat).length;
                                 const colorClass = getCategoryColor(idx);
+                                const isSelected = selectedSwap === cat;
                                 
                                 return (
                                     <div 
                                         key={cat}
-                                        onClick={() => handleCategoryClick(cat)}
-                                        className="group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all duration-300 cursor-pointer hover:shadow-md flex flex-col justify-between h-32"
+                                        onMouseDown={() => startLongPress(cat)}
+                                        onTouchStart={() => startLongPress(cat)}
+                                        onMouseUp={cancelLongPress}
+                                        onMouseLeave={cancelLongPress}
+                                        onTouchEnd={cancelLongPress}
+                                        onClick={() => handleCategoryClick(cat)} // Separate interaction handler
+                                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32
+                                            ${isReordering ? 'animate-wiggle border-2' : 'border-gray-100 dark:border-white/5 hover:shadow-md'}
+                                            ${isSelected ? 'border-sky-500 ring-2 ring-sky-500/20 scale-105 z-10' : (isReordering ? 'border-dashed border-gray-300 dark:border-white/20' : '')}
+                                        `}
+                                        onClickCapture={(e) => isReordering && e.preventDefault()} // Prevent nav if reordering
                                     >
-                                        <div className="flex justify-between items-start">
+                                        <div className="flex justify-between items-start pointer-events-none">
                                             <div className={`w-10 h-10 rounded-xl ${colorClass} flex items-center justify-center`}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                                                     <path d="M19.5 21a3 3 0 003-3v-4.5a3 3 0 00-3-3h-15a3 3 0 00-3 3V18a3 3 0 003 3h15zM1.5 10.146V6a3 3 0 013-3h5.379a2.25 2.25 0 011.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 013 3v1.146A4.483 4.483 0 0019.5 9h-15a4.483 4.483 0 00-3 1.146z" />
@@ -194,14 +272,27 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                             <span className="text-xs font-bold text-gray-400">{count}</span>
                                         </div>
                                         
-                                        <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors">
+                                        <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors pointer-events-none">
                                             {cat}
                                         </h3>
+                                        
+                                        {/* Reorder Indicator */}
+                                        {isReordering && (
+                                            <div className="absolute top-2 right-2">
+                                                {isSelected ? (
+                                                    <div className="w-5 h-5 bg-sky-500 rounded-full text-white flex items-center justify-center shadow-sm">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-5 h-5 border-2 border-gray-200 dark:border-white/10 rounded-full"></div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
                         </div>
-                        {categories.length === 0 && (
+                        {sortedCategories.length === 0 && (
                             <div className="flex flex-col items-center justify-center py-20 text-center">
                                 <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-full flex items-center justify-center text-3xl mb-4">📂</div>
                                 <h3 className="font-bold text-gray-900 dark:text-white mb-1">Нет категорий</h3>
