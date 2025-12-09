@@ -27,6 +27,7 @@ const recipeSchema = new mongoose.Schema({
     category: String,
     outputWeight: String,
     isFavorite: Boolean,
+    isArchived: { type: Boolean, default: false }, // Added field
     ingredients: Array,
     steps: Array,
     createdAt: Number,
@@ -336,8 +337,8 @@ if (TELEGRAM_TOKEN && bot) {
         const chatId = msg.chat.id;
         // Sync user logic is handled by frontend /api/sync-user usually, but we can do basic here if needed
         const appUrl = WEBHOOK_URL || "https://google.com";
-        bot.sendMessage(chatId, "Добро пожаловать! 👨‍🍳", {
-            reply_markup: { inline_keyboard: [[{ text: "Открыть Кухню 📱", web_app: { url: appUrl } }]] }
+        bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳", {
+            reply_markup: { inline_keyboard: [[{ text: "Открыть ChefDeck 📱", web_app: { url: appUrl } }]] }
         });
     });
 }
