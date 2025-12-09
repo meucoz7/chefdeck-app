@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { TechCard, Ingredient } from '../types';
 import { useTelegram } from './TelegramContext';
@@ -8,6 +7,8 @@ interface RecipeContextType {
   recipes: TechCard[];
   addRecipe: (recipe: TechCard, notifyAll?: boolean, silent?: boolean) => Promise<void>;
   updateRecipe: (recipe: TechCard, notifyAll?: boolean) => Promise<void>;
+  archiveRecipe: (id: string) => Promise<void>;
+  restoreRecipe: (id: string) => Promise<void>;
   deleteRecipe: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => void;
   getRecipe: (id: string) => TechCard | undefined;
@@ -27,8 +28,10 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const res = await fetch('/api/recipes');
           if (!res.ok) throw new Error('Failed to fetch');
           const data = await res.json();
-          setRecipes(data);
-          localStorage.setItem('recipes_cache', JSON.stringify(data));
+          // Ensure isArchived is present
+          const safeData = data.map((r: TechCard) => ({ ...r, isArchived: !!r.isArchived }));
+          setRecipes(safeData);
+          localStorage.setItem('recipes_cache', JSON.stringify(safeData));
       } catch (e) {
           console.warn("API unavailable, switching to offline mode.");
           const saved = localStorage.getItem('recipes_cache');
@@ -116,6 +119,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addRecipe = async (recipe: TechCard, notifyAll = false, silent = false) => {
     const enriched = { 
         ...recipe, 
+        isArchived: false,
         lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown'
     };
     
@@ -139,7 +143,6 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateRecipe = async (updated: TechCard, notifyAll = false) => {
-    // Find old recipe from current state BEFORE updating state
     const oldRecipe = recipes.find(r => r.id === updated.id);
     
     const enriched = { 
@@ -162,12 +165,57 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         if(!res.ok) throw new Error("Server error");
         
-        // Use the captured oldRecipe for comparison
         const changes = oldRecipe ? calculateChanges(oldRecipe, enriched) : [];
         await sendNotification(enriched, 'update', notifyAll, changes);
     } catch (e) {
         addToast("Сохранено локально", "info");
     }
+  };
+
+  const archiveRecipe = async (id: string) => {
+      const target = recipes.find(r => r.id === id);
+      if (!target) return;
+
+      const archived = { ...target, isArchived: true };
+      
+      setRecipes(prev => {
+          const newState = prev.map(r => r.id === id ? archived : r);
+          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          return newState;
+      });
+
+      try {
+          await fetch('/api/recipes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(archived)
+          });
+      } catch (e) {
+          addToast("Архивировано локально", "info");
+      }
+  };
+
+  const restoreRecipe = async (id: string) => {
+      const target = recipes.find(r => r.id === id);
+      if (!target) return;
+
+      const restored = { ...target, isArchived: false };
+      
+      setRecipes(prev => {
+          const newState = prev.map(r => r.id === id ? restored : r);
+          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          return newState;
+      });
+
+      try {
+          await fetch('/api/recipes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(restored)
+          });
+      } catch (e) {
+          addToast("Восстановлено локально", "info");
+      }
   };
 
   const deleteRecipe = async (id: string) => {
@@ -198,7 +246,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getRecipe = (id: string) => recipes.find(r => r.id === id);
 
   return (
-    <RecipeContext.Provider value={{ recipes, addRecipe, updateRecipe, deleteRecipe, toggleFavorite, getRecipe, isLoading }}>
+    <RecipeContext.Provider value={{ recipes, addRecipe, updateRecipe, archiveRecipe, restoreRecipe, deleteRecipe, toggleFavorite, getRecipe, isLoading }}>
       {children}
     </RecipeContext.Provider>
   );
