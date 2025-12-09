@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useTelegram } from '../context/TelegramContext';
@@ -21,7 +21,8 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
       try {
           const saved = localStorage.getItem('category_order');
-          return saved ? JSON.parse(saved) : [];
+          const parsed = saved ? JSON.parse(saved) : [];
+          return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
           console.error("Failed to parse category order", e);
           return [];
@@ -47,9 +48,12 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const uniqueCategories = Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории');
 
   // Sort Categories based on saved order
+  // Fix: Add safe check for categoryOrder in case it's somehow not an array
+  const safeOrder = Array.isArray(categoryOrder) ? categoryOrder : [];
+  
   const sortedCategories = uniqueCategories.sort((a, b) => {
-      const idxA = categoryOrder.indexOf(a);
-      const idxB = categoryOrder.indexOf(b);
+      const idxA = safeOrder.indexOf(a);
+      const idxB = safeOrder.indexOf(b);
       // If both new, alphabetical
       if (idxA === -1 && idxB === -1) return a.localeCompare(b);
       // If one new, put at end
