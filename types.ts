@@ -15,9 +15,10 @@ export interface TechCard {
   category: string;
   outputWeight?: string;
   isFavorite: boolean;
+  isArchived?: boolean; // New flag
   createdAt: number;
-  lastModified?: number; // Added for sync
-  lastModifiedBy?: string; // Added for logs
+  lastModified?: number;
+  lastModifiedBy?: string;
 }
 
 export type Theme = 'light' | 'dark';
@@ -108,8 +109,8 @@ export interface ChefScheduleItem {
     id: string;
     name: string;
     station: string;
-    color?: string; // Hex color for row
-    shifts: Record<string, ShiftType>; // Key is YYYY-MM-DD
+    color?: string;
+    shifts: Record<string, ShiftType>;
 }
 
 // RD Calendar Types
