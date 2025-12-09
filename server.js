@@ -27,7 +27,7 @@ const recipeSchema = new mongoose.Schema({
     category: String,
     outputWeight: String,
     isFavorite: Boolean,
-    isArchived: { type: Boolean, default: false }, // Added field
+    isArchived: { type: Boolean, default: false }, // Explicitly defined
     ingredients: Array,
     steps: Array,
     createdAt: Number,
@@ -135,6 +135,9 @@ app.get('/api/recipes', async (req, res) => {
 app.post('/api/recipes', async (req, res) => {
     const recipeData = req.body;
     
+    // Ensure isArchived is handled
+    if (recipeData.isArchived === undefined) recipeData.isArchived = false;
+
     if (useMongo) {
         try {
             await Recipe.findOneAndUpdate(
@@ -217,9 +220,7 @@ app.post('/api/notify', async (req, res) => {
         recipients = [targetChatId];
     }
 
-    // Safety check for title
     const safeTitle = escapeHtml(recipeTitle || "Без названия");
-
     let message = '';
     const appUrl = WEBHOOK_URL || "https://google.com";
     
@@ -227,7 +228,6 @@ app.post('/api/notify', async (req, res) => {
     else if (action === 'update') {
         message = `📝 <b>Изменения в техкарте</b>\n"${safeTitle}"`;
         if (changes?.length > 0) {
-            // changes already HTML safe from context
             message += `\n\n🔻 <b>Что изменилось:</b>\n` + changes.map(c => `• ${c}`).join('\n');
         } else {
             message += `\n\nВнесены правки.`;
@@ -239,7 +239,6 @@ app.post('/api/notify', async (req, res) => {
         options.reply_markup = { inline_keyboard: [[{ text: "📱 Открыть карту", web_app: { url: `${appUrl}/#/recipe/${recipeId}` } }]] };
     }
 
-    // Filter valid IDs and unique
     recipients = [...new Set(recipients)].filter(id => id);
 
     const promises = recipients.map(chatId => bot.sendMessage(chatId, message, options).catch(e => console.error(`Failed to msg ${chatId}: ${e.message}`)));
@@ -262,7 +261,6 @@ app.post('/api/share-recipe', async (req, res) => {
 
     if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
-    // Sanitize data
     const safeTitle = escapeHtml(recipe.title);
     const safeCategory = escapeHtml(recipe.category);
     const safeOutput = escapeHtml(recipe.outputWeight);
@@ -282,12 +280,9 @@ app.post('/api/share-recipe', async (req, res) => {
     try {
         if (recipe.imageUrl?.startsWith('data:image')) {
             const buffer = Buffer.from(recipe.imageUrl.replace(/^data:image\/\w+;base64,/, ""), 'base64');
-            // Check caption limit for photos (1024 chars)
             if (caption.length > 1000) caption = caption.substring(0, 990) + "... (подробнее в приложении)";
-            
             await bot.sendPhoto(targetChatId, buffer, { caption, ...options });
         } else {
-            // Message limit 4096
             if (caption.length > 4000) caption = caption.substring(0, 3990) + "...";
             await bot.sendMessage(targetChatId, caption, options);
         }
@@ -327,7 +322,6 @@ app.post('/api/schedule', async (req, res) => {
     }
 });
 
-// --- TELEGRAM WEBHOOK ---
 if (TELEGRAM_TOKEN && bot) {
     app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
         bot.processUpdate(req.body);
@@ -335,7 +329,6 @@ if (TELEGRAM_TOKEN && bot) {
     });
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
-        // Sync user logic is handled by frontend /api/sync-user usually, but we can do basic here if needed
         const appUrl = WEBHOOK_URL || "https://google.com";
         bot.sendMessage(chatId, "Добро пожаловать в ChefDeck! 👨‍🍳", {
             reply_markup: { inline_keyboard: [[{ text: "Открыть ChefDeck 📱", web_app: { url: appUrl } }]] }
@@ -343,7 +336,6 @@ if (TELEGRAM_TOKEN && bot) {
     });
 }
 
-// Serve Frontend
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
 app.listen(PORT, async () => {
