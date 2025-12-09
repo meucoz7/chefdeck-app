@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -10,7 +9,7 @@ const TEXT_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'te
 
 const Details: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { getRecipe, deleteRecipe, toggleFavorite, recipes } = useRecipes();
+  const { getRecipe, deleteRecipe, archiveRecipe, restoreRecipe, toggleFavorite, recipes } = useRecipes();
   const { addToast } = useToast();
   const { isAdmin, user } = useTelegram();
   const navigate = useNavigate();
@@ -35,11 +34,27 @@ const Details: React.FC = () => {
 
   const handleEdit = () => navigate(`/edit/${recipe.id}`);
 
-  const handleDelete = () => {
+  // Archive / Delete Logic
+  const handleArchive = () => {
+      if (!isAdmin) return;
+      if (confirm("Переместить карту в архив?")) {
+          archiveRecipe(recipe.id);
+          addToast("Перемещено в архив", "info");
+          navigate('/', { replace: true });
+      }
+  };
+
+  const handleRestore = () => {
+      if (!isAdmin) return;
+      restoreRecipe(recipe.id);
+      addToast("Восстановлено", "success");
+  };
+
+  const handleDeleteForever = () => {
     if (!isAdmin) return;
-    if (confirm("Вы уверены, что хотите удалить эту техкарту?")) {
+    if (confirm("Удалить НАВСЕГДА? Это действие нельзя отменить.")) {
       deleteRecipe(recipe.id);
-      addToast("Карта удалена", "info");
+      addToast("Удалено навсегда", "info");
       navigate('/', { replace: true });
     }
   };
@@ -47,7 +62,8 @@ const Details: React.FC = () => {
   const findLinkedRecipe = (ingredientName: string) => {
       const normalize = (s: string) => s.trim().toLowerCase();
       const targetName = normalize(ingredientName);
-      return recipes.find(r => normalize(r.title) === targetName && r.id !== recipe.id);
+      // Search only active recipes for links
+      return recipes.find(r => normalize(r.title) === targetName && r.id !== recipe.id && !r.isArchived);
   };
 
   const handleSendToChat = async () => {
@@ -122,11 +138,13 @@ const Details: React.FC = () => {
                  </div>
               </div>
               <div className="flex gap-2 flex-shrink-0">
-                 <button onClick={() => toggleFavorite(recipe.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm border border-transparent ${recipe.isFavorite ? 'bg-red-500 text-white' : 'bg-white dark:bg-[#1e1e24] text-gray-400 dark:text-gray-300 hover:text-red-500'}`}>
-                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={recipe.isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={recipe.isFavorite ? 0 : 2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
-                 </button>
+                 {!recipe.isArchived && (
+                     <button onClick={() => toggleFavorite(recipe.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm border border-transparent ${recipe.isFavorite ? 'bg-red-500 text-white' : 'bg-white dark:bg-[#1e1e24] text-gray-400 dark:text-gray-300 hover:text-red-500'}`}>
+                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={recipe.isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={recipe.isFavorite ? 0 : 2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+                     </button>
+                 )}
                  
-                 {isAdmin && (
+                 {isAdmin && !recipe.isArchived && (
                     <button onClick={handleEdit} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
                     </button>
@@ -146,6 +164,14 @@ const Details: React.FC = () => {
 
       <div className="px-5 space-y-6">
           <div className="animate-slide-up space-y-4">
+              {/* Archive Banner */}
+              {recipe.isArchived && (
+                  <div className="bg-gray-800 text-white px-4 py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg>
+                      <span className="font-bold text-sm">В АРХИВЕ</span>
+                  </div>
+              )}
+
               {/* Tags */}
               <div className="flex flex-wrap gap-2 mt-2">
                    <div className="px-3 py-1.5 bg-white dark:bg-white/5 rounded-full shadow-sm border border-gray-100 dark:border-white/5 flex items-center gap-1.5">
@@ -270,9 +296,23 @@ const Details: React.FC = () => {
               </div>
           )}
 
+          {/* Admin Actions */}
           {isAdmin && (
-            <div className="flex justify-center py-6 pb-20">
-                <button onClick={handleDelete} className="text-red-500 text-xs font-bold px-6 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition">Удалить техкарту</button>
+            <div className="flex flex-col gap-3 py-6 pb-20">
+                {recipe.isArchived ? (
+                    <>
+                        <button onClick={handleRestore} className="w-full bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 font-bold py-3 rounded-xl hover:bg-green-100 transition">
+                            Восстановить из архива
+                        </button>
+                        <button onClick={handleDeleteForever} className="w-full bg-red-50 dark:bg-red-500/10 text-red-500 font-bold py-3 rounded-xl hover:bg-red-100 transition">
+                            Удалить навсегда
+                        </button>
+                    </>
+                ) : (
+                    <button onClick={handleArchive} className="w-full text-gray-400 text-xs font-bold px-6 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition border border-gray-200 dark:border-white/5">
+                        Архивировать техкарту
+                    </button>
+                )}
             </div>
           )}
       </div>
