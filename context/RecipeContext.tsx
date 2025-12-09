@@ -1,6 +1,7 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { TechCard, Ingredient } from '../types';
-import { useTelegram } from './TelegramContext';
+import { useTelegram } from '../context/TelegramContext';
 import { useToast } from './ToastContext';
 
 interface RecipeContextType {
@@ -28,14 +29,22 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const res = await fetch('/api/recipes');
           if (!res.ok) throw new Error('Failed to fetch');
           const data = await res.json();
-          // Ensure isArchived is present
-          const safeData = data.map((r: TechCard) => ({ ...r, isArchived: !!r.isArchived }));
+          // Ensure data integrity
+          const safeData = Array.isArray(data) ? data.map((r: TechCard) => ({ ...r, isArchived: !!r.isArchived })) : [];
           setRecipes(safeData);
           localStorage.setItem('recipes_cache', JSON.stringify(safeData));
       } catch (e) {
           console.warn("API unavailable, switching to offline mode.");
-          const saved = localStorage.getItem('recipes_cache');
-          if (saved) setRecipes(JSON.parse(saved));
+          try {
+              const saved = localStorage.getItem('recipes_cache');
+              if (saved) {
+                  const parsed = JSON.parse(saved);
+                  setRecipes(Array.isArray(parsed) ? parsed.map((r: any) => ({ ...r, isArchived: !!r.isArchived })) : []);
+              }
+          } catch(err) {
+              console.error("Cache corrupted", err);
+              setRecipes([]);
+          }
       } finally {
           setIsLoading(false);
       }
