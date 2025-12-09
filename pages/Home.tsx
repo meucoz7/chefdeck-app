@@ -17,10 +17,17 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   
   // --- REORDERING STATE ---
+  // Fix white screen: Safe parsing of JSON
   const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
-      const saved = localStorage.getItem('category_order');
-      return saved ? JSON.parse(saved) : [];
+      try {
+          const saved = localStorage.getItem('category_order');
+          return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+          console.error("Failed to parse category order", e);
+          return [];
+      }
   });
+  
   const [isReordering, setIsReordering] = useState(false);
   const [selectedSwap, setSelectedSwap] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,15 +207,15 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             <SkeletonGrid />
         ) : (
             <>
-                {/* BANNERS: Schedule (2/3) + Archive (1/3) */}
+                {/* BANNERS: Schedule (Horizontal) + Archive (Square) */}
                 {!search && !favoritesOnly && !selectedCategory && !isReordering && (
                     <div className="grid grid-cols-3 gap-3 mb-6">
                         {/* Schedule - 2 Columns (Horizontal Layout) */}
-                        <div onClick={() => navigate('/schedule')} className="col-span-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[1.8rem] px-5 py-4 text-white shadow-lg shadow-indigo-500/20 flex items-center h-24 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden group">
+                        <div onClick={() => navigate('/schedule')} className="col-span-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[1.8rem] px-5 py-4 text-white shadow-lg shadow-indigo-500/20 flex flex-row items-center h-24 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden group">
                             <div className="relative z-10 w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm mr-4 flex-shrink-0 group-hover:scale-110 transition-transform">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
                             </div>
-                            <div className="relative z-10 flex-1 min-w-0">
+                            <div className="relative z-10 flex-1 min-w-0 flex flex-col justify-center h-full">
                                 <h3 className="font-bold text-base leading-tight truncate">График</h3>
                                 <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Смен</p>
                             </div>
@@ -257,11 +264,10 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                         onMouseLeave={cancelLongPress}
                                         onTouchEnd={cancelLongPress}
                                         onClick={() => handleCategoryClick(cat)} // Separate interaction handler
-                                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32
+                                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none
                                             ${isReordering ? 'animate-wiggle border-2' : 'border-gray-100 dark:border-white/5 hover:shadow-md'}
                                             ${isSelected ? 'border-sky-500 ring-2 ring-sky-500/20 scale-105 z-10' : (isReordering ? 'border-dashed border-gray-300 dark:border-white/20' : '')}
                                         `}
-                                        onClickCapture={(e) => isReordering && e.preventDefault()} // Prevent nav if reordering
                                     >
                                         <div className="flex justify-between items-start pointer-events-none">
                                             <div className={`w-10 h-10 rounded-xl ${colorClass} flex items-center justify-center`}>
