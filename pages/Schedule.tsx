@@ -40,19 +40,21 @@ const PASTEL_PALETTE = [
 
 const Schedule: React.FC = () => {
     const navigate = useNavigate();
-    const { isAdmin } = useTelegram();
+    const { isAdmin, user } = useTelegram();
     const { addToast } = useToast();
     
     const [staff, setStaff] = useState<ChefScheduleItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     
     // Popover State for Color Picker
     const [pickerState, setPickerState] = useState<{ id: string; top: number; left: number } | null>(null);
     
     const todayHeaderRef = useRef<HTMLTableHeaderCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const tableRef = useRef<HTMLTableElement>(null);
 
     // Dates Logic (Current Month)
     const today = new Date();
@@ -116,6 +118,64 @@ const Schedule: React.FC = () => {
             addToast("График сохранен", "success");
         } catch (e) {
             addToast("Ошибка сохранения", "error");
+        }
+    };
+
+    const handleShare = async () => {
+        if (!user) {
+            addToast("Недоступно", "error");
+            return;
+        }
+        if (!tableRef.current) return;
+        
+        setIsSending(true);
+        addToast("Создаю снимок...", "info");
+
+        try {
+            // Use html2canvas from global scope (injected via CDN)
+            const html2canvas = (window as any).html2canvas;
+            if (!html2canvas) throw new Error("Library not loaded");
+
+            // We need to capture the full table, even if scrolled.
+            // Technique: Clone the table, make it full width/height in a hidden container.
+            const originalTable = tableRef.current;
+            const clone = originalTable.cloneNode(true) as HTMLElement;
+            
+            // Wrapper to enforce light theme for screenshot and fit content
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'absolute';
+            wrapper.style.top = '-9999px';
+            wrapper.style.left = '0';
+            wrapper.style.width = 'fit-content'; // Ensure full width
+            wrapper.style.background = '#ffffff';
+            wrapper.style.padding = '20px';
+            wrapper.classList.add('light'); // Enforce light theme styles
+            wrapper.appendChild(clone);
+            document.body.appendChild(wrapper);
+
+            const canvas = await html2canvas(wrapper, {
+                scale: 2, // Retine quality
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true
+            });
+
+            document.body.removeChild(wrapper);
+            const imageBase64 = canvas.toDataURL('image/png');
+
+            await fetch('/api/schedule/share', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageBase64, userId: user.id })
+            });
+
+            addToast("График отправлен в чат!", "success");
+
+        } catch (e) {
+            console.error(e);
+            addToast("Ошибка отправки", "error");
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -195,6 +255,21 @@ const Schedule: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex gap-2">
+                         {/* Share Button (Only View Mode) */}
+                        {!editMode && (
+                             <button 
+                                onClick={handleShare}
+                                disabled={isSending}
+                                className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-sky-500 border border-gray-100 dark:border-white/10 active:scale-95 transition disabled:opacity-50"
+                            >
+                                {isSending ? (
+                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+                                )}
+                            </button>
+                        )}
+
                         {/* Fullscreen Toggle */}
                         <button 
                             onClick={() => setIsFullscreen(!isFullscreen)}
@@ -208,12 +283,31 @@ const Schedule: React.FC = () => {
                         </button>
 
                         {isAdmin && (
-                            <button 
-                            onClick={() => editMode ? handleSave() : setEditMode(true)}
-                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition shadow-sm ${editMode ? 'bg-green-500 text-white shadow-green-500/30' : 'bg-white dark:bg-[#1e1e24] text-gray-900 dark:text-white border border-gray-100 dark:border-white/10'}`}
-                            >
-                                {editMode ? 'Сохранить' : 'Редактировать'}
-                            </button>
+                            <div className="flex gap-2">
+                                {editMode ? (
+                                    <>
+                                        <button 
+                                            onClick={() => setEditMode(false)}
+                                            className="w-10 h-10 rounded-full bg-gray-200 dark:bg-white/10 shadow-sm flex items-center justify-center text-gray-600 dark:text-gray-300 border border-transparent active:scale-95 transition"
+                                        >
+                                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                        </button>
+                                        <button 
+                                            onClick={handleSave}
+                                            className="w-10 h-10 rounded-full bg-green-500 shadow-lg shadow-green-500/30 flex items-center justify-center text-white border border-transparent active:scale-95 transition"
+                                        >
+                                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button 
+                                        onClick={() => setEditMode(true)}
+                                        className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/10 active:scale-95 transition"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -245,11 +339,11 @@ const Schedule: React.FC = () => {
                              <div className="flex flex-col items-center justify-center mt-20 opacity-60">
                                 <div className="text-4xl mb-2">📅</div>
                                 <p className="font-bold dark:text-white">График пуст</p>
-                                {isAdmin && <p className="text-xs text-gray-500">Нажмите "Редактировать", чтобы создать</p>}
+                                {isAdmin && <p className="text-xs text-gray-500">Нажмите карандаш, чтобы создать</p>}
                              </div>
                         ) : (
                             <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-white dark:bg-[#1e1e24] scrollbar-thin">
-                                <table className="border-separate border-spacing-0 min-w-full">
+                                <table ref={tableRef} className="border-separate border-spacing-0 min-w-full">
                                     <thead className="bg-[#f2f4f7] dark:bg-[#0f1115] sticky top-0 z-30">
                                         <tr>
                                             <th scope="col" className="sticky left-0 z-40 bg-[#f2f4f7] dark:bg-[#0f1115] py-3 pl-4 pr-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-white/10 min-w-[160px] max-w-[180px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-12">
