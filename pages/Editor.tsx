@@ -24,7 +24,7 @@ interface StagedRecipe extends ParsedPdfData {
 const Editor: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>(); 
-  const { addRecipe, getRecipe, updateRecipe, recipes } = useRecipes();
+  const { addRecipe, addRecipesBulk, getRecipe, updateRecipe, recipes } = useRecipes();
   const { addToast } = useToast();
   const { isAdmin } = useTelegram();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +58,6 @@ const Editor: React.FC = () => {
   
   // Saving Progress
   const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [isSaving, setIsSaving] = useState(false); 
 
   // --- AUTOCOMPLETE LOGIC ---
@@ -273,31 +272,23 @@ const Editor: React.FC = () => {
       if (selected.length === 0) { addToast("Ничего не выбрано", "error"); return; }
       
       setIsImporting(true);
-      setImportProgress({ current: 0, total: selected.length });
       
-      await new Promise(resolve => setTimeout(resolve, 100));
-
       try {
-          for (let i = 0; i < selected.length; i++) {
-              const r = selected[i];
-              const newId = uuidv4();
-              
-              await addRecipe({
-                  id: newId,
-                  title: r.title,
-                  description: '',
-                  imageUrl: r.imageUrl,
-                  category: (r.category && r.category !== '') ? r.category : (bulkCategory || 'Импорт'),
-                  outputWeight: r.outputWeight,
-                  isFavorite: false,
-                  ingredients: r.ingredients,
-                  steps: r.steps.filter(s => s.trim().length > 0),
-                  createdAt: Date.now()
-              }, importNotify, !importNotify); 
-              
-              setImportProgress(prev => ({ ...prev, current: i + 1 }));
-              await new Promise(resolve => setTimeout(resolve, 50));
-          }
+          const finalRecipes: TechCard[] = selected.map(r => ({
+              id: uuidv4(), // Generate fresh ID just in case
+              title: r.title,
+              description: '',
+              imageUrl: r.imageUrl,
+              category: (r.category && r.category !== '') ? r.category : (bulkCategory || 'Импорт'),
+              outputWeight: r.outputWeight,
+              isFavorite: false,
+              ingredients: r.ingredients,
+              steps: r.steps.filter(s => s.trim().length > 0),
+              createdAt: Date.now()
+          }));
+
+          // BULK INSERT
+          await addRecipesBulk(finalRecipes, importNotify);
           
           addToast(`Импортировано: ${selected.length}`, "success");
           navigate('/', { replace: true });
@@ -319,26 +310,12 @@ const Editor: React.FC = () => {
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
                 <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
                     <h3 className="font-bold text-xl mb-6 dark:text-white">
-                        {isImporting ? 'Импорт...' : 'Сохранение...'}
+                        {isImporting ? 'Массовый импорт...' : 'Сохранение...'}
                     </h3>
                     
-                    {isImporting ? (
-                        <>
-                            <div className="relative h-4 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden mb-4">
-                                <div 
-                                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-indigo-500 transition-all duration-300"
-                                    style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
-                                ></div>
-                            </div>
-                            <p className="font-mono text-lg font-bold text-sky-500">
-                                {importProgress.current} <span className="text-gray-400">/</span> {importProgress.total}
-                            </p>
-                        </>
-                    ) : (
-                        <div className="flex justify-center mb-4">
-                             <svg className="animate-spin h-10 w-10 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        </div>
-                    )}
+                    <div className="flex justify-center mb-4">
+                            <svg className="animate-spin h-10 w-10 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </div>
                     
                     <p className="text-xs text-gray-400 mt-2 uppercase tracking-wider">Не закрывайте приложение</p>
                 </div>
