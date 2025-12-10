@@ -26,11 +26,14 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             // Modern Fullscreen & Swipe Logic (Mini Apps 7.7+)
             try {
                 // Check if methods exist AND version is high enough
-                // requestFullscreen and disableVerticalSwipes require at least 7.7
                 if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.7')) {
-                    if (typeof tg.requestFullscreen === 'function') {
-                        tg.requestFullscreen();
+                    // ONLY request fullscreen on mobile devices to prevent weird desktop behavior
+                    if (['android', 'ios'].includes(tg.platform)) {
+                        if (typeof tg.requestFullscreen === 'function') {
+                            tg.requestFullscreen();
+                        }
                     }
+                    
                     if (typeof tg.disableVerticalSwipes === 'function') {
                         tg.disableVerticalSwipes();
                     }
