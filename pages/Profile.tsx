@@ -80,8 +80,29 @@ const Profile: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Admin Actions */}
+                {isAdmin && (
+                    <div className="space-y-4">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-2 mb-2">Администрирование</h3>
+                        <div className="bg-white dark:bg-[#1e1e24] rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+                             <div onClick={() => navigate('/users')} className="p-5 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition">
+                                 <div className="flex items-center gap-4">
+                                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-white bg-indigo-500 shadow-sm">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+                                     </div>
+                                     <div>
+                                         <span className="font-bold dark:text-white text-base block">Пользователи</span>
+                                         <span className="text-xs text-gray-400">Управление доступом</span>
+                                     </div>
+                                 </div>
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                             </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="text-center pt-10 opacity-50 pb-safe-bottom">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.1</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.2</p>
                     <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">{isTwa ? `Secure Connection via Telegram` : 'Web Mode'}</p>
                 </div>
 
