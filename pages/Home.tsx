@@ -10,7 +10,7 @@ interface HomeProps {
 }
 
 const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
-  const { recipes, isLoading, archiveRecipe } = useRecipes();
+  const { recipes, isLoading, archiveRecipesBulk } = useRecipes();
   const { user, isAdmin } = useTelegram();
   const { addToast } = useToast();
   const [search, setSearch] = useState('');
@@ -106,12 +106,10 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       if (targets.length === 0) return;
 
       if (confirm(`Архивировать категорию "${catName}"?\nБудет перемещено рецептов: ${targets.length}`)) {
-          let count = 0;
-          for (const recipe of targets) {
-              await archiveRecipe(recipe.id);
-              count++;
-          }
-          addToast(`Архивировано карт: ${count}`, "success");
+          const ids = targets.map(r => r.id);
+          // Uses bulk method which bypasses single-item notifications
+          await archiveRecipesBulk(ids);
+          addToast(`Архивировано карт: ${ids.length}`, "success");
       }
   };
 
