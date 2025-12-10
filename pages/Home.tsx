@@ -65,7 +65,15 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   });
 
   const filteredRecipes = displayRecipes.filter(r => {
-    const matchesSearch = r.title.toLowerCase().includes(search.toLowerCase());
+    // Improved Search Logic
+    let matchesSearch = true;
+    if (search.trim()) {
+        const searchTerms = search.toLowerCase().trim().split(/\s+/);
+        const titleLower = r.title.toLowerCase();
+        // Check if ALL terms are present in the title (AND logic)
+        matchesSearch = searchTerms.every(term => titleLower.includes(term));
+    }
+
     const matchesCategory = selectedCategory ? r.category === selectedCategory : true;
     return matchesSearch && matchesCategory;
   });
