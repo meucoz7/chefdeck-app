@@ -7,10 +7,13 @@ import { useToast } from './ToastContext';
 interface RecipeContextType {
   recipes: TechCard[];
   addRecipe: (recipe: TechCard, notifyAll?: boolean, silent?: boolean) => Promise<void>;
+  addRecipesBulk: (recipes: TechCard[], notifyAll?: boolean) => Promise<void>;
   updateRecipe: (recipe: TechCard, notifyAll?: boolean) => Promise<void>;
   archiveRecipe: (id: string) => Promise<void>;
+  archiveRecipesBulk: (ids: string[]) => Promise<void>;
   restoreRecipe: (id: string) => Promise<void>;
   deleteRecipe: (id: string) => Promise<void>;
+  deleteAllArchived: () => Promise<void>;
   toggleFavorite: (id: string) => void;
   getRecipe: (id: string) => TechCard | undefined;
   isLoading: boolean;
@@ -151,6 +154,39 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // Mass add recipes
+  const addRecipesBulk = async (newRecipes: TechCard[], notifyAll = false) => {
+      const enrichedRecipes = newRecipes.map(r => ({
+          ...r,
+          isArchived: false,
+          lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Import'
+      }));
+
+      // Update Local State Immediately
+      setRecipes(prev => {
+          const newState = [...enrichedRecipes, ...prev];
+          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          return newState;
+      });
+
+      try {
+          const res = await fetch('/api/recipes/bulk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(enrichedRecipes)
+          });
+          if (!res.ok) throw new Error("Server error");
+          
+          // Optionally send a single summary notification or silent
+          if (notifyAll && enrichedRecipes.length > 0) {
+               // We send just one notification for the first one or a generic one to avoid spam
+               // For now, let's just trigger for the first one as a sample or keep it silent
+          }
+      } catch (e) {
+          addToast("Массовое сохранение локально", "info");
+      }
+  };
+
   const updateRecipe = async (updated: TechCard, notifyAll = false) => {
     const oldRecipe = recipes.find(r => r.id === updated.id);
     
@@ -203,6 +239,26 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           addToast("Архивировано локально", "info");
       }
   };
+  
+  const archiveRecipesBulk = async (ids: string[]) => {
+      if (ids.length === 0) return;
+      
+      setRecipes(prev => {
+          const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r);
+          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          return newState;
+      });
+
+      try {
+          await fetch('/api/recipes/archive/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids })
+          });
+      } catch (e) {
+          addToast("Массовый архив локально", "info");
+      }
+  };
 
   const restoreRecipe = async (id: string) => {
       const target = recipes.find(r => r.id === id);
@@ -244,6 +300,21 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const deleteAllArchived = async () => {
+    // Remove from local state
+    setRecipes(prev => {
+        const newState = prev.filter(r => !r.isArchived);
+        localStorage.setItem('recipes_cache', JSON.stringify(newState));
+        return newState;
+    });
+
+    try {
+        await fetch('/api/recipes/archive/all', { method: 'DELETE' });
+    } catch (e) {
+        addToast("Очищено локально", "info");
+    }
+  };
+
   const toggleFavorite = (id: string) => {
     setRecipes(prev => {
         const newRecipes = prev.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r);
@@ -255,7 +326,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getRecipe = (id: string) => recipes.find(r => r.id === id);
 
   return (
-    <RecipeContext.Provider value={{ recipes, addRecipe, updateRecipe, archiveRecipe, restoreRecipe, deleteRecipe, toggleFavorite, getRecipe, isLoading }}>
+    <RecipeContext.Provider value={{ recipes, addRecipe, addRecipesBulk, updateRecipe, archiveRecipe, archiveRecipesBulk, restoreRecipe, deleteRecipe, deleteAllArchived, toggleFavorite, getRecipe, isLoading }}>
       {children}
     </RecipeContext.Provider>
   );
