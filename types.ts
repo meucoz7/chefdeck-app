@@ -1,3 +1,4 @@
+
 export interface Ingredient {
   name: string;
   amount: string;
@@ -30,6 +31,7 @@ export interface TelegramUser {
     username?: string;
     language_code?: string;
     photo_url?: string;
+    isAdmin?: boolean;
 }
 
 export interface WebApp {
