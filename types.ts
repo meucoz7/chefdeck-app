@@ -94,6 +94,7 @@ export interface WebApp {
     expand: () => void;
     setHeaderColor: (color: string) => void;
     setBackgroundColor: (color: string) => void;
+    isVersionAtLeast: (version: string) => boolean;
     // New Mini App 7.6+ methods
     requestFullscreen?: () => void;
     isFullscreen?: boolean;
