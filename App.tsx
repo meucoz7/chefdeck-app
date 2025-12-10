@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
@@ -11,6 +12,7 @@ import Editor from './pages/Editor';
 import Profile from './pages/Profile';
 import Schedule from './pages/Schedule';
 import Archive from './pages/Archive';
+import Users from './pages/Users';
 
 const App: React.FC = () => {
   return (
@@ -29,6 +31,7 @@ const App: React.FC = () => {
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/schedule" element={<Schedule />} />
                     <Route path="/archive" element={<Archive />} />
+                    <Route path="/users" element={<Users />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Layout>
