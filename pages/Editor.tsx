@@ -86,7 +86,7 @@ const Editor: React.FC = () => {
       const lowerQuery = query.toLowerCase();
       // Convert map keys to array and filter
       return Array.from(ingredientDatabase.keys())
-          .filter(name => name.toLowerCase().includes(lowerQuery) && name.toLowerCase() !== lowerQuery)
+          .filter((name: string) => name.toLowerCase().includes(lowerQuery) && name.toLowerCase() !== lowerQuery)
           .slice(0, 5); // Limit to 5 suggestions
   };
 
@@ -583,7 +583,7 @@ const Editor: React.FC = () => {
                      <p className="text-[10px] text-gray-400 text-right pr-2">Уведомить пользователей</p>
                  </div>
 
-                 {stagedRecipes.map((recipe) => (
+                 {stagedRecipes.map((recipe: StagedRecipe) => (
                      <div key={recipe.id} className={`bg-white dark:bg-[#1e1e24] rounded-3xl overflow-hidden border-2 transition-all duration-300 shadow-sm ${recipe.selected ? 'border-sky-500 shadow-sky-500/10' : 'border-transparent opacity-70'}`}>
                          {/* Card Header */}
                          <div className="p-3 flex items-center gap-3 bg-gray-50/50 dark:bg-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition" onClick={() => updateStagedRecipe(recipe.id, 'collapsed', !recipe.collapsed)}>
