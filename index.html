@@ -56,7 +56,8 @@
             },
             padding: {
               'safe-bottom': 'env(safe-area-inset-bottom)',
-              'safe-top': 'env(safe-area-inset-top)',
+              // Added 1.25rem (approx pt-5) to the safe area
+              'safe-top': 'calc(env(safe-area-inset-top) + 1.25rem)',
             }
           },
         },
