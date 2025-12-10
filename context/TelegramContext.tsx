@@ -22,7 +22,22 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (window.Telegram && window.Telegram.WebApp) {
             const tg = window.Telegram.WebApp;
             tg.ready();
-            tg.expand();
+            
+            // Modern Fullscreen & Swipe Logic (Mini Apps 7.6+)
+            try {
+                if (typeof tg.requestFullscreen === 'function') {
+                    tg.requestFullscreen();
+                } else {
+                    tg.expand(); // Fallback for older versions
+                }
+
+                if (typeof tg.disableVerticalSwipes === 'function') {
+                    tg.disableVerticalSwipes();
+                }
+            } catch (e) {
+                console.warn('Fullscreen/Swipe API not supported:', e);
+                tg.expand();
+            }
             
             setWebApp(tg);
             setIsTwa(!!tg.initData);
