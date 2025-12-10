@@ -159,6 +159,64 @@ app.post('/api/recipes', async (req, res) => {
     }
 });
 
+// BULK CREATE RECIPES
+app.post('/api/recipes/bulk', async (req, res) => {
+    const recipes = req.body;
+    if (!Array.isArray(recipes)) return res.status(400).json({ error: "Expected array of recipes" });
+
+    if (useMongo) {
+        try {
+            const operations = recipes.map(r => ({
+                updateOne: {
+                    filter: { id: r.id },
+                    update: { $set: r },
+                    upsert: true
+                }
+            }));
+            if (operations.length > 0) {
+                await Recipe.bulkWrite(operations);
+            }
+            res.json({ success: true, count: recipes.length });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    } else {
+        const db = getLocalDb();
+        if (!db.recipes) db.recipes = [];
+        // Basic merge
+        recipes.forEach(r => {
+             const idx = db.recipes.findIndex(ex => ex.id === r.id);
+             if (idx >= 0) db.recipes[idx] = r;
+             else db.recipes.unshift(r);
+        });
+        saveLocalDb(db);
+        res.json({ success: true, count: recipes.length });
+    }
+});
+
+// BATCH ARCHIVE RECIPES
+app.post('/api/recipes/archive/batch', async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) return res.status(400).json({ error: "Expected array of ids" });
+
+    if (useMongo) {
+        try {
+            await Recipe.updateMany(
+                { id: { $in: ids } },
+                { $set: { isArchived: true } }
+            );
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    } else {
+        const db = getLocalDb();
+        if (db.recipes) {
+            db.recipes = db.recipes.map(r => 
+                ids.includes(r.id) ? { ...r, isArchived: true } : r
+            );
+            saveLocalDb(db);
+        }
+        res.json({ success: true });
+    }
+});
+
 app.delete('/api/recipes/:id', async (req, res) => {
     const { id } = req.params;
     
@@ -171,6 +229,23 @@ app.delete('/api/recipes/:id', async (req, res) => {
         const db = getLocalDb();
         if (db.recipes) {
             db.recipes = db.recipes.filter(r => r.id !== id);
+            saveLocalDb(db);
+        }
+        res.json({ success: true });
+    }
+});
+
+// DELETE ALL ARCHIVED
+app.delete('/api/recipes/archive/all', async (req, res) => {
+    if (useMongo) {
+        try {
+            await Recipe.deleteMany({ isArchived: true });
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    } else {
+        const db = getLocalDb();
+        if (db.recipes) {
+            db.recipes = db.recipes.filter(r => r.isArchived !== true);
             saveLocalDb(db);
         }
         res.json({ success: true });
