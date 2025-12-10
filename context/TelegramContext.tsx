@@ -29,15 +29,30 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             
             if (tg.initDataUnsafe?.user) {
                 const tgUser = tg.initDataUnsafe.user;
-                setUser(tgUser);
-                setIsAdmin(ADMIN_IDS.includes(tgUser.id));
-
-                // SYNC USER WITH BACKEND
+                const isConfigAdmin = ADMIN_IDS.includes(tgUser.id);
+                
+                // SYNC USER WITH BACKEND AND FETCH ADMIN STATUS
                 fetch('/api/sync-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(tgUser)
-                }).catch(err => console.error("Sync failed", err));
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.user) {
+                        setUser(data.user); // Contains isAdmin from DB
+                        setIsAdmin(isConfigAdmin || !!data.user.isAdmin);
+                    } else {
+                        // Fallback
+                        setUser(tgUser);
+                        setIsAdmin(isConfigAdmin);
+                    }
+                })
+                .catch(err => {
+                    console.error("Sync failed", err);
+                    setUser(tgUser);
+                    setIsAdmin(isConfigAdmin);
+                });
 
             } else {
                 // Dev mode
