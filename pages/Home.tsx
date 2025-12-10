@@ -3,14 +3,16 @@ import React, { useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useTelegram } from '../context/TelegramContext';
+import { useToast } from '../context/ToastContext';
 
 interface HomeProps {
     favoritesOnly?: boolean;
 }
 
 const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
-  const { recipes, isLoading } = useRecipes();
+  const { recipes, isLoading, archiveRecipe } = useRecipes();
   const { user, isAdmin } = useTelegram();
+  const { addToast } = useToast();
   const [search, setSearch] = useState('');
   const [includeArchive, setIncludeArchive] = useState(false);
   const navigate = useNavigate();
@@ -95,6 +97,21 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
           }
       } else {
           setSearchParams({ category: cat });
+      }
+  };
+
+  const archiveCategoryGroup = async (catName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const targets = activeRecipes.filter(r => r.category === catName);
+      if (targets.length === 0) return;
+
+      if (confirm(`Архивировать категорию "${catName}"?\nБудет перемещено рецептов: ${targets.length}`)) {
+          let count = 0;
+          for (const recipe of targets) {
+              await archiveRecipe(recipe.id);
+              count++;
+          }
+          addToast(`Архивировано карт: ${count}`, "success");
       }
   };
 
@@ -282,9 +299,24 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                             <span className="text-xs font-bold text-gray-400">{count}</span>
                                         </div>
                                         
-                                        <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors pointer-events-none">
-                                            {cat}
-                                        </h3>
+                                        <div className="flex items-end justify-between gap-2 mt-auto">
+                                            <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors pointer-events-none line-clamp-2">
+                                                {cat}
+                                            </h3>
+                                            
+                                            {/* Admin: Archive Category Button */}
+                                            {isAdmin && !isReordering && (
+                                                <button
+                                                    onClick={(e) => archiveCategoryGroup(cat, e)}
+                                                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/20 hover:text-gray-600 dark:hover:text-white transition-colors flex-shrink-0 z-20"
+                                                    title="Архивировать категорию"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" />
+                                                    </svg>
+                                                </button>
+                                            )}
+                                        </div>
                                         
                                         {/* Reorder Indicator */}
                                         {isReordering && (
