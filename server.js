@@ -40,7 +40,8 @@ const userSchema = new mongoose.Schema({
     first_name: String,
     last_name: String,
     username: String,
-    lastSeen: Number
+    lastSeen: Number,
+    isAdmin: { type: Boolean, default: false }
 });
 
 const scheduleSchema = new mongoose.Schema({
@@ -181,22 +182,50 @@ app.post('/api/sync-user', async (req, res) => {
     const userData = req.body;
     if (!userData || !userData.id) return res.status(400).json({ error: 'Invalid user' });
 
+    let user;
     if (useMongo) {
         try {
-            await User.findOneAndUpdate(
+            user = await User.findOneAndUpdate(
                 { id: userData.id },
                 { ...userData, lastSeen: Date.now() },
-                { upsert: true }
+                { upsert: true, new: true }
             );
-            res.json({ success: true });
-        } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+        } catch (e) { console.error(e); return res.status(500).json({ error: e.message }); }
     } else {
         const db = getLocalDb();
         if (!db.users) db.users = {};
-        db.users[userData.id] = { ...userData, lastSeen: Date.now() };
+        const existing = db.users[userData.id] || {};
+        user = { ...userData, isAdmin: existing.isAdmin || false, lastSeen: Date.now() };
+        db.users[userData.id] = user;
         saveLocalDb(db);
-        res.json({ success: true });
     }
+    res.json({ success: true, user });
+});
+
+// Get Users
+app.get('/api/users', async (req, res) => {
+    if (useMongo) {
+        const users = await User.find({}).sort({ lastSeen: -1 });
+        res.json(users);
+    } else {
+        const db = getLocalDb();
+        res.json(Object.values(db.users || {}).sort((a,b) => b.lastSeen - a.lastSeen));
+    }
+});
+
+// Toggle Admin
+app.post('/api/users/toggle-admin', async (req, res) => {
+    const { targetId, status } = req.body;
+    if (useMongo) {
+        await User.findOneAndUpdate({ id: targetId }, { isAdmin: status });
+    } else {
+        const db = getLocalDb();
+        if (db.users && db.users[targetId]) {
+            db.users[targetId].isAdmin = status;
+            saveLocalDb(db);
+        }
+    }
+    res.json({ success: true });
 });
 
 // 3. Notify
