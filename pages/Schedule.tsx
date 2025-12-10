@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -6,7 +7,7 @@ import { ChefScheduleItem, ShiftType } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
 
-// Extended Pastel Palette
+// Extended Palette
 const PASTEL_PALETTE = [
     '#3b82f6', // Blue
     '#10b981', // Emerald
@@ -21,7 +22,20 @@ const PASTEL_PALETTE = [
     '#f43f5e', // Rose
     '#a855f7', // Purple
     '#eab308', // Yellow
-    '#6366f1'  // Indigo
+    '#6366f1', // Indigo
+    '#f97316', // Orange
+    '#0ea5e9', // Sky
+    '#d946ef', // Fuchsia
+    '#4338ca', // Dark Indigo
+    '#be123c', // Rose Red
+    '#0f766e', // Dark Teal
+    '#b45309', // Dark Amber
+    '#475569', // Blue Grey
+    '#57534e', // Stone
+    '#78716c', // Warm Grey
+    '#2dd4bf', // Teal 400
+    '#fbbf24', // Amber 400
+    '#a3e635', // Lime 400
 ];
 
 const Schedule: React.FC = () => {
@@ -162,7 +176,7 @@ const Schedule: React.FC = () => {
 
     // Component for the Table Content to reuse or render in portal
     const ScheduleContent = (
-        <div className={`flex flex-col h-full ${isFullscreen ? 'bg-[#f2f4f7] dark:bg-[#0f1115]' : ''}`}>
+        <div className={`flex flex-col ${isFullscreen ? 'fixed inset-0 z-[100] bg-[#f2f4f7] dark:bg-[#0f1115]' : 'h-full'}`}>
              
              {/* Header */}
              <div className={`pt-safe-top px-4 pb-2 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md z-50 shadow-sm border-b border-gray-100 dark:border-white/5 flex-shrink-0 ${isFullscreen ? 'px-6' : ''}`}>
@@ -205,22 +219,18 @@ const Schedule: React.FC = () => {
                 </div>
                 
                 {/* Legend */}
-                <div className="flex gap-4 pb-2 px-1">
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-md bg-green-500"></div>
-                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Смена</span>
+                <div className="flex gap-4 pb-2 px-1 overflow-x-auto no-scrollbar">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <div className="w-3 h-3 rounded-md border border-gray-300 dark:border-white/20 bg-gray-100 dark:bg-white/10"></div>
+                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Смена (Цвет)</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-md bg-orange-500"></div>
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <div className="w-3 h-3 rounded-md bg-orange-500 flex items-center justify-center text-[8px] text-white font-bold leading-none">Б</div>
                         <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Больничный</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <div className="w-3 h-3 rounded-md bg-blue-500 flex items-center justify-center text-[8px] text-white font-bold leading-none">О</div>
                         <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Отпуск</span>
-                    </div>
-                     <div className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-md border border-gray-300 dark:border-white/20"></div>
-                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">Выходной</span>
                     </div>
                 </div>
              </div>
@@ -272,7 +282,7 @@ const Schedule: React.FC = () => {
                                                 <tr key={person.id} className="group transition-colors" style={rowStyle}>
                                                     {/* Sticky Employee Column */}
                                                     <td 
-                                                        className="sticky left-0 z-20 py-1 pl-4 pr-4 border-b border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 h-12 transition-colors align-middle relative overflow-visible"
+                                                        className="sticky left-0 z-20 py-2 pl-4 pr-3 border-b border-gray-100 dark:border-white/5 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] border-r border-gray-200 dark:border-white/10 min-h-[3rem] transition-colors align-middle relative overflow-visible"
                                                         style={{
                                                             '--bg-color': '#ffffff',
                                                             ...stickyStyle,
@@ -287,29 +297,31 @@ const Schedule: React.FC = () => {
                                                         <div className="absolute top-0 left-0 bottom-0 w-1" style={{ backgroundColor: person.color || '#3b82f6' }}></div>
                                                         
                                                         {editMode ? (
-                                                            <div className="flex flex-col gap-1 w-full relative">
-                                                                <div className="flex items-center gap-2">
-                                                                    <button onClick={() => removeChef(person.id)} className="w-5 h-5 rounded bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 shadow-sm flex-shrink-0 text-xs font-bold">✕</button>
+                                                            <div className="flex flex-col gap-2 w-full relative">
+                                                                <input 
+                                                                    value={person.name} 
+                                                                    onChange={e => updateChef(person.id, 'name', e.target.value)} 
+                                                                    className="w-full bg-gray-100 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1.5 rounded text-sm font-bold shadow-inner outline-none text-gray-900 dark:text-white" 
+                                                                    placeholder="Имя"
+                                                                />
+                                                                
+                                                                <div className="flex gap-2 items-center">
                                                                     <input 
-                                                                        value={person.name} 
-                                                                        onChange={e => updateChef(person.id, 'name', e.target.value)} 
-                                                                        className="w-full bg-gray-100 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-sm font-bold shadow-inner outline-none text-gray-900 dark:text-white" 
-                                                                        placeholder="Имя"
+                                                                        value={person.station} 
+                                                                        onChange={e => updateChef(person.id, 'station', e.target.value)} 
+                                                                        className="flex-1 min-w-0 bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-2 py-1.5 rounded text-xs shadow-inner outline-none text-gray-700 dark:text-gray-300" 
+                                                                        placeholder="Должность"
                                                                     />
                                                                     
                                                                     {/* Color Picker Trigger */}
                                                                     <div 
                                                                         onClick={(e) => handleColorClick(e, person.id)}
-                                                                        className="w-5 h-5 rounded-full cursor-pointer shadow-sm border border-gray-200 dark:border-white/20 hover:scale-110 transition flex-shrink-0"
+                                                                        className="w-7 h-7 rounded-full cursor-pointer shadow-sm border-2 border-white dark:border-gray-700 hover:scale-110 transition flex-shrink-0"
                                                                         style={{ backgroundColor: person.color || '#3b82f6' }}
                                                                     ></div>
+
+                                                                    <button onClick={() => removeChef(person.id)} className="w-7 h-7 rounded bg-red-100 dark:bg-red-500/20 text-red-500 flex items-center justify-center hover:bg-red-200 shadow-sm flex-shrink-0 text-xs font-bold">✕</button>
                                                                 </div>
-                                                                <input 
-                                                                    value={person.station} 
-                                                                    onChange={e => updateChef(person.id, 'station', e.target.value)} 
-                                                                    className="w-full bg-gray-50 dark:bg-[#2a2a35] border border-transparent focus:border-sky-500 px-1.5 py-0.5 rounded text-[10px] shadow-inner outline-none ml-7" 
-                                                                    placeholder="Должность"
-                                                                />
                                                             </div>
                                                         ) : (
                                                             <div className="flex flex-col justify-center h-full pl-1">
@@ -331,13 +343,16 @@ const Schedule: React.FC = () => {
                                                             <td 
                                                                 key={d.dateStr} 
                                                                 onClick={() => toggleShift(person.id, d.dateStr)}
-                                                                className={`border-b border-gray-100 dark:border-white/5 border-r dark:border-r-white/5 text-center p-0.5 relative h-12 align-middle 
+                                                                className={`border-b border-gray-100 dark:border-white/5 border-r dark:border-r-white/5 text-center p-0.5 relative align-middle 
                                                                     ${editMode ? 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5' : ''} 
                                                                     ${d.isToday ? 'bg-sky-50/50 dark:bg-sky-500/5' : (d.isWeekend ? 'bg-red-50/30 dark:bg-red-500/5' : '')}
                                                                 `}
                                                             >
                                                                 {status === 'work' && (
-                                                                    <div className="w-full h-8 bg-green-500 rounded-md shadow-sm mx-auto max-w-[32px]"></div>
+                                                                    <div 
+                                                                        className="w-full h-8 rounded-md shadow-sm mx-auto max-w-[32px] opacity-90"
+                                                                        style={{ backgroundColor: person.color || '#3b82f6' }}
+                                                                    ></div>
                                                                 )}
                                                                 {status === 'sick' && (
                                                                     <div className="w-full h-8 bg-orange-500 rounded-md shadow-sm mx-auto max-w-[32px] flex items-center justify-center text-white font-bold text-[10px]">Б</div>
@@ -379,8 +394,8 @@ const Schedule: React.FC = () => {
                     <div className="fixed inset-0 z-[9998]" onClick={() => setPickerState(null)}></div>
                     {/* Popover */}
                     <div 
-                        className="fixed z-[9999] bg-white dark:bg-[#1e1e24] p-3 rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 grid grid-cols-4 gap-2 w-48 animate-scale-in"
-                        style={{ top: pickerState.top, left: Math.min(pickerState.left, window.innerWidth - 200) }}
+                        className="fixed z-[9999] bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 grid grid-cols-6 gap-3 animate-scale-in max-w-[300px]"
+                        style={{ top: pickerState.top, left: Math.min(pickerState.left, window.innerWidth - 300) }}
                     >
                         {PASTEL_PALETTE.map(c => (
                             <div 
@@ -397,17 +412,7 @@ const Schedule: React.FC = () => {
         </div>
     );
 
-    // If Fullscreen, render via Portal to document.body
-    if (isFullscreen) {
-        return createPortal(
-            <div className="fixed inset-0 z-[100] bg-[#f2f4f7] dark:bg-[#0f1115] animate-fade-in overflow-hidden">
-                {ScheduleContent}
-            </div>,
-            document.body
-        );
-    }
-
-    return <div className="pb-32 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] flex flex-col h-screen overflow-hidden">{ScheduleContent}</div>;
+    return isFullscreen ? createPortal(ScheduleContent, document.body) : ScheduleContent;
 };
 
 export default Schedule;
