@@ -132,32 +132,47 @@ const Schedule: React.FC = () => {
         addToast("Создаю снимок...", "info");
 
         try {
-            // Use html2canvas from global scope (injected via CDN)
             const html2canvas = (window as any).html2canvas;
             if (!html2canvas) throw new Error("Library not loaded");
 
-            // We need to capture the full table, even if scrolled.
-            // Technique: Clone the table, make it full width/height in a hidden container.
+            // Clone the table
             const originalTable = tableRef.current;
             const clone = originalTable.cloneNode(true) as HTMLElement;
             
-            // Wrapper to enforce light theme for screenshot and fit content
+            // 1. Remove sticky positioning to prevent "falling" headers in the canvas
+            const stickyElements = clone.querySelectorAll('.sticky');
+            stickyElements.forEach((el: any) => {
+                el.classList.remove('sticky', 'top-0', 'left-0');
+                el.style.position = 'static';
+            });
+            
+            // 2. Setup wrapper
             const wrapper = document.createElement('div');
             wrapper.style.position = 'absolute';
             wrapper.style.top = '-9999px';
             wrapper.style.left = '0';
-            wrapper.style.width = 'fit-content'; // Ensure full width
+            // 3. Ensure container fits all content (no cropping)
+            wrapper.style.width = 'max-content';
             wrapper.style.background = '#ffffff';
-            wrapper.style.padding = '20px';
-            wrapper.classList.add('light'); // Enforce light theme styles
+            // 4. Minimize padding to remove white borders, but keep a tiny bit for aesthetics
+            wrapper.style.padding = '10px'; 
+            wrapper.classList.add('light'); // Try to hint light mode
+            
             wrapper.appendChild(clone);
             document.body.appendChild(wrapper);
 
+            // 5. Generate with high scale
             const canvas = await html2canvas(wrapper, {
-                scale: 2, // Retine quality
+                scale: 3, 
                 backgroundColor: '#ffffff',
                 logging: false,
-                useCORS: true
+                useCORS: true,
+                onclone: (clonedDoc: Document) => {
+                    // Force light mode in the cloned document for clean export
+                    const html = clonedDoc.documentElement;
+                    html.classList.remove('dark');
+                    html.classList.add('light');
+                }
             });
 
             document.body.removeChild(wrapper);
@@ -171,7 +186,7 @@ const Schedule: React.FC = () => {
 
             addToast("График отправлен в чат!", "success");
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
             addToast("Ошибка отправки", "error");
         } finally {
