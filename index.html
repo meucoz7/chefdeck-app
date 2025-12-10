@@ -71,6 +71,7 @@
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         background-color: #f2f4f7;
+        margin: 0;
       }
       
       /* Glassmorphism utilities */
@@ -95,33 +96,40 @@
         box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
       }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
     "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.10.0",
-    "pdfjs-dist/build/pdf": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs",
-    "pdfjs-dist/build/pdf.worker": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs",
-    "xlsx": "https://aistudiocdn.com/xlsx@^0.18.5",
-    "pdfjs-dist/": "https://aistudiocdn.com/pdfjs-dist@^5.4.449/",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.6",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "dotenv/": "https://aistudiocdn.com/dotenv@^17.2.3/",
-    "express": "https://aistudiocdn.com/express@^5.2.1",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.10.1",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2",
     "path": "https://aistudiocdn.com/path@^0.12.7",
-    "mongoose": "https://aistudiocdn.com/mongoose@^9.0.1",
     "fs": "https://aistudiocdn.com/fs@^0.0.1-security",
-    "node-telegram-bot-api": "https://aistudiocdn.com/node-telegram-bot-api@^0.66.0",
-    "url": "https://aistudiocdn.com/url@^0.11.4"
+    "pdfjs-dist/": "https://aistudiocdn.com/pdfjs-dist@^5.4.449/",
+    "express": "https://aistudiocdn.com/express@^5.2.1",
+    "xlsx": "https://aistudiocdn.com/xlsx@^0.18.5",
+    "url": "https://aistudiocdn.com/url@^0.11.4",
+    "mongoose": "https://aistudiocdn.com/mongoose@^9.0.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.7",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "dotenv/": "https://aistudiocdn.com/dotenv@^17.2.3/",
+    "node-telegram-bot-api": "https://aistudiocdn.com/node-telegram-bot-api@^0.66.0"
   }
 }
 </script>
 </head>
   <body class="bg-[#f2f4f7] dark:bg-[#0f1115] text-gray-900 dark:text-gray-100 transition-colors duration-300">
-    <div id="root"></div>
+    <div id="root">
+        <!-- Initial Loading State to prevent white screen flash -->
+        <div style="display:flex;justify-content:center;align-items:center;height:100vh;background-color:#f2f4f7;color:#0ea5e9;font-family:sans-serif;font-weight:bold;flex-direction:column;gap:1rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:3rem;height:3rem;animation:spin 1s linear infinite;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
+        </div>
+    </div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
