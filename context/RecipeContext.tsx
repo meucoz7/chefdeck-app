@@ -177,11 +177,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           });
           if (!res.ok) throw new Error("Server error");
           
-          // Optionally send a single summary notification or silent
-          if (notifyAll && enrichedRecipes.length > 0) {
-               // We send just one notification for the first one or a generic one to avoid spam
-               // For now, let's just trigger for the first one as a sample or keep it silent
-          }
+          // We intentionally do not notify for bulk add to prevent spam
       } catch (e) {
           addToast("Массовое сохранение локально", "info");
       }
@@ -235,6 +231,8 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(archived)
           });
+          // Note: Archiving single recipe does NOT notify by default anymore to keep it clean,
+          // unless we explicitly want to. Current logic: no notify.
       } catch (e) {
           addToast("Архивировано локально", "info");
       }
@@ -243,6 +241,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const archiveRecipesBulk = async (ids: string[]) => {
       if (ids.length === 0) return;
       
+      // Optimistic Update
       setRecipes(prev => {
           const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r);
           localStorage.setItem('recipes_cache', JSON.stringify(newState));
@@ -255,6 +254,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ids })
           });
+          // Explicitly NO notifications for bulk archive
       } catch (e) {
           addToast("Массовый архив локально", "info");
       }
@@ -294,6 +294,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
         const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
         if(!res.ok) throw new Error("Server error");
+        // Single delete DOES notify
         if (target) await sendNotification(target, 'delete', false);
     } catch (e) {
         addToast("Удалено локально", "info");
@@ -310,6 +311,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
         await fetch('/api/recipes/archive/all', { method: 'DELETE' });
+        // Bulk delete does NOT notify
     } catch (e) {
         addToast("Очищено локально", "info");
     }
