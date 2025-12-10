@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
@@ -28,12 +28,20 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { toasts, removeToast } = useToast();
   const { isAdmin } = useTelegram();
   const { recipes } = useRecipes();
+  const mainRef = useRef<HTMLDivElement>(null);
   
   // Calculate favorites count
   const favoritesCount = recipes.filter(r => r.isFavorite).length;
   
   // Hide nav on Editor and Recipe Details to give max screen space
   const hideNav = location.pathname.includes('add') || location.pathname.includes('recipe') || location.pathname.includes('edit');
+
+  // Scroll Restoration Logic
+  useEffect(() => {
+      if (mainRef.current) {
+          mainRef.current.scrollTo(0, 0);
+      }
+  }, [location.pathname]);
   
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f2f4f7] dark:bg-[#0f1115] text-gray-900 dark:text-gray-100 font-sans selection:bg-sky-500/30">
@@ -61,7 +69,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </div>
       
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto no-scrollbar relative z-10 scroll-smooth">
+      <main ref={mainRef} className="flex-1 overflow-y-auto no-scrollbar relative z-10 scroll-smooth">
         <div className="max-w-md mx-auto min-h-full pb-28">
            {children}
         </div>
