@@ -426,6 +426,28 @@ app.post('/api/schedule', async (req, res) => {
     }
 });
 
+// Share Schedule Photo
+app.post('/api/schedule/share', async (req, res) => {
+    if (!bot) return res.status(503).json({ error: 'Bot not ready' });
+    const { image, userId } = req.body;
+    
+    if (!image || !userId) return res.status(400).json({ error: 'Missing data' });
+
+    try {
+        const buffer = Buffer.from(image.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+        const caption = `📅 <b>Актуальный график смен</b>\n\nСгенерировано в ChefDeck.`;
+        
+        await bot.sendPhoto(userId, buffer, { 
+            caption, 
+            parse_mode: 'HTML'
+        });
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Share schedule error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 if (TELEGRAM_TOKEN && bot) {
     app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
         bot.processUpdate(req.body);
