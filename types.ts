@@ -94,6 +94,11 @@ export interface WebApp {
     expand: () => void;
     setHeaderColor: (color: string) => void;
     setBackgroundColor: (color: string) => void;
+    // New Mini App 7.6+ methods
+    requestFullscreen?: () => void;
+    isFullscreen?: boolean;
+    disableVerticalSwipes?: () => void;
+    enableVerticalSwipes?: () => void;
 }
 
 declare global {
