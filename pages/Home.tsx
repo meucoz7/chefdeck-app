@@ -51,7 +51,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   // Fix: Add safe check for categoryOrder in case it's somehow not an array
   const safeOrder = Array.isArray(categoryOrder) ? categoryOrder : [];
   
-  const sortedCategories = uniqueCategories.sort((a, b) => {
+  const sortedCategories = uniqueCategories.sort((a: string, b: string) => {
       const idxA = safeOrder.indexOf(a);
       const idxB = safeOrder.indexOf(b);
       // If both new, alphabetical
@@ -254,7 +254,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                 {showCategoriesView && (
                     <div className="animate-slide-up">
                         <div className="grid grid-cols-2 gap-3">
-                            {sortedCategories.map((cat, idx) => {
+                            {sortedCategories.map((cat: string, idx: number) => {
                                 const count = activeRecipes.filter(r => r.category === cat).length;
                                 const colorClass = getCategoryColor(idx);
                                 const isSelected = selectedSwap === cat;
