@@ -192,7 +192,7 @@ app.post('/api/recipes/bulk', async (req, res) => {
     }
 });
 
-// BATCH ARCHIVE RECIPES
+// BATCH ARCHIVE RECIPES - NO NOTIFICATIONS
 app.post('/api/recipes/archive/batch', async (req, res) => {
     const { ids } = req.body;
     if (!Array.isArray(ids)) return res.status(400).json({ error: "Expected array of ids" });
@@ -235,7 +235,7 @@ app.delete('/api/recipes/:id', async (req, res) => {
     }
 });
 
-// DELETE ALL ARCHIVED
+// DELETE ALL ARCHIVED - NO NOTIFICATIONS
 app.delete('/api/recipes/archive/all', async (req, res) => {
     if (useMongo) {
         try {
