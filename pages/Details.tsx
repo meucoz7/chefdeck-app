@@ -1,9 +1,11 @@
+
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
+import { apiFetch } from '../services/api';
 
 const TEXT_SIZES = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl'];
 
@@ -73,7 +75,7 @@ const Details: React.FC = () => {
     }
     setIsSending(true);
     try {
-        const res = await fetch('/api/share-recipe', {
+        const res = await apiFetch('/api/share-recipe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
