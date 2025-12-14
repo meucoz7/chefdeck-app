@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChefScheduleItem, ShiftType } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
+import { apiFetch } from '../services/api';
 
 // Extended Palette
 const PASTEL_PALETTE = [
@@ -77,7 +78,7 @@ const Schedule: React.FC = () => {
 
     // Fetch Schedule
     useEffect(() => {
-        fetch('/api/schedule')
+        apiFetch('/api/schedule')
             .then(res => res.json())
             .then(data => {
                 setStaff(data || []);
@@ -108,7 +109,7 @@ const Schedule: React.FC = () => {
             return;
         }
         try {
-            await fetch('/api/schedule', {
+            await apiFetch('/api/schedule', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(staff)
@@ -139,7 +140,8 @@ const Schedule: React.FC = () => {
             const originalTable = tableRef.current;
             const clone = originalTable.cloneNode(true) as HTMLElement;
             
-            // 1. Remove sticky positioning to prevent "falling" headers in the canvas
+            // 1. Remove sticky positioning explicitly to prevent "falling" headers in the canvas
+            // We use inline styles to override any classes
             const stickyElements = clone.querySelectorAll('.sticky');
             stickyElements.forEach((el: any) => {
                 el.classList.remove('sticky', 'top-0', 'left-0');
@@ -151,34 +153,47 @@ const Schedule: React.FC = () => {
             wrapper.style.position = 'absolute';
             wrapper.style.top = '-9999px';
             wrapper.style.left = '0';
-            // 3. Ensure container fits all content (no cropping)
-            wrapper.style.width = 'max-content';
+            wrapper.style.width = 'max-content'; // Ensure full width (fixes cut off names)
+            wrapper.style.height = 'auto';
             wrapper.style.background = '#ffffff';
-            // 4. Minimize padding to remove white borders, but keep a tiny bit for aesthetics
-            wrapper.style.padding = '10px'; 
-            wrapper.classList.add('light'); // Try to hint light mode
+            wrapper.style.padding = '0'; // Remove white borders
+            
+            // Ensure clone is visible and laid out correctly
+            clone.style.width = '100%'; 
+            clone.style.border = 'none';
+            // Force text colors to black/light theme for contrast in snapshot
+            clone.classList.remove('dark');
+            clone.classList.add('light');
             
             wrapper.appendChild(clone);
             document.body.appendChild(wrapper);
 
-            // 5. Generate with high scale
+            // 3. Generate with high scale
             const canvas = await html2canvas(wrapper, {
-                scale: 3, 
+                scale: 3, // High resolution
                 backgroundColor: '#ffffff',
                 logging: false,
                 useCORS: true,
                 onclone: (clonedDoc: Document) => {
-                    // Force light mode in the cloned document for clean export
                     const html = clonedDoc.documentElement;
                     html.classList.remove('dark');
                     html.classList.add('light');
+                    // Reset body background
+                    clonedDoc.body.style.backgroundColor = '#ffffff';
+                    
+                    // Force specific styles on the cloned table
+                    const tbl = clonedDoc.querySelector('table');
+                    if(tbl) {
+                        tbl.style.color = '#000000';
+                        tbl.style.background = '#ffffff';
+                    }
                 }
             });
 
             document.body.removeChild(wrapper);
             const imageBase64 = canvas.toDataURL('image/png');
 
-            await fetch('/api/schedule/share', {
+            await apiFetch('/api/schedule/share', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ image: imageBase64, userId: user.id })
@@ -525,3 +540,4 @@ const Schedule: React.FC = () => {
 };
 
 export default Schedule;
+
