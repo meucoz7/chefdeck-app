@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useRecipes } from '../context/RecipeContext';
 import { useToast } from '../context/ToastContext';
@@ -18,10 +17,10 @@ interface StagedRecipe extends ParsedPdfData {
   imageUrl?: string;
   selected: boolean;
   collapsed: boolean;
-  isDuplicate: boolean; // New flag
+  isDuplicate: boolean; 
 }
 
-const Editor: React.FC = () => {
+export default function Editor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>(); 
   const { addRecipe, addRecipesBulk, getRecipe, updateRecipe, recipes } = useRecipes();
@@ -202,7 +201,7 @@ const Editor: React.FC = () => {
             addToast("Сохранено", "success");
             navigate('/', { replace: true });
         }
-    } catch (e) {
+    } catch (e: any) {
         addToast("Ошибка сохранения", "error");
     } finally {
         setIsSaving(false);
@@ -255,7 +254,13 @@ const Editor: React.FC = () => {
         setStagedRecipes(staged);
         setMode('import-staging');
     } catch (err: any) {
-        addToast(err.message || "Ошибка PDF", "error");
+        let errorMessage = "Ошибка PDF";
+        if (err instanceof Error) {
+            errorMessage = err.message;
+        } else if (typeof err === 'string') {
+            errorMessage = err;
+        }
+        addToast(String(errorMessage), "error");
     } finally {
         setIsParsing(false);
         setParsingProgress(0);
@@ -292,7 +297,7 @@ const Editor: React.FC = () => {
           
           addToast(`Импортировано: ${selected.length}`, "success");
           navigate('/', { replace: true });
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
           addToast("Ошибка при сохранении", "error");
       } finally {
@@ -609,8 +614,5 @@ const Editor: React.FC = () => {
               </div>
           )}
        </div>
-    </div>
-  );
-};
-
-export default Editor;
+    );
+      }
