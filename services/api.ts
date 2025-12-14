@@ -4,13 +4,14 @@ export const getBotId = () => {
         const params = new URLSearchParams(window.location.search);
         const botId = params.get('bot_id');
         if (botId) {
-            sessionStorage.setItem('chefdeck_bot_id', botId);
+            localStorage.setItem('chefdeck_bot_id', botId);
             return botId;
         }
     } catch (e) {
         console.error("Error parsing URL params", e);
     }
-    return sessionStorage.getItem('chefdeck_bot_id') || 'default';
+    // Fallback to localStorage, then default
+    return localStorage.getItem('chefdeck_bot_id') || 'default';
 };
 
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -24,3 +25,4 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     
     return window.fetch(input, newInit);
 };
+
