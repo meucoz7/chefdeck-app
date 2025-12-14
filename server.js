@@ -69,13 +69,38 @@ const Recipe = mongoose.model('Recipe', recipeSchema);
 const User = mongoose.model('User', userSchema);
 const Schedule = mongoose.model('Schedule', scheduleSchema);
 
-// --- DB CONNECTION ---
+// --- DB CONNECTION & INDEX CLEANUP ---
 let isConnected = false;
+
+const fixDatabaseIndexes = async () => {
+    try {
+        const userCollection = mongoose.connection.collection('users');
+        // Check current indexes
+        const indexes = await userCollection.indexes();
+        
+        // Look for the conflicting index "id_1" which enforces unique ID across ALL bots
+        const conflictingIndex = indexes.find(idx => idx.name === 'id_1');
+        
+        if (conflictingIndex) {
+            console.log("🔥 Found conflicting legacy index 'id_1'. Dropping it to enable multi-tenancy...");
+            await userCollection.dropIndex('id_1');
+            console.log("✅ Successfully dropped 'id_1'. Multi-bot users are now supported.");
+        }
+    } catch (e) {
+        // Ignore errors (e.g. collection doesn't exist yet, or index not found)
+        console.log("ℹ️ Index check passed or skipped.");
+    }
+};
+
 if (MONGODB_URI) {
     mongoose.connect(MONGODB_URI)
-        .then(() => {
+        .then(async () => {
             console.log("✅ Connected to MongoDB");
             isConnected = true;
+            
+            // Run index fix
+            await fixDatabaseIndexes();
+            
             initializeDefaultBot();
         })
         .catch(err => console.error("❌ MongoDB Connection Error:", err));
