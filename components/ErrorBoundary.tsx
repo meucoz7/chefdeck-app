@@ -1,4 +1,6 @@
+
 import React, { Component, ErrorInfo, ReactNode } from "react";
+import { scopedStorage } from "../services/storage";
 
 interface Props {
   children?: ReactNode;
@@ -10,7 +12,6 @@ interface State {
 }
 
 class ErrorBoundary extends React.Component<Props, State> {
-  // Fix: Explicitly declare props to satisfy strict type checking if inference fails
   readonly props: Props;
 
   constructor(props: Props) {
@@ -36,9 +37,8 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public handleReset = () => {
-      // Clear potentially corrupted local storage
-      localStorage.removeItem('category_order');
-      localStorage.removeItem('recipes_cache');
+      // Clear ONLY the data for the current bot scope
+      scopedStorage.clearCurrentScope();
       window.location.reload();
   };
 
@@ -60,7 +60,7 @@ class ErrorBoundary extends React.Component<Props, State> {
             onClick={this.handleReset}
             className="bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-3 px-6 rounded-xl shadow-lg active:scale-95 transition"
           >
-            Сбросить кеш и обновить
+            Сбросить кэш и обновить
           </button>
         </div>
       );
