@@ -24,13 +24,24 @@ const Users: React.FC = () => {
         apiFetch('/api/users')
             .then(res => res.json())
             .then(data => {
-                setUsers(data || []);
+                // SAFETY CHECK: Ensure data is actually an array
+                if (Array.isArray(data)) {
+                    setUsers(data);
+                } else {
+                    console.error("API Error: Expected array of users, got:", data);
+                    // If backend returned an error object, show it
+                    if (data.error) {
+                        addToast(`Ошибка сервера: ${data.error}`, "error");
+                    }
+                    setUsers([]); // Fallback to empty array to prevent crash
+                }
                 setIsLoading(false);
             })
             .catch(err => {
-                console.error(err);
+                console.error("Network error:", err);
                 setIsLoading(false);
                 addToast("Ошибка загрузки пользователей", "error");
+                setUsers([]); // Fallback
             });
     }, [isAdmin, navigate, addToast]);
 
