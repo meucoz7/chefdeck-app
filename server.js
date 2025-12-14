@@ -95,13 +95,21 @@ const setupBotListeners = (bot, token) => {
         const chatId = msg.chat.id;
         const tgUser = msg.from;
 
+        console.log(`📩 Received /start from ${tgUser?.first_name} (ID: ${tgUser?.id})`);
+
         try {
             // Find bot config to get the correct botId for the URL and DB scope
             const config = await BotConfig.findOne({ token });
-            if (!config) return;
+            
+            if (!config) {
+                console.error(`❌ Bot config not found for token ending in ...${token.slice(-5)}`);
+                await bot.sendMessage(chatId, "⚠️ Ошибка: Бот не настроен в базе данных. Свяжитесь с администратором.");
+                return;
+            }
 
             // --- SAVE USER TO DB IMMEDIATELY ---
             if (tgUser) {
+                console.log(`👤 Saving user ${tgUser.first_name} for bot scope: ${config.botId}`);
                 await User.findOneAndUpdate(
                     { id: tgUser.id, botId: config.botId },
                     { 
@@ -111,10 +119,9 @@ const setupBotListeners = (bot, token) => {
                         last_name: tgUser.last_name,
                         username: tgUser.username,
                         lastSeen: Date.now()
-                        // Note: We do NOT set isAdmin here, default is false
                     },
                     { upsert: true, new: true }
-                );
+                ).catch(err => console.error("❌ Error saving user to DB:", err.message));
             }
             // -----------------------------------
 
@@ -130,7 +137,8 @@ const setupBotListeners = (bot, token) => {
                 }
             });
         } catch (e) {
-            console.error("Error in /start handler:", e);
+            console.error("❌ Critical Error in /start handler:", e);
+            bot.sendMessage(chatId, "Произошла внутренняя ошибка сервера.").catch(() => {});
         }
     });
 };
@@ -140,6 +148,7 @@ const getBotInstance = (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
 
     try {
+        console.log(`🤖 Initializing bot instance for token ...${token.slice(-5)}`);
         // Only polling if NO webhook url is defined (local dev), otherwise Webhook
         const options = WEBHOOK_URL ? { polling: false } : { polling: true };
         const bot = new TelegramBot(token, options);
@@ -147,7 +156,11 @@ const getBotInstance = (token) => {
         // Setup Webhook if production
         if (WEBHOOK_URL) {
             const hookPath = `${WEBHOOK_URL}/webhook/${token}`;
-            bot.setWebHook(hookPath).catch(e => console.error(`Webhook set failed for ${token.slice(0, 10)}...`, e.message));
+            bot.setWebHook(hookPath)
+                .then(() => console.log(`🔗 Webhook set: ${hookPath}`))
+                .catch(e => console.error(`❌ Webhook set failed for ${token.slice(0, 10)}...`, e.message));
+        } else {
+             console.log("🔄 Started Polling Mode (Local Dev)");
         }
 
         // Initialize Listeners
@@ -156,7 +169,7 @@ const getBotInstance = (token) => {
         botInstances.set(token, bot);
         return bot;
     } catch (e) {
-        console.error("Failed to init bot:", e);
+        console.error("❌ Failed to init bot:", e);
         return null;
     }
 };
@@ -164,28 +177,34 @@ const getBotInstance = (token) => {
 // Seed the first bot from .env if DB is empty
 const initializeDefaultBot = async () => {
     const defaultToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!defaultToken) return;
+    if (!defaultToken) {
+        console.warn("⚠️ TELEGRAM_BOT_TOKEN not provided in .env");
+        return;
+    }
 
-    const count = await BotConfig.countDocuments();
-    if (count === 0) {
-        console.log("⚙️ Initializing default bot from .env...");
-        try {
+    try {
+        const count = await BotConfig.countDocuments();
+        if (count === 0) {
+            console.log("⚙️ Initializing default bot from .env...");
+            
             await BotConfig.create({
                 botId: 'default',
                 token: defaultToken,
                 name: 'Default Bot'
             });
-            console.log("✅ Default bot created. ID: 'default'");
-            // Initialize listener for default bot immediately
-            getBotInstance(defaultToken); 
-        } catch (e) {
-            console.error("Seed failed", e);
+            console.log("✅ Default bot created in DB. ID: 'default'");
         }
-    } else {
-        // Re-initialize all bots from DB on server restart
-        const bots = await BotConfig.find({});
+        
+        // Always initialize the default bot in memory on startup
+        getBotInstance(defaultToken);
+
+        // Re-initialize other bots from DB
+        const bots = await BotConfig.find({ token: { $ne: defaultToken } });
         bots.forEach(b => getBotInstance(b.token));
-        console.log(`🔄 Re-initialized ${bots.length} bots from DB`);
+        if (bots.length > 0) console.log(`🔄 Re-initialized ${bots.length} additional bots from DB`);
+
+    } catch (e) {
+        console.error("❌ Initialization failed", e);
     }
 };
 
@@ -206,6 +225,7 @@ const resolveTenant = async (req, res, next) => {
     try {
         const config = await BotConfig.findOne({ botId });
         if (!config) {
+            console.warn(`⚠️ Bot ID '${botId}' not found in DB.`);
             return res.status(404).json({ error: `Bot '${botId}' not found. Please register it via /admin/register-bot` });
         }
         
@@ -345,6 +365,9 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
 
 app.get('/api/users', resolveTenant, async (req, res) => {
     try {
+        // LOGGING ADDED HERE
+        console.log(`👥 [API] Fetching users for bot scope: '${req.tenant.botId}'`);
+        
         const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
         res.json(users);
     } catch (e) { res.status(500).json({ error: e.message }); }
