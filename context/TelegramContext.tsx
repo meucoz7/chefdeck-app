@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WebApp, TelegramUser } from '../types';
 import { ADMIN_IDS } from '../config';
+import { apiFetch } from '../services/api';
 
 interface TelegramContextType {
     webApp?: WebApp;
@@ -53,7 +54,7 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const isConfigAdmin = ADMIN_IDS.includes(tgUser.id);
                 
                 // SYNC USER WITH BACKEND AND FETCH ADMIN STATUS
-                fetch('/api/sync-user', {
+                apiFetch('/api/sync-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(tgUser)
@@ -96,3 +97,4 @@ export const useTelegram = () => {
     }
     return context;
 };
+
