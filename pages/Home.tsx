@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
+import { scopedStorage } from '../services/storage';
 
 interface HomeProps {
     favoritesOnly?: boolean;
@@ -19,16 +20,8 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   
   // --- REORDERING STATE ---
-  // Fix white screen: Safe parsing of JSON
   const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
-      try {
-          const saved = localStorage.getItem('category_order');
-          const parsed = saved ? JSON.parse(saved) : [];
-          return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-          console.error("Failed to parse category order", e);
-          return [];
-      }
+      return scopedStorage.getJson<string[]>('category_order', []);
   });
   
   const [isReordering, setIsReordering] = useState(false);
@@ -50,7 +43,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const uniqueCategories = Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории');
 
   // Sort Categories based on saved order
-  // Fix: Add safe check for categoryOrder in case it's somehow not an array
   const safeOrder = Array.isArray(categoryOrder) ? categoryOrder : [];
   
   const sortedCategories = uniqueCategories.sort((a: string, b: string) => {
@@ -99,7 +91,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
               if (idx1 !== -1 && idx2 !== -1) {
                   [newOrder[idx1], newOrder[idx2]] = [newOrder[idx2], newOrder[idx1]];
                   setCategoryOrder(newOrder);
-                  localStorage.setItem('category_order', JSON.stringify(newOrder));
+                  scopedStorage.setJson('category_order', newOrder);
               }
               setSelectedSwap(null);
           }
@@ -414,3 +406,4 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
 };
 
 export default Home;
+
