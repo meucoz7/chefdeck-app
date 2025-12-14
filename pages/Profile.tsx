@@ -1,17 +1,63 @@
 
-import React from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { useTelegram } from '../context/TelegramContext';
+import { ADMIN_IDS } from '../config';
+import { useToast } from '../context/ToastContext';
+import { apiFetch } from '../services/api';
 
 const Profile: React.FC = () => {
     const { theme, toggleTheme } = useTheme();
     const { user, isTwa, isAdmin } = useTelegram();
     const navigate = useNavigate();
+    const { addToast } = useToast();
     
+    // Bot Registration State
+    const [isRegModalOpen, setIsRegModalOpen] = useState(false);
+    const [regForm, setRegForm] = useState({ botId: '', token: '', name: '' });
+    const [isRegistering, setIsRegistering] = useState(false);
+
     // Determine display name and handle
     const displayName = user ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Гость';
     const displayHandle = user?.username ? `@${user.username}` : (isTwa ? `ID: ${user?.id}` : 'Web Browser User');
+
+    // Super Admin Check (Hardcoded IDs only)
+    const isSuperAdmin = user && ADMIN_IDS.includes(user.id);
+
+    const handleRegisterBot = async () => {
+        if (!regForm.botId || !regForm.token || !regForm.name) {
+            addToast("Заполните все поля", "error");
+            return;
+        }
+
+        setIsRegistering(true);
+        try {
+            const res = await apiFetch('/admin/register-bot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...regForm,
+                    ownerId: user?.id
+                })
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok && data.success) {
+                addToast(`Бот ${regForm.name} успешно добавлен!`, "success");
+                setIsRegModalOpen(false);
+                setRegForm({ botId: '', token: '', name: '' });
+            } else {
+                throw new Error(data.error || "Ошибка регистрации");
+            }
+        } catch (e: any) {
+            addToast(e.message, "error");
+        } finally {
+            setIsRegistering(false);
+        }
+    };
 
     return (
         <div className="pb-28 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
@@ -84,7 +130,7 @@ const Profile: React.FC = () => {
                 {isAdmin && (
                     <div className="space-y-4">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-2 mb-2">Администрирование</h3>
-                        <div className="bg-white dark:bg-[#1e1e24] rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+                        <div className="bg-white dark:bg-[#1e1e24] rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden divide-y divide-gray-100 dark:divide-white/5">
                              <div onClick={() => navigate('/users')} className="p-5 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition">
                                  <div className="flex items-center gap-4">
                                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white bg-indigo-500 shadow-sm">
@@ -97,18 +143,92 @@ const Profile: React.FC = () => {
                                  </div>
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                              </div>
+
+                             {/* SUPER ADMIN: ADD BOT BUTTON */}
+                             {isSuperAdmin && (
+                                <div onClick={() => setIsRegModalOpen(true)} className="p-5 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition bg-purple-50/50 dark:bg-purple-900/10">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-white bg-purple-600 shadow-sm">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </div>
+                                        <div>
+                                            <span className="font-bold dark:text-white text-base block">Добавить бота</span>
+                                            <span className="text-xs text-gray-400">Новый ресторан (Tenant)</span>
+                                        </div>
+                                    </div>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                                </div>
+                             )}
                         </div>
                     </div>
                 )}
 
                 <div className="text-center pt-10 opacity-50 pb-safe-bottom">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.2</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.3</p>
                     <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">{isTwa ? `Secure Connection via Telegram` : 'Web Mode'}</p>
                 </div>
 
              </div>
+
+             {/* Registration Modal */}
+             {isRegModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-scale-in">
+                        <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">Новый бот</h2>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-gray-400 uppercase block mb-1">Bot ID (Slug)</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="my_rest_bot" 
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500/50 dark:text-white"
+                                    value={regForm.botId}
+                                    onChange={e => setRegForm({...regForm, botId: e.target.value.toLowerCase().replace(/\s/g, '_')})}
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">Только латиница и _</p>
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs font-bold text-gray-400 uppercase block mb-1">Название заведения</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="Pizza Roma" 
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500/50 dark:text-white"
+                                    value={regForm.name}
+                                    onChange={e => setRegForm({...regForm, name: e.target.value})}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold text-gray-400 uppercase block mb-1">Bot Token (BotFather)</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="12345:AAH..." 
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500/50 dark:text-white font-mono text-xs"
+                                    value={regForm.token}
+                                    onChange={e => setRegForm({...regForm, token: e.target.value})}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                            <button onClick={() => setIsRegModalOpen(false)} className="flex-1 py-3 bg-gray-100 dark:bg-white/5 rounded-xl font-bold text-gray-500 dark:text-gray-300">Отмена</button>
+                            <button 
+                                onClick={handleRegisterBot} 
+                                disabled={isRegistering}
+                                className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-bold shadow-lg shadow-purple-600/30 flex items-center justify-center disabled:opacity-50"
+                            >
+                                {isRegistering ? '...' : 'Создать'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+             )}
         </div>
     );
 };
 
 export default Profile;
+
