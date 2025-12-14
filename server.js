@@ -88,6 +88,33 @@ if (MONGODB_URI) {
 // We keep active bot instances in memory to send notifications
 const botInstances = new Map(); // token -> TelegramBot instance
 
+// Helper to attach event listeners to a bot instance
+const setupBotListeners = (bot, token) => {
+    // Handle /start command
+    bot.onText(/\/start/, async (msg) => {
+        const chatId = msg.chat.id;
+        try {
+            // Find bot config to get the correct botId for the URL
+            const config = await BotConfig.findOne({ token });
+            if (!config) return;
+
+            const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
+            const botName = config.name || 'ChefDeck';
+            
+            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ${botName}!</b>\n\nЭто ваша система управления техкартами и чек-листами.`, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]
+                    ]
+                }
+            });
+        } catch (e) {
+            console.error("Error in /start handler:", e);
+        }
+    });
+};
+
 const getBotInstance = (token) => {
     if (!token) return null;
     if (botInstances.has(token)) return botInstances.get(token);
@@ -102,6 +129,9 @@ const getBotInstance = (token) => {
             const hookPath = `${WEBHOOK_URL}/webhook/${token}`;
             bot.setWebHook(hookPath).catch(e => console.error(`Webhook set failed for ${token.slice(0, 10)}...`, e.message));
         }
+
+        // Initialize Listeners
+        setupBotListeners(bot, token);
 
         botInstances.set(token, bot);
         return bot;
@@ -126,9 +156,16 @@ const initializeDefaultBot = async () => {
                 name: 'Default Bot'
             });
             console.log("✅ Default bot created. ID: 'default'");
+            // Initialize listener for default bot immediately
+            getBotInstance(defaultToken); 
         } catch (e) {
             console.error("Seed failed", e);
         }
+    } else {
+        // Re-initialize all bots from DB on server restart
+        const bots = await BotConfig.find({});
+        bots.forEach(b => getBotInstance(b.token));
+        console.log(`🔄 Re-initialized ${bots.length} bots from DB`);
     }
 };
 
