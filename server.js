@@ -93,10 +93,30 @@ const setupBotListeners = (bot, token) => {
     // Handle /start command
     bot.onText(/\/start/, async (msg) => {
         const chatId = msg.chat.id;
+        const tgUser = msg.from;
+
         try {
-            // Find bot config to get the correct botId for the URL
+            // Find bot config to get the correct botId for the URL and DB scope
             const config = await BotConfig.findOne({ token });
             if (!config) return;
+
+            // --- SAVE USER TO DB IMMEDIATELY ---
+            if (tgUser) {
+                await User.findOneAndUpdate(
+                    { id: tgUser.id, botId: config.botId },
+                    { 
+                        botId: config.botId,
+                        id: tgUser.id,
+                        first_name: tgUser.first_name,
+                        last_name: tgUser.last_name,
+                        username: tgUser.username,
+                        lastSeen: Date.now()
+                        // Note: We do NOT set isAdmin here, default is false
+                    },
+                    { upsert: true, new: true }
+                );
+            }
+            // -----------------------------------
 
             const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
             const botName = config.name || 'ChefDeck';
