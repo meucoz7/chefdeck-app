@@ -1,7 +1,13 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { getBotId } from './services/api';
+
+// --- MULTI-TENANCY SETUP ---
+// Initialize the bot ID from URL if present
+getBotId();
 
 const rootElement = document.getElementById('root');
 
