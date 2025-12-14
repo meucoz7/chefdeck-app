@@ -3,6 +3,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { TechCard, Ingredient } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from './ToastContext';
+import { apiFetch } from '../services/api';
+import { scopedStorage } from '../services/storage';
 
 interface RecipeContextType {
   recipes: TechCard[];
@@ -29,21 +31,18 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const fetchRecipes = async () => {
       try {
-          const res = await fetch('/api/recipes');
+          const res = await apiFetch('/api/recipes');
           if (!res.ok) throw new Error('Failed to fetch');
           const data = await res.json();
           // Ensure data integrity
           const safeData = Array.isArray(data) ? data.map((r: TechCard) => ({ ...r, isArchived: !!r.isArchived })) : [];
           setRecipes(safeData);
-          localStorage.setItem('recipes_cache', JSON.stringify(safeData));
+          scopedStorage.setJson('recipes_cache', safeData);
       } catch (e) {
           console.warn("API unavailable, switching to offline mode.");
           try {
-              const saved = localStorage.getItem('recipes_cache');
-              if (saved) {
-                  const parsed = JSON.parse(saved);
-                  setRecipes(Array.isArray(parsed) ? parsed.map((r: any) => ({ ...r, isArchived: !!r.isArchived })) : []);
-              }
+              const parsed = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
+              setRecipes(Array.isArray(parsed) ? parsed.map((r: any) => ({ ...r, isArchived: !!r.isArchived })) : []);
           } catch(err) {
               console.error("Cache corrupted", err);
               setRecipes([]);
@@ -60,7 +59,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const sendNotification = async (recipe: TechCard, action: 'create' | 'update' | 'delete', notifyAll: boolean = false, changes: string[] = [], silent: boolean = false) => {
       if (!user) return;
       try {
-          await fetch('/api/notify', {
+          await apiFetch('/api/notify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -137,12 +136,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     setRecipes(prev => {
         const newState = [enriched, ...prev];
-        localStorage.setItem('recipes_cache', JSON.stringify(newState));
+        scopedStorage.setJson('recipes_cache', newState);
         return newState;
     });
 
     try {
-        const res = await fetch('/api/recipes', {
+        const res = await apiFetch('/api/recipes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(enriched)
@@ -165,12 +164,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Update Local State Immediately
       setRecipes(prev => {
           const newState = [...enrichedRecipes, ...prev];
-          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          scopedStorage.setJson('recipes_cache', newState);
           return newState;
       });
 
       try {
-          const res = await fetch('/api/recipes/bulk', {
+          const res = await apiFetch('/api/recipes/bulk', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(enrichedRecipes)
@@ -194,12 +193,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setRecipes(prev => {
         const newState = prev.map(r => r.id === enriched.id ? enriched : r);
-        localStorage.setItem('recipes_cache', JSON.stringify(newState));
+        scopedStorage.setJson('recipes_cache', newState);
         return newState;
     });
 
     try {
-        const res = await fetch('/api/recipes', {
+        const res = await apiFetch('/api/recipes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(enriched)
@@ -221,18 +220,16 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       setRecipes(prev => {
           const newState = prev.map(r => r.id === id ? archived : r);
-          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          scopedStorage.setJson('recipes_cache', newState);
           return newState;
       });
 
       try {
-          await fetch('/api/recipes', {
+          await apiFetch('/api/recipes', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(archived)
           });
-          // Note: Archiving single recipe does NOT notify by default anymore to keep it clean,
-          // unless we explicitly want to. Current logic: no notify.
       } catch (e) {
           addToast("Архивировано локально", "info");
       }
@@ -244,17 +241,16 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Optimistic Update
       setRecipes(prev => {
           const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r);
-          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          scopedStorage.setJson('recipes_cache', newState);
           return newState;
       });
 
       try {
-          await fetch('/api/recipes/archive/batch', {
+          await apiFetch('/api/recipes/archive/batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ids })
           });
-          // Explicitly NO notifications for bulk archive
       } catch (e) {
           addToast("Массовый архив локально", "info");
       }
@@ -268,12 +264,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       setRecipes(prev => {
           const newState = prev.map(r => r.id === id ? restored : r);
-          localStorage.setItem('recipes_cache', JSON.stringify(newState));
+          scopedStorage.setJson('recipes_cache', newState);
           return newState;
       });
 
       try {
-          await fetch('/api/recipes', {
+          await apiFetch('/api/recipes', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(restored)
@@ -287,12 +283,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = recipes.find(r => r.id === id);
     setRecipes(prev => {
         const newState = prev.filter(r => r.id !== id);
-        localStorage.setItem('recipes_cache', JSON.stringify(newState));
+        scopedStorage.setJson('recipes_cache', newState);
         return newState;
     });
     
     try {
-        const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
+        const res = await apiFetch(`/api/recipes/${id}`, { method: 'DELETE' });
         if(!res.ok) throw new Error("Server error");
         // Single delete DOES notify
         if (target) await sendNotification(target, 'delete', false);
@@ -305,13 +301,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Remove from local state
     setRecipes(prev => {
         const newState = prev.filter(r => !r.isArchived);
-        localStorage.setItem('recipes_cache', JSON.stringify(newState));
+        scopedStorage.setJson('recipes_cache', newState);
         return newState;
     });
 
     try {
-        await fetch('/api/recipes/archive/all', { method: 'DELETE' });
-        // Bulk delete does NOT notify
+        await apiFetch('/api/recipes/archive/all', { method: 'DELETE' });
     } catch (e) {
         addToast("Очищено локально", "info");
     }
@@ -320,7 +315,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const toggleFavorite = (id: string) => {
     setRecipes(prev => {
         const newRecipes = prev.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r);
-        localStorage.setItem('recipes_cache', JSON.stringify(newRecipes)); 
+        scopedStorage.setJson('recipes_cache', newRecipes); 
         return newRecipes;
     });
   };
@@ -341,3 +336,4 @@ export const useRecipes = () => {
   }
   return context;
 };
+
