@@ -5,6 +5,7 @@ import { TelegramUser } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
 import { ADMIN_IDS } from '../config';
+import { apiFetch } from '../services/api';
 
 const Users: React.FC = () => {
     const navigate = useNavigate();
@@ -20,7 +21,7 @@ const Users: React.FC = () => {
             return;
         }
 
-        fetch('/api/users')
+        apiFetch('/api/users')
             .then(res => res.json())
             .then(data => {
                 setUsers(data || []);
@@ -46,7 +47,7 @@ const Users: React.FC = () => {
             // Optimistic update
             setUsers(prev => prev.map(u => u.id === targetId ? { ...u, isAdmin: newStatus } : u));
 
-            await fetch('/api/users/toggle-admin', {
+            await apiFetch('/api/users/toggle-admin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ targetId, status: newStatus })
@@ -158,3 +159,4 @@ const Users: React.FC = () => {
 };
 
 export default Users;
+
