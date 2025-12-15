@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -335,110 +336,101 @@ export default function Editor() {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, 'text/html');
           
-          // Target specific class mentioned by user
-          const imageElements = doc.querySelectorAll('.menu-dish-list-item-img-hover');
-          
-          if (imageElements.length === 0) {
-              addToast("Изображения не найдены (проверьте класс)", "info");
-              setIsParsing(false);
-              return;
-          }
-
           const matches: ImageMatch[] = [];
           
-          // Helper for fuzzy matching
-          const normalize = (s: string) => s.toLowerCase().replace(/[^a-zа-яё0-9]/g, '');
-          const getMatchScore = (str1: string, str2: string) => {
-              const s1 = normalize(str1);
-              const s2 = normalize(str2);
-              if (s1 === s2) return 100;
-              if (s1.includes(s2) || s2.includes(s1)) return 80;
-              // Token intersection
-              const t1 = new Set(s1.split(''));
-              const t2 = new Set(s2.split(''));
-              const intersection = new Set([...t1].filter(x => t2.has(x)));
-              return (intersection.size / Math.max(t1.size, t2.size)) * 100;
+          // Target class defined by user
+          const targetClass = 'menu-dish-list-item-img-hover';
+
+          // Helper to resolve URL
+          const resolveUrl = (src: string) => {
+              try {
+                  return new URL(src, scrapeUrl).href;
+              } catch {
+                  return src;
+              }
           };
 
-          // Process found elements
-          for (let i = 0; i < imageElements.length; i++) {
-              const el = imageElements[i] as HTMLElement;
+          // Iterate local recipes to find them in the HTML
+          recipes.forEach(recipe => {
+              if (recipe.isArchived) return;
               
-              // 1. Extract Image URL
-              let imgSrc = '';
-              // Check inline style first (background-image)
-              const style = el.getAttribute('style');
-              if (style && style.includes('url(')) {
-                  const match = style.match(/url\(['"]?(.*?)['"]?\)/);
-                  if (match) imgSrc = match[1];
-              }
-              // Check if it's an img tag or has one inside
-              if (!imgSrc && el.tagName === 'IMG') imgSrc = (el as HTMLImageElement).src;
-              if (!imgSrc) {
-                  const imgChild = el.querySelector('img');
-                  if (imgChild) imgSrc = imgChild.src;
-              }
+              const searchTitle = recipe.title.trim().toLowerCase();
+              if (searchTitle.length < 2) return;
 
-              // Fix relative URLs
-              if (imgSrc && !imgSrc.startsWith('http')) {
-                  const urlObj = new URL(scrapeUrl);
-                  imgSrc = urlObj.origin + (imgSrc.startsWith('/') ? '' : '/') + imgSrc;
+              // Search for text node
+              const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+              let foundNode: Node | null = null;
+              
+              while (walker.nextNode()) {
+                  const node = walker.currentNode;
+                  const text = node.textContent?.toLowerCase().trim() || '';
+                  
+                  // Strict-ish match: text includes title, and isn't a huge paragraph
+                  if (text.includes(searchTitle) && text.length < 200) {
+                      foundNode = node;
+                      break; // Found the title in DOM
+                  }
               }
 
-              if (!imgSrc) continue;
+              if (!foundNode) return;
 
-              // 2. Extract Title (Look up to parent, then search for title text)
-              // Assuming card structure: Card > ImageWrapper > Image.  Title is sibling of ImageWrapper.
-              // We traverse up 3 levels searching for text
-              let foundTitle = '';
-              let parent: HTMLElement | null = el.parentElement;
+              // Traverse up to find a container with an image
+              let parent = foundNode.parentElement;
+              let imageSrc = '';
               let attempts = 0;
               
-              while (parent && attempts < 3 && !foundTitle) {
-                  // Strategy: Look for headers or specific title classes near this image container
-                  const titleEl = parent.querySelector('.menu-dish-list-item-title, .title, h3, h4, .name');
-                  if (titleEl && titleEl.textContent) {
-                      foundTitle = titleEl.textContent.trim();
-                  } else {
-                      // Fallback: Check if parent text content is short enough to be a title
-                      const text = parent.innerText.trim();
-                      if (text.length > 3 && text.length < 50 && !text.includes('\n')) {
-                          foundTitle = text;
+              while (parent && attempts < 6) { // Look up 6 levels
+                  // 1. Look for specific class
+                  const specificEl = parent.querySelector(`.${targetClass}`);
+                  if (specificEl) {
+                      // Style background
+                      const style = specificEl.getAttribute('style');
+                      if (style && style.includes('url(')) {
+                          const m = style.match(/url\(['"]?(.*?)['"]?\)/);
+                          if (m) imageSrc = m[1];
+                      }
+                      // Img tag inside specific div
+                      if (!imageSrc) {
+                          const img = specificEl.querySelector('img');
+                          if (img) imageSrc = img.getAttribute('src') || '';
                       }
                   }
+
+                  // 2. Generic fallback: Any image in this container?
+                  // We perform this check if specific class wasn't found OR didn't yield an image
+                  if (!imageSrc) {
+                      // Check for img tag in this parent context
+                      // We avoid icons/logos usually small or svg
+                      const imgs = parent.querySelectorAll('img');
+                      for (let i = 0; i < imgs.length; i++) {
+                          const src = imgs[i].getAttribute('src');
+                          if (src && !src.toLowerCase().includes('logo') && !src.toLowerCase().includes('icon')) {
+                              imageSrc = src;
+                              break; // Take first content image
+                          }
+                      }
+                  }
+
+                  if (imageSrc) break;
+                  
                   parent = parent.parentElement;
                   attempts++;
               }
 
-              if (!foundTitle) continue;
-
-              // 3. Match against local recipes
-              let bestMatch: { recipe: TechCard, score: number } | null = null;
-              
-              recipes.forEach(r => {
-                  const score = getMatchScore(r.title, foundTitle);
-                  if (score > 60) { // Threshold
-                      if (!bestMatch || score > bestMatch.score) {
-                          bestMatch = { recipe: r, score };
-                      }
-                  }
-              });
-
-              if (bestMatch) {
+              if (imageSrc) {
                   matches.push({
-                      recipeId: bestMatch.recipe.id,
-                      recipeName: bestMatch.recipe.title,
-                      oldImage: bestMatch.recipe.imageUrl || '',
-                      newImage: imgSrc,
+                      recipeId: recipe.id,
+                      recipeName: recipe.title,
+                      oldImage: recipe.imageUrl || '',
+                      newImage: resolveUrl(imageSrc),
                       selected: true
                   });
               }
-          }
+          });
 
-          // Remove duplicates (keep best match for each recipe)
+          // Deduplicate matches (if multiple DOM elements match same recipe)
           const uniqueMatches = matches.reduce((acc, current) => {
-              const existing = acc.find(m => m.recipeId === current.recipeId);
-              if (!existing) {
+              if (!acc.find(m => m.recipeId === current.recipeId)) {
                   acc.push(current);
               }
               return acc;
