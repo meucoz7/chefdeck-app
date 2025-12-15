@@ -10,7 +10,7 @@ interface RecipeContextType {
   recipes: TechCard[];
   addRecipe: (recipe: TechCard, notifyAll?: boolean, silent?: boolean) => Promise<void>;
   addRecipesBulk: (recipes: TechCard[], notifyAll?: boolean) => Promise<void>;
-  updateRecipe: (recipe: TechCard, notifyAll?: boolean) => Promise<void>;
+  updateRecipe: (recipe: TechCard, notifyAll?: boolean, silent?: boolean) => Promise<void>;
   archiveRecipe: (id: string) => Promise<void>;
   archiveRecipesBulk: (ids: string[]) => Promise<void>;
   restoreRecipe: (id: string) => Promise<void>;
@@ -182,7 +182,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
   };
 
-  const updateRecipe = async (updated: TechCard, notifyAll = false) => {
+  const updateRecipe = async (updated: TechCard, notifyAll = false, silent = false) => {
     const oldRecipe = recipes.find(r => r.id === updated.id);
     
     const enriched = { 
@@ -206,7 +206,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if(!res.ok) throw new Error("Server error");
         
         const changes = oldRecipe ? calculateChanges(oldRecipe, enriched) : [];
-        await sendNotification(enriched, 'update', notifyAll, changes);
+        await sendNotification(enriched, 'update', notifyAll, changes, silent);
     } catch (e) {
         addToast("Сохранено локально", "info");
     }
