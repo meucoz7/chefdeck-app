@@ -341,19 +341,15 @@ export default function Editor() {
           // --- ADVANCED FUZZY MATCHING WITH STEMMING ---
 
           // 1. Simple Russian Stemmer (Removes common endings)
-          // "Грибами" -> "Гриб", "Индейкой" -> "Индейк"
           const getStem = (word: string) => {
               const w = word.toLowerCase();
-              // Regex matches typical Russian adjective/noun endings
               const endings = /(?:ами|ями|ов|ев|ей|ой|ий|ый|ая|яя|ое|ее|ые|ие|ыми|ими|им|ым|ом|ем|ах|ях|ую|юю|ы|и|а|я|о|е|у|ю)$/i;
               if (w.length > 4) return w.replace(endings, '');
               return w;
           };
 
-          // 2. Stop words to ignore
           const stopWords = new Set(['с', 'со', 'и', 'в', 'на', 'под', 'из', 'от', 'для', 'по', 'над', 'к']);
 
-          // 3. Levenshtein Distance
           const levenshtein = (a: string, b: string): number => {
               const matrix = [];
               for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -377,7 +373,6 @@ export default function Editor() {
               return matrix[b.length][a.length];
           };
 
-          // 4. Similarity Score (0.0 - 1.0)
           const getStringSimilarity = (s1: string, s2: string): number => {
               const longer = s1.length > s2.length ? s1 : s2;
               const shorter = s1.length > s2.length ? s2 : s1;
@@ -385,61 +380,47 @@ export default function Editor() {
               return (longer.length - levenshtein(longer, shorter)) / longer.length;
           };
 
-          // 5. Normalization pipeline
           const normalize = (str: string) => {
               return str
                   .toLowerCase()
                   .replace(/ё/g, 'е')
-                  .replace(/,/g, ' ') // Replace commas with space to separate ingredients
+                  .replace(/,/g, ' ') 
                   .replace(/[\u00A0\s]+/g, ' ') 
-                  .replace(/[^\w\sа-я]/g, '') // Remove junk
+                  .replace(/[^\w\sа-я]/g, '') 
                   .trim();
           };
 
           const getTokens = (str: string) => {
               return normalize(str)
                   .split(' ')
-                  .filter(t => t.length > 1 && !stopWords.has(t)); // Filter short words and stop words
+                  .filter(t => t.length > 1 && !stopWords.has(t));
           };
 
-          // 6. Main Matching Logic
           const calculateScore = (strA: string, strB: string) => {
               const tokensA = getTokens(strA);
               const tokensB = getTokens(strB);
 
               if (tokensA.length === 0 || tokensB.length === 0) return 0;
 
-              // Compare stems of shorter phrase against stems of longer phrase
-              // This handles "Pasta, turkey" (DB) vs "Pasta with turkey and sauce" (Site)
               const [short, long] = tokensA.length < tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
-
               let totalScore = 0;
 
               short.forEach(sToken => {
                   const sStem = getStem(sToken);
                   let maxTokenScore = 0;
-                  
                   long.forEach(lToken => {
                       const lStem = getStem(lToken);
-                      
-                      // Check exact stem match first
                       if (sStem === lStem) {
                           maxTokenScore = 1.0;
                       } else {
-                          // If stems differ slightly, check fuzzy on stems
-                          // Only if stems are long enough
                           if (sStem.length > 3 && lStem.length > 3) {
                               const sim = getStringSimilarity(sStem, lStem);
                               if (sim > maxTokenScore) maxTokenScore = sim;
                           }
                       }
                   });
-                  
-                  // "Penalty" for low matches to reduce noise
                   totalScore += (maxTokenScore > 0.65 ? maxTokenScore : 0);
               });
-
-              // Score is average of best matches for the shorter phrase
               return totalScore / short.length;
           };
 
@@ -452,62 +433,125 @@ export default function Editor() {
               }
           };
 
-          // 1. Find all product cards based on user provided structure
-          const productCards = doc.querySelectorAll('.menu-dish-list-item');
+          // --- EXTRACTING DATA FROM HTML ---
           
-          if (productCards.length === 0) {
+          // 1. Structure Site Data by Category (H2 -> Next UL)
+          const siteMap: Record<string, { title: string, img: string }[]> = {};
+          const allSiteItems: { title: string, img: string }[] = [];
+
+          // Helper to extract data from a card
+          const extractCardData = (card: Element) => {
+              let title = '';
+              let imageSrc = '';
+              
+              // Title from hidden input or text
+              const hiddenInput = card.querySelector('input.dish-name');
+              if (hiddenInput && (hiddenInput as HTMLInputElement).value) {
+                  title = (hiddenInput as HTMLInputElement).value;
+              } else {
+                  const titleEl = card.querySelector('.menu-dish-list-item-name');
+                  if (titleEl && titleEl.textContent) title = titleEl.textContent;
+              }
+
+              // Image
+              const imgEl = card.querySelector('img');
+              if (imgEl) {
+                  imageSrc = imgEl.getAttribute('src') || '';
+                  if (!imageSrc || imageSrc.includes('noimg')) imageSrc = imgEl.getAttribute('data-src') || '';
+              }
+              
+              return { title, img: imageSrc };
+          };
+
+          // Parse Headers and sections
+          const headers = doc.querySelectorAll('h2');
+          headers.forEach(h2 => {
+              const catName = normalize(h2.textContent || '');
+              
+              // Find the next UL that contains items
+              let sibling = h2.nextElementSibling;
+              while (sibling) {
+                  if (sibling.tagName === 'H2') break; // Stop at next header
+                  
+                  if (sibling.tagName === 'UL') {
+                      const items: { title: string, img: string }[] = [];
+                      sibling.querySelectorAll('.menu-dish-list-item').forEach(card => {
+                          const data = extractCardData(card);
+                          if (data.title && data.img) {
+                              items.push(data);
+                              allSiteItems.push(data); // Add to global backup
+                          }
+                      });
+                      
+                      if (items.length > 0) {
+                          if (!siteMap[catName]) siteMap[catName] = [];
+                          siteMap[catName].push(...items);
+                      }
+                  }
+                  sibling = sibling.nextElementSibling;
+              }
+          });
+
+          // Fallback: If no headers/sections found, just grab all items from document
+          if (allSiteItems.length === 0) {
+               doc.querySelectorAll('.menu-dish-list-item').forEach(card => {
+                  const data = extractCardData(card);
+                  if(data.title && data.img) allSiteItems.push(data);
+               });
+          }
+
+          if (allSiteItems.length === 0) {
               addToast("Не найдены карточки товаров. Проверьте ссылку.", "info");
               setIsParsing(false);
               return;
           }
 
-          // 2. Iterate through found cards
-          productCards.forEach((card) => {
-              let title = '';
-              let imageSrc = '';
+          // 2. Iterate Recipes and Find Matches
+          recipes.forEach(r => {
+              if (r.isArchived) return;
+              if (r.imageUrl) return; // CRITICAL: SKIP EXISTING IMAGES
 
-              // Try getting title from hidden input (most reliable)
-              const hiddenInput = card.querySelector('input.dish-name');
-              if (hiddenInput && (hiddenInput as HTMLInputElement).value) {
-                  title = (hiddenInput as HTMLInputElement).value;
-              } else {
-                  // Fallback to visible text
-                  const titleEl = card.querySelector('.menu-dish-list-item-name');
-                  if (titleEl && titleEl.textContent) title = titleEl.textContent;
+              // Determine where to look
+              let searchPool = allSiteItems; // Default: look everywhere
+              
+              if (r.category) {
+                  // Try to find matching category in siteMap
+                  const rCat = normalize(r.category);
+                  let bestSiteCatKey = '';
+                  let bestCatScore = 0;
+
+                  Object.keys(siteMap).forEach(siteCat => {
+                      const score = calculateScore(rCat, siteCat);
+                      // Use a high threshold for category mapping
+                      if (score > 0.8 && score > bestCatScore) { 
+                          bestCatScore = score;
+                          bestSiteCatKey = siteCat;
+                      }
+                  });
+
+                  if (bestSiteCatKey) {
+                      searchPool = siteMap[bestSiteCatKey];
+                  }
               }
 
-              // Get Image from img tag
-              const imgEl = card.querySelector('img');
-              if (imgEl) {
-                  imageSrc = imgEl.getAttribute('src') || '';
-                  // Some sites use data-src for lazy loading
-                  if (!imageSrc) imageSrc = imgEl.getAttribute('data-src') || '';
-              }
+              // Find best dish match in the specific pool
+              let bestItem = null;
+              let bestItemScore = 0;
 
-              if (!title || !imageSrc) return;
-
-              // 3. Find best match in local recipes using Advanced Fuzzy Logic
-              let bestRecipe: TechCard | null = null;
-              let highestScore = 0;
-
-              recipes.forEach(r => {
-                  if (r.isArchived) return;
-
-                  const score = calculateScore(title, r.title);
-
-                  // Threshold 0.65 allows for decent variation but requires stems to match
-                  if (score > 0.65 && score > highestScore) {
-                      highestScore = score;
-                      bestRecipe = r;
+              searchPool.forEach(item => {
+                  const score = calculateScore(r.title, item.title);
+                  if (score > 0.65 && score > bestItemScore) {
+                      bestItemScore = score;
+                      bestItem = item;
                   }
               });
 
-              if (bestRecipe) {
+              if (bestItem) {
                   matches.push({
-                      recipeId: (bestRecipe as TechCard).id,
-                      recipeName: (bestRecipe as TechCard).title,
-                      oldImage: (bestRecipe as TechCard).imageUrl || '',
-                      newImage: resolveUrl(imageSrc),
+                      recipeId: r.id,
+                      recipeName: r.title,
+                      oldImage: r.imageUrl || '',
+                      newImage: resolveUrl(bestItem.img),
                       selected: true
                   });
               }
@@ -523,7 +567,7 @@ export default function Editor() {
 
           setImageMatches(uniqueMatches);
           
-          if (uniqueMatches.length === 0) addToast("Совпадений не найдено", "info");
+          if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
           else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
 
       } catch (e: any) {
