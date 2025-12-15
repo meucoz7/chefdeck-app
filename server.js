@@ -311,6 +311,31 @@ app.post('/admin/register-bot', async (req, res) => {
     }
 });
 
+// --- PROXY ENDPOINT FOR SCRAPING ---
+app.get('/api/proxy', resolveTenant, async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).json({ error: "URL is required" });
+
+    try {
+        console.log(`🌐 Proxying request to: ${targetUrl}`);
+        const response = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+        
+        if (!response.ok) {
+            return res.status(response.status).send(`Failed to fetch remote URL: ${response.statusText}`);
+        }
+
+        const html = await response.text();
+        res.send(html);
+    } catch (e) {
+        console.error("Proxy error:", e.message);
+        res.status(500).send(`Proxy Error: ${e.message}`);
+    }
+});
+
 // --- CLIENT API (Scoped by Tenant) ---
 
 // 1. Recipes
