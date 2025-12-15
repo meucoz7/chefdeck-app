@@ -338,9 +338,22 @@ export default function Editor() {
           
           const matches: ImageMatch[] = [];
           
-          // --- FUZZY MATCHING HELPERS ---
+          // --- ADVANCED FUZZY MATCHING WITH STEMMING ---
 
-          // 1. Levenshtein Distance (To handle typos: "Папарделли" vs "Паппарделле")
+          // 1. Simple Russian Stemmer (Removes common endings)
+          // "Грибами" -> "Гриб", "Индейкой" -> "Индейк"
+          const getStem = (word: string) => {
+              const w = word.toLowerCase();
+              // Regex matches typical Russian adjective/noun endings
+              const endings = /(?:ами|ями|ов|ев|ей|ой|ий|ый|ая|яя|ое|ее|ые|ие|ыми|ими|им|ым|ом|ем|ах|ях|ую|юю|ы|и|а|я|о|е|у|ю)$/i;
+              if (w.length > 4) return w.replace(endings, '');
+              return w;
+          };
+
+          // 2. Stop words to ignore
+          const stopWords = new Set(['с', 'со', 'и', 'в', 'на', 'под', 'из', 'от', 'для', 'по', 'над', 'к']);
+
+          // 3. Levenshtein Distance
           const levenshtein = (a: string, b: string): number => {
               const matrix = [];
               for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -364,7 +377,7 @@ export default function Editor() {
               return matrix[b.length][a.length];
           };
 
-          // 2. Similarity Score (0.0 - 1.0)
+          // 4. Similarity Score (0.0 - 1.0)
           const getStringSimilarity = (s1: string, s2: string): number => {
               const longer = s1.length > s2.length ? s1 : s2;
               const shorter = s1.length > s2.length ? s2 : s1;
@@ -372,47 +385,58 @@ export default function Editor() {
               return (longer.length - levenshtein(longer, shorter)) / longer.length;
           };
 
-          // 3. Normalization (Handle 'ё' -> 'е', remove junk)
+          // 5. Normalization pipeline
           const normalize = (str: string) => {
               return str
                   .toLowerCase()
-                  .replace(/ё/g, 'е') // Crucial for Russian
+                  .replace(/ё/g, 'е')
+                  .replace(/,/g, ' ') // Replace commas with space to separate ingredients
                   .replace(/[\u00A0\s]+/g, ' ') 
-                  .replace(/[^\w\sа-я]/g, '') // Remove punctuation
+                  .replace(/[^\w\sа-я]/g, '') // Remove junk
                   .trim();
           };
 
-          // 4. Main Matching Logic
+          const getTokens = (str: string) => {
+              return normalize(str)
+                  .split(' ')
+                  .filter(t => t.length > 1 && !stopWords.has(t)); // Filter short words and stop words
+          };
+
+          // 6. Main Matching Logic
           const calculateScore = (strA: string, strB: string) => {
-              const tokensA = normalize(strA).split(' ').filter(t => t.length > 0);
-              const tokensB = normalize(strB).split(' ').filter(t => t.length > 0);
+              const tokensA = getTokens(strA);
+              const tokensB = getTokens(strB);
 
               if (tokensA.length === 0 || tokensB.length === 0) return 0;
 
-              // Check if the semantic core of the shorter phrase exists in the longer one
+              // Compare stems of shorter phrase against stems of longer phrase
+              // This handles "Pasta, turkey" (DB) vs "Pasta with turkey and sauce" (Site)
               const [short, long] = tokensA.length < tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
 
               let totalScore = 0;
 
               short.forEach(sToken => {
+                  const sStem = getStem(sToken);
                   let maxTokenScore = 0;
+                  
                   long.forEach(lToken => {
-                      // Exact match
-                      if (sToken === lToken) {
+                      const lStem = getStem(lToken);
+                      
+                      // Check exact stem match first
+                      if (sStem === lStem) {
                           maxTokenScore = 1.0;
                       } else {
-                          // Fuzzy match allowed if tokens are similar length
-                          if (Math.abs(sToken.length - lToken.length) <= 3) {
-                               const sim = getStringSimilarity(sToken, lToken);
-                               if (sim > maxTokenScore) maxTokenScore = sim;
+                          // If stems differ slightly, check fuzzy on stems
+                          // Only if stems are long enough
+                          if (sStem.length > 3 && lStem.length > 3) {
+                              const sim = getStringSimilarity(sStem, lStem);
+                              if (sim > maxTokenScore) maxTokenScore = sim;
                           }
                       }
                   });
                   
-                  // Only count if similarity is significant (> 0.6)
-                  // "chicken" vs "cheese" -> low score, ignored
-                  // "щеками" vs "щечками" -> high score, added
-                  totalScore += (maxTokenScore > 0.6 ? maxTokenScore : 0);
+                  // "Penalty" for low matches to reduce noise
+                  totalScore += (maxTokenScore > 0.65 ? maxTokenScore : 0);
               });
 
               // Score is average of best matches for the shorter phrase
@@ -471,9 +495,8 @@ export default function Editor() {
 
                   const score = calculateScore(title, r.title);
 
-                  // Threshold 0.75 allows for slight variations like "Папарделли" vs "Паппарделле"
-                  // but blocks completely different words.
-                  if (score > 0.75 && score > highestScore) {
+                  // Threshold 0.65 allows for decent variation but requires stems to match
+                  if (score > 0.65 && score > highestScore) {
                       highestScore = score;
                       bestRecipe = r;
                   }
