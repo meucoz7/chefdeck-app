@@ -339,12 +339,17 @@ export default function Editor() {
           const matches: ImageMatch[] = [];
           
           // Helper to normalize strings (handle &nbsp;, case, special chars)
-          // Replaces non-breaking spaces (\u00A0) and regular whitespace with single space
           const normalize = (str: string) => {
               return str
-                  .replace(/[\u00A0\s]+/g, ' ') // Replace all types of spaces (incl. NBSP) with one standard space
-                  .trim()
-                  .toLowerCase();
+                  .toLowerCase()
+                  .replace(/[\u00A0\s]+/g, ' ') // Standardize spaces
+                  .replace(/[^\w\sа-яА-ЯёЁ]/g, '') // Remove punctuation
+                  .trim();
+          };
+
+          const getTokens = (str: string) => {
+              // Split by space, filter out empty strings
+              return normalize(str).split(' ').filter(t => t.length > 0);
           };
 
           // Helper to resolve URL
@@ -356,8 +361,7 @@ export default function Editor() {
               }
           };
 
-          // 1. Find all product cards based on user provided structure
-          // Target class: .menu-dish-list-item
+          // 1. Find all product cards based on common site structures
           const productCards = doc.querySelectorAll('.menu-dish-list-item');
           
           if (productCards.length === 0) {
@@ -371,7 +375,7 @@ export default function Editor() {
               let title = '';
               let imageSrc = '';
 
-              // Try getting title from hidden input (most reliable as per user snippet)
+              // Try getting title from hidden input (most reliable)
               const hiddenInput = card.querySelector('input.dish-name');
               if (hiddenInput && (hiddenInput as HTMLInputElement).value) {
                   title = (hiddenInput as HTMLInputElement).value;
@@ -391,20 +395,43 @@ export default function Editor() {
 
               if (!title || !imageSrc) return;
 
-              // 3. Match against local DB
-              const normalizedSiteTitle = normalize(title);
+              const siteTokens = getTokens(title);
+              if (siteTokens.length === 0) return;
 
-              // Find best match in local recipes
-              const localRecipe = recipes.find(r => {
-                  const normalizedDbTitle = normalize(r.title);
-                  return !r.isArchived && normalizedDbTitle === normalizedSiteTitle;
+              // 3. Find best match in local recipes using Fuzzy Logic (Overlap Coefficient)
+              let bestRecipe: TechCard | null = null;
+              let highestScore = 0;
+
+              recipes.forEach(r => {
+                  if (r.isArchived) return;
+
+                  const dbTokens = getTokens(r.title);
+                  if (dbTokens.length === 0) return;
+
+                  // Calculate intersection of tokens
+                  const intersection = siteTokens.filter(token => dbTokens.includes(token));
+                  const overlap = intersection.length;
+                  
+                  // Use Overlap Coefficient: overlap / min(lenA, lenB)
+                  // This allows "Rigatoni" to match "Pasta Rigatoni" perfectly (1/1 = 1.0)
+                  const minLen = Math.min(siteTokens.length, dbTokens.length);
+                  
+                  if (minLen === 0) return;
+
+                  const score = overlap / minLen;
+
+                  // Check if this is a good match (> 75% overlap of the shorter phrase)
+                  if (score > 0.75 && score > highestScore) {
+                      highestScore = score;
+                      bestRecipe = r;
+                  }
               });
 
-              if (localRecipe) {
+              if (bestRecipe) {
                   matches.push({
-                      recipeId: localRecipe.id,
-                      recipeName: localRecipe.title,
-                      oldImage: localRecipe.imageUrl || '',
+                      recipeId: (bestRecipe as TechCard).id,
+                      recipeName: (bestRecipe as TechCard).title,
+                      oldImage: (bestRecipe as TechCard).imageUrl || '',
                       newImage: resolveUrl(imageSrc),
                       selected: true
                   });
