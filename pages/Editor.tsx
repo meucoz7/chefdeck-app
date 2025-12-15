@@ -6,8 +6,9 @@ import { useToast } from '../context/ToastContext';
 import { TechCard, Ingredient } from '../types';
 import { parsePdfFile, ParsedPdfData } from '../services/pdfService';
 import { useTelegram } from '../context/TelegramContext';
+import { apiFetch } from '../services/api';
 
-type EditorMode = 'create' | 'import-upload' | 'import-staging';
+type EditorMode = 'create' | 'import-upload' | 'import-staging' | 'import-images';
 
 interface StagedRecipe extends ParsedPdfData {
   id: string;
@@ -18,6 +19,14 @@ interface StagedRecipe extends ParsedPdfData {
   selected: boolean;
   collapsed: boolean;
   isDuplicate: boolean; 
+}
+
+interface ImageMatch {
+    recipeId: string;
+    recipeName: string;
+    oldImage: string;
+    newImage: string;
+    selected: boolean;
 }
 
 export default function Editor() {
@@ -46,14 +55,17 @@ export default function Editor() {
   const [shouldNotify, setShouldNotify] = useState(true); 
   const [showUrlInput, setShowUrlInput] = useState(false);
 
-  // Import Mode State
+  // Import PDF Mode State
   const [isParsing, setIsParsing] = useState(false);
   const [parsingProgress, setParsingProgress] = useState(0); // 0-100
   const [parsingStatus, setParsingStatus] = useState('');
-  
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [importNotify, setImportNotify] = useState(false);
+  
+  // Import Images Mode State
+  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [imageMatches, setImageMatches] = useState<ImageMatch[]>([]);
   
   // Saving Progress
   const [isImporting, setIsImporting] = useState(false);
@@ -141,7 +153,7 @@ export default function Editor() {
             setStagedRecipes([]);
             setMode('import-upload');
           }
-      } else if (mode === 'import-upload') {
+      } else if (mode === 'import-upload' || mode === 'import-images') {
           setMode('create');
       } else {
           if (id) navigate(`/recipe/${id}`);
@@ -208,7 +220,7 @@ export default function Editor() {
     }
   };
 
-  // --- IMPORT ACTIONS ---
+  // --- PDF IMPORT ACTIONS ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -304,6 +316,170 @@ export default function Editor() {
           setIsImporting(false);
       }
   };
+
+  // --- IMAGE IMPORT ACTIONS ---
+  const handleUrlScrape = async () => {
+      if (!scrapeUrl) { addToast("Введите ссылку", "error"); return; }
+      
+      setIsParsing(true);
+      setParsingStatus('Сканирование сайта...');
+      setImageMatches([]);
+
+      try {
+          // Use Proxy to fetch HTML
+          const encodedUrl = encodeURIComponent(scrapeUrl);
+          const res = await apiFetch(`/api/proxy?url=${encodedUrl}`);
+          if (!res.ok) throw new Error("Ошибка доступа к сайту");
+          
+          const html = await res.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          
+          // Target specific class mentioned by user
+          const imageElements = doc.querySelectorAll('.menu-dish-list-item-img-hover');
+          
+          if (imageElements.length === 0) {
+              addToast("Изображения не найдены (проверьте класс)", "info");
+              setIsParsing(false);
+              return;
+          }
+
+          const matches: ImageMatch[] = [];
+          
+          // Helper for fuzzy matching
+          const normalize = (s: string) => s.toLowerCase().replace(/[^a-zа-яё0-9]/g, '');
+          const getMatchScore = (str1: string, str2: string) => {
+              const s1 = normalize(str1);
+              const s2 = normalize(str2);
+              if (s1 === s2) return 100;
+              if (s1.includes(s2) || s2.includes(s1)) return 80;
+              // Token intersection
+              const t1 = new Set(s1.split(''));
+              const t2 = new Set(s2.split(''));
+              const intersection = new Set([...t1].filter(x => t2.has(x)));
+              return (intersection.size / Math.max(t1.size, t2.size)) * 100;
+          };
+
+          // Process found elements
+          for (let i = 0; i < imageElements.length; i++) {
+              const el = imageElements[i] as HTMLElement;
+              
+              // 1. Extract Image URL
+              let imgSrc = '';
+              // Check inline style first (background-image)
+              const style = el.getAttribute('style');
+              if (style && style.includes('url(')) {
+                  const match = style.match(/url\(['"]?(.*?)['"]?\)/);
+                  if (match) imgSrc = match[1];
+              }
+              // Check if it's an img tag or has one inside
+              if (!imgSrc && el.tagName === 'IMG') imgSrc = (el as HTMLImageElement).src;
+              if (!imgSrc) {
+                  const imgChild = el.querySelector('img');
+                  if (imgChild) imgSrc = imgChild.src;
+              }
+
+              // Fix relative URLs
+              if (imgSrc && !imgSrc.startsWith('http')) {
+                  const urlObj = new URL(scrapeUrl);
+                  imgSrc = urlObj.origin + (imgSrc.startsWith('/') ? '' : '/') + imgSrc;
+              }
+
+              if (!imgSrc) continue;
+
+              // 2. Extract Title (Look up to parent, then search for title text)
+              // Assuming card structure: Card > ImageWrapper > Image.  Title is sibling of ImageWrapper.
+              // We traverse up 3 levels searching for text
+              let foundTitle = '';
+              let parent: HTMLElement | null = el.parentElement;
+              let attempts = 0;
+              
+              while (parent && attempts < 3 && !foundTitle) {
+                  // Strategy: Look for headers or specific title classes near this image container
+                  const titleEl = parent.querySelector('.menu-dish-list-item-title, .title, h3, h4, .name');
+                  if (titleEl && titleEl.textContent) {
+                      foundTitle = titleEl.textContent.trim();
+                  } else {
+                      // Fallback: Check if parent text content is short enough to be a title
+                      const text = parent.innerText.trim();
+                      if (text.length > 3 && text.length < 50 && !text.includes('\n')) {
+                          foundTitle = text;
+                      }
+                  }
+                  parent = parent.parentElement;
+                  attempts++;
+              }
+
+              if (!foundTitle) continue;
+
+              // 3. Match against local recipes
+              let bestMatch: { recipe: TechCard, score: number } | null = null;
+              
+              recipes.forEach(r => {
+                  const score = getMatchScore(r.title, foundTitle);
+                  if (score > 60) { // Threshold
+                      if (!bestMatch || score > bestMatch.score) {
+                          bestMatch = { recipe: r, score };
+                      }
+                  }
+              });
+
+              if (bestMatch) {
+                  matches.push({
+                      recipeId: bestMatch.recipe.id,
+                      recipeName: bestMatch.recipe.title,
+                      oldImage: bestMatch.recipe.imageUrl || '',
+                      newImage: imgSrc,
+                      selected: true
+                  });
+              }
+          }
+
+          // Remove duplicates (keep best match for each recipe)
+          const uniqueMatches = matches.reduce((acc, current) => {
+              const existing = acc.find(m => m.recipeId === current.recipeId);
+              if (!existing) {
+                  acc.push(current);
+              }
+              return acc;
+          }, [] as ImageMatch[]);
+
+          setImageMatches(uniqueMatches);
+          
+          if (uniqueMatches.length === 0) addToast("Совпадений не найдено", "info");
+          else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
+
+      } catch (e: any) {
+          console.error(e);
+          const msg = e instanceof Error ? e.message : String(e);
+          addToast("Ошибка парсинга: " + msg, "error");
+      } finally {
+          setIsParsing(false);
+      }
+  };
+
+  const handleApplyImages = async () => {
+      const selected = imageMatches.filter(m => m.selected);
+      if (selected.length === 0) return;
+
+      setIsImporting(true);
+      try {
+          // Process sequentially to avoid race conditions/overload
+          for (const match of selected) {
+              const recipe = recipes.find(r => r.id === match.recipeId);
+              if (recipe) {
+                  const updated = { ...recipe, imageUrl: match.newImage };
+                  await updateRecipe(updated, false); // No notify for bulk image update
+              }
+          }
+          addToast("Изображения обновлены", "success");
+          navigate('/');
+      } catch (e) {
+          addToast("Ошибка обновления", "error");
+      } finally {
+          setIsImporting(false);
+      }
+  };
   
   if (!isAdmin) return null;
 
@@ -315,7 +491,7 @@ export default function Editor() {
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
                 <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
                     <h3 className="font-bold text-xl mb-6 dark:text-white">
-                        {isImporting ? 'Массовый импорт...' : 'Сохранение...'}
+                        {isImporting ? 'Обработка...' : 'Сохранение...'}
                     </h3>
                     
                     <div className="flex justify-center mb-4">
@@ -340,13 +516,24 @@ export default function Editor() {
           
           <div className="flex items-center gap-2">
             {mode === 'create' && !id && (
-                <button onClick={() => setMode('import-upload')} className="text-xs font-bold text-sky-600 bg-white dark:bg-sky-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-sky-500/20">
-                    PDF Импорт
-                </button>
+                <>
+                    <button onClick={() => setMode('import-images')} className="text-xs font-bold text-indigo-600 bg-white dark:bg-indigo-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-indigo-500/20 flex items-center gap-1">
+                        <span>🖼️</span> Фото
+                    </button>
+                    <button onClick={() => setMode('import-upload')} className="text-xs font-bold text-sky-600 bg-white dark:bg-sky-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-sky-500/20 flex items-center gap-1">
+                        <span>📄</span> PDF
+                    </button>
+                </>
             )}
              {mode === 'import-staging' && (
                 <button onClick={handleSaveImport} className="text-xs font-bold text-white bg-gray-900 dark:bg-white dark:text-black px-4 py-2.5 rounded-xl shadow-lg active:scale-95 transition flex items-center gap-2">
                     <span>Сохранить ({stagedRecipes.filter(r=>r.selected).length})</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                </button>
+            )}
+            {mode === 'import-images' && imageMatches.length > 0 && (
+                <button onClick={handleApplyImages} className="text-xs font-bold text-white bg-green-600 px-4 py-2.5 rounded-xl shadow-lg active:scale-95 transition flex items-center gap-2">
+                    <span>Применить ({imageMatches.filter(r=>r.selected).length})</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
                 </button>
             )}
@@ -355,7 +542,9 @@ export default function Editor() {
 
        <div className="px-5 pb-10 space-y-6 max-w-lg mx-auto">
           <h1 className="text-2xl font-black dark:text-white leading-none tracking-tight mb-4">
-                {mode === 'create' ? (id ? 'Редактирование' : 'Новое блюдо') : mode === 'import-upload' ? 'Импорт PDF' : 'Редактор'}
+                {mode === 'create' ? (id ? 'Редактирование' : 'Новое блюдо') : 
+                 mode === 'import-upload' ? 'Импорт PDF' : 
+                 mode === 'import-images' ? 'Импорт Фото' : 'Редактор'}
           </h1>
 
           {mode === 'create' && (
@@ -543,6 +732,85 @@ export default function Editor() {
                          </>
                      )}
                  </div>
+              </div>
+          )}
+          
+          {/* IMPORT IMAGES MODE */}
+          {mode === 'import-images' && (
+              <div className="space-y-6 animate-slide-up pb-28">
+                  {/* Input Card */}
+                  <div className="bg-white dark:bg-[#1e1e24] p-6 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-white/5">
+                      <h2 className="font-black dark:text-white text-xl mb-4">Скрапинг изображений</h2>
+                      <div className="space-y-4">
+                          <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase">Ссылка на меню</label>
+                              <div className="flex gap-2">
+                                  <input 
+                                    type="url" 
+                                    className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                    placeholder="https://milimon.ru/chipolucho/"
+                                    value={scrapeUrl}
+                                    onChange={e => setScrapeUrl(e.target.value)}
+                                  />
+                                  <button 
+                                    onClick={handleUrlScrape} 
+                                    disabled={isParsing}
+                                    className="bg-indigo-600 text-white rounded-xl px-4 font-bold disabled:opacity-50"
+                                  >
+                                      {isParsing ? '...' : '🔍'}
+                                  </button>
+                              </div>
+                              <p className="text-[10px] text-gray-400 leading-tight">
+                                  Система проанализирует сайт, найдет фото и сопоставит их с названиями в вашей базе.
+                              </p>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Matches Grid */}
+                  {imageMatches.length > 0 && (
+                      <div className="space-y-4">
+                          <div className="flex justify-between items-center px-2">
+                              <h3 className="font-bold text-sm text-gray-500 uppercase tracking-widest">Совпадения ({imageMatches.length})</h3>
+                          </div>
+                          
+                          {imageMatches.map((match, idx) => (
+                              <div 
+                                key={idx} 
+                                onClick={() => {
+                                    const newMatches = [...imageMatches];
+                                    newMatches[idx].selected = !newMatches[idx].selected;
+                                    setImageMatches(newMatches);
+                                }}
+                                className={`bg-white dark:bg-[#1e1e24] rounded-3xl p-3 border-2 transition-all cursor-pointer flex gap-3 items-center ${match.selected ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-transparent opacity-60'}`}
+                              >
+                                  {/* Checkbox */}
+                                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${match.selected ? 'bg-indigo-500 border-indigo-500' : 'border-gray-300'}`}>
+                                      {match.selected && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+                                  </div>
+
+                                  <div className="flex-1 min-w-0">
+                                      <h4 className="font-bold text-sm dark:text-white truncate">{match.recipeName}</h4>
+                                      <div className="flex gap-2 mt-2">
+                                          <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-xl overflow-hidden relative">
+                                              {match.oldImage ? (
+                                                  <img src={match.oldImage} className="w-full h-full object-cover opacity-50" />
+                                              ) : (
+                                                  <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">Нет</div>
+                                              )}
+                                              <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-[8px] text-white text-center py-0.5">Было</span>
+                                          </div>
+                                          <div className="flex items-center text-gray-300">➜</div>
+                                          <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-xl overflow-hidden relative border-2 border-indigo-500">
+                                              <img src={match.newImage} className="w-full h-full object-cover" />
+                                              <span className="absolute bottom-0 left-0 right-0 bg-indigo-500 text-[8px] text-white text-center py-0.5">Станет</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
               </div>
           )}
           
