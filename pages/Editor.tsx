@@ -338,18 +338,85 @@ export default function Editor() {
           
           const matches: ImageMatch[] = [];
           
-          // Helper to normalize strings (handle &nbsp;, case, special chars)
+          // --- FUZZY MATCHING HELPERS ---
+
+          // 1. Levenshtein Distance (To handle typos: "Папарделли" vs "Паппарделле")
+          const levenshtein = (a: string, b: string): number => {
+              const matrix = [];
+              for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+              for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+              for (let i = 1; i <= b.length; i++) {
+                  for (let j = 1; j <= a.length; j++) {
+                      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                          matrix[i][j] = matrix[i - 1][j - 1];
+                      } else {
+                          matrix[i][j] = Math.min(
+                              matrix[i - 1][j - 1] + 1, // substitution
+                              Math.min(
+                                  matrix[i][j - 1] + 1, // insertion
+                                  matrix[i - 1][j] + 1  // deletion
+                              )
+                          );
+                      }
+                  }
+              }
+              return matrix[b.length][a.length];
+          };
+
+          // 2. Similarity Score (0.0 - 1.0)
+          const getStringSimilarity = (s1: string, s2: string): number => {
+              const longer = s1.length > s2.length ? s1 : s2;
+              const shorter = s1.length > s2.length ? s2 : s1;
+              if (longer.length === 0) return 1.0;
+              return (longer.length - levenshtein(longer, shorter)) / longer.length;
+          };
+
+          // 3. Normalization (Handle 'ё' -> 'е', remove junk)
           const normalize = (str: string) => {
               return str
                   .toLowerCase()
-                  .replace(/[\u00A0\s]+/g, ' ') // Standardize spaces
-                  .replace(/[^\w\sа-яА-ЯёЁ]/g, '') // Remove punctuation
+                  .replace(/ё/g, 'е') // Crucial for Russian
+                  .replace(/[\u00A0\s]+/g, ' ') 
+                  .replace(/[^\w\sа-я]/g, '') // Remove punctuation
                   .trim();
           };
 
-          const getTokens = (str: string) => {
-              // Split by space, filter out empty strings
-              return normalize(str).split(' ').filter(t => t.length > 0);
+          // 4. Main Matching Logic
+          const calculateScore = (strA: string, strB: string) => {
+              const tokensA = normalize(strA).split(' ').filter(t => t.length > 0);
+              const tokensB = normalize(strB).split(' ').filter(t => t.length > 0);
+
+              if (tokensA.length === 0 || tokensB.length === 0) return 0;
+
+              // Check if the semantic core of the shorter phrase exists in the longer one
+              const [short, long] = tokensA.length < tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
+
+              let totalScore = 0;
+
+              short.forEach(sToken => {
+                  let maxTokenScore = 0;
+                  long.forEach(lToken => {
+                      // Exact match
+                      if (sToken === lToken) {
+                          maxTokenScore = 1.0;
+                      } else {
+                          // Fuzzy match allowed if tokens are similar length
+                          if (Math.abs(sToken.length - lToken.length) <= 3) {
+                               const sim = getStringSimilarity(sToken, lToken);
+                               if (sim > maxTokenScore) maxTokenScore = sim;
+                          }
+                      }
+                  });
+                  
+                  // Only count if similarity is significant (> 0.6)
+                  // "chicken" vs "cheese" -> low score, ignored
+                  // "щеками" vs "щечками" -> high score, added
+                  totalScore += (maxTokenScore > 0.6 ? maxTokenScore : 0);
+              });
+
+              // Score is average of best matches for the shorter phrase
+              return totalScore / short.length;
           };
 
           // Helper to resolve URL
@@ -361,7 +428,7 @@ export default function Editor() {
               }
           };
 
-          // 1. Find all product cards based on common site structures
+          // 1. Find all product cards based on user provided structure
           const productCards = doc.querySelectorAll('.menu-dish-list-item');
           
           if (productCards.length === 0) {
@@ -395,32 +462,17 @@ export default function Editor() {
 
               if (!title || !imageSrc) return;
 
-              const siteTokens = getTokens(title);
-              if (siteTokens.length === 0) return;
-
-              // 3. Find best match in local recipes using Fuzzy Logic (Overlap Coefficient)
+              // 3. Find best match in local recipes using Advanced Fuzzy Logic
               let bestRecipe: TechCard | null = null;
               let highestScore = 0;
 
               recipes.forEach(r => {
                   if (r.isArchived) return;
 
-                  const dbTokens = getTokens(r.title);
-                  if (dbTokens.length === 0) return;
+                  const score = calculateScore(title, r.title);
 
-                  // Calculate intersection of tokens
-                  const intersection = siteTokens.filter(token => dbTokens.includes(token));
-                  const overlap = intersection.length;
-                  
-                  // Use Overlap Coefficient: overlap / min(lenA, lenB)
-                  // This allows "Rigatoni" to match "Pasta Rigatoni" perfectly (1/1 = 1.0)
-                  const minLen = Math.min(siteTokens.length, dbTokens.length);
-                  
-                  if (minLen === 0) return;
-
-                  const score = overlap / minLen;
-
-                  // Check if this is a good match (> 75% overlap of the shorter phrase)
+                  // Threshold 0.75 allows for slight variations like "Папарделли" vs "Паппарделле"
+                  // but blocks completely different words.
                   if (score > 0.75 && score > highestScore) {
                       highestScore = score;
                       bestRecipe = r;
@@ -471,7 +523,8 @@ export default function Editor() {
               const recipe = recipes.find(r => r.id === match.recipeId);
               if (recipe) {
                   const updated = { ...recipe, imageUrl: match.newImage };
-                  await updateRecipe(updated, false); // No notify for bulk image update
+                  // Silent update: notifyAll=false, silent=true
+                  await updateRecipe(updated, false, true); 
               }
           }
           addToast("Изображения обновлены", "success");
