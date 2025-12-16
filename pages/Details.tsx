@@ -20,6 +20,7 @@ const Details: React.FC = () => {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   
   // Font Size State (Default index 2 = text-base)
   const [textSizeIndex, setTextSizeIndex] = useState(2);
@@ -96,8 +97,26 @@ const Details: React.FC = () => {
   };
 
   const handlePrint = () => {
-      const printWindow = window.open('', '', 'width=900,height=1000');
-      if (!printWindow) return;
+      setIsPrinting(true);
+      
+      // Create a hidden iframe
+      const iframe = document.createElement('iframe');
+      // Position off-screen but keep part of DOM to ensure rendering
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      iframe.style.left = '-9999px';
+      iframe.style.top = '0';
+      
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc) {
+          setIsPrinting(false);
+          document.body.removeChild(iframe);
+          return;
+      }
 
       const htmlContent = `
         <!DOCTYPE html>
@@ -189,21 +208,30 @@ const Details: React.FC = () => {
                     ChefDeck • Kitchen Management System
                 </div>
             </div>
-            <script>
-                // Wait for image to load before printing
-                window.onload = () => {
-                    setTimeout(() => {
-                        window.print();
-                        window.close();
-                    }, 500);
-                };
-            </script>
           </body>
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+
+      // Wait for content to load (images/tailwind) then print
+      iframe.onload = () => {
+          setTimeout(() => {
+              // Ensure focus for keyboard shortcuts/accessibility in some browsers
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+              setIsPrinting(false);
+              
+              // Cleanup iframe after print dialog is closed (or after a timeout)
+              setTimeout(() => {
+                  if (document.body.contains(iframe)) {
+                      document.body.removeChild(iframe);
+                  }
+              }, 2000);
+          }, 1000); // 1s delay for styles/images to fully apply
+      };
   };
 
   const getEmbedVideoUrl = (url: string) => {
@@ -267,8 +295,12 @@ const Details: React.FC = () => {
                  </button>
 
                  {/* Print Button (Replaced Edit) */}
-                 <button onClick={handlePrint} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008h-.008V10.5zm-3 0h.008v.008h-.008V10.5z" /></svg>
+                 <button onClick={handlePrint} disabled={isPrinting} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform disabled:opacity-50">
+                    {isPrinting ? (
+                        <svg className="animate-spin h-5 w-5 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008h-.008V10.5zm-3 0h.008v.008h-.008V10.5z" /></svg>
+                    )}
                  </button>
               </div>
           </div>
