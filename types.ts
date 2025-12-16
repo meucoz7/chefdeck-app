@@ -158,3 +158,24 @@ export interface Checklist {
     items: ChecklistItem[];
     lastCompleted?: number;
 }
+
+// Wastage Types
+export type WastageReason = 'spoilage' | 'expired' | 'mistake' | 'training' | 'other';
+
+export interface WastageItem {
+    id: string;
+    ingredientName: string;
+    amount: string;
+    unit: string;
+    reason: WastageReason;
+    comment?: string;
+    photoUrl?: string;
+}
+
+export interface WastageLog {
+    id: string;
+    date: number; // timestamp
+    items: WastageItem[];
+    createdBy?: string;
+}
+
