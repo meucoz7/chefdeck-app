@@ -160,7 +160,7 @@ export interface Checklist {
 }
 
 // Wastage Types
-export type WastageReason = 'spoilage' | 'expired' | 'mistake' | 'training' | 'other';
+export type WastageReason = 'spoilage' | 'expired' | 'mistake' | 'training' | 'staff' | 'employee' | 'other';
 
 export interface WastageItem {
     id: string;
