@@ -226,28 +226,34 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             <SkeletonGrid />
         ) : (
             <>
-                {/* BANNERS: Schedule (Horizontal) + Archive (Square) */}
+                {/* BANNERS: Schedule, Wastage, Archive */}
                 {!search && !favoritesOnly && !selectedCategory && !isReordering && (
-                    <div className="grid grid-cols-3 gap-3 mb-6">
-                        {/* Schedule - 2 Columns (Horizontal Layout) */}
+                    <div className="grid grid-cols-4 gap-3 mb-6">
+                        {/* Schedule - 2 Columns */}
                         <div onClick={() => navigate('/schedule')} className="col-span-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[1.8rem] px-5 py-4 text-white shadow-lg shadow-indigo-500/20 flex flex-row items-center h-24 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden group">
-                            <div className="relative z-10 w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm mr-4 flex-shrink-0 group-hover:scale-110 transition-transform">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                            <div className="relative z-10 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm mr-3 flex-shrink-0 group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
                             </div>
                             <div className="relative z-10 flex-1 min-w-0 flex flex-col justify-center h-full">
-                                <h3 className="font-bold text-base leading-tight truncate">График</h3>
-                                <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Смен</p>
+                                <h3 className="font-bold text-sm leading-tight truncate">График</h3>
+                                <p className="text-[9px] opacity-80 uppercase font-bold tracking-wider">Смен</p>
                             </div>
-                            {/* Decorative Circle */}
-                            <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
                         </div>
 
-                        {/* Archive - 1 Column (Centered Layout) */}
+                        {/* Wastage - 1 Column */}
+                        <div onClick={() => navigate('/wastage')} className="col-span-1 bg-red-100 dark:bg-red-500/20 rounded-[1.8rem] p-2 text-red-600 dark:text-red-400 flex flex-col items-center justify-center gap-1.5 h-24 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden border border-transparent hover:border-red-200 dark:hover:border-red-500/30 group">
+                             <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                             </div>
+                             <h3 className="font-bold text-[10px] leading-tight text-center">Списания</h3>
+                        </div>
+
+                        {/* Archive - 1 Column */}
                         <div onClick={() => navigate('/archive')} className="col-span-1 bg-gray-200 dark:bg-white/10 rounded-[1.8rem] p-2 text-gray-500 dark:text-gray-300 flex flex-col items-center justify-center gap-1.5 h-24 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden border border-transparent hover:border-gray-300 dark:hover:border-white/20 group">
-                             <div className="w-10 h-10 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                             <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg>
                              </div>
-                             <h3 className="font-bold text-xs leading-tight">Архив</h3>
+                             <h3 className="font-bold text-[10px] leading-tight">Архив</h3>
                         </div>
                     </div>
                 )}
@@ -395,7 +401,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                 {!showCategoriesView && filteredRecipes.length === 0 && (
                     <div className="flex flex-col items-center justify-center mt-20 text-center opacity-70">
                         <p className="text-lg font-bold dark:text-white">Ничего не найдено</p>
-                        <button onClick={() => {setSearch(''); clearCategory();}} className="mt-2 text-sky-500 font-bold text-sm">Сбросить фильтры</button>
                     </div>
                 )}
             </>
