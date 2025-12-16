@@ -99,41 +99,13 @@ const Details: React.FC = () => {
   const handlePrint = () => {
       setIsPrinting(true);
       
-      // Create a hidden iframe
-      const iframe = document.createElement('iframe');
-      // Position off-screen but keep part of DOM to ensure rendering
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0px';
-      iframe.style.height = '0px';
-      iframe.style.border = 'none';
-      iframe.style.left = '-9999px';
-      iframe.style.top = '0';
+      // 1. Create a container in the main DOM
+      const printContainer = document.createElement('div');
+      printContainer.id = 'print-container';
       
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentWindow?.document;
-      if (!doc) {
-          setIsPrinting(false);
-          document.body.removeChild(iframe);
-          return;
-      }
-
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${recipe.title}</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-            <style>
-                body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; background-color: #fff; color: #000; }
-                @media print {
-                    @page { margin: 1cm; size: A4; }
-                    .no-print { display: none; }
-                }
-            </style>
-          </head>
-          <body class="p-8">
+      // 2. Generate HTML (Using standard Tailwind classes available in the main app)
+      printContainer.innerHTML = `
+        <div class="p-8 bg-white text-black font-sans min-h-screen">
             <div class="max-w-3xl mx-auto">
                 <!-- Header -->
                 <div class="flex justify-between items-start mb-8 border-b-2 border-black pb-4">
@@ -152,16 +124,15 @@ const Details: React.FC = () => {
 
                 <!-- Image -->
                 ${recipe.imageUrl ? `
-                <div class="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100">
+                <div class="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100 break-inside-avoid">
                     <img src="${recipe.imageUrl}" class="w-full h-full object-cover" />
                 </div>
                 ` : ''}
 
                 <!-- Content Grid -->
                 <div class="grid grid-cols-1 gap-12">
-                    
                     <!-- Ingredients -->
-                    <div>
+                    <div class="break-inside-avoid">
                         <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
                             <span class="w-2 h-2 bg-black rounded-full"></span>
                             Ингредиенты
@@ -179,7 +150,7 @@ const Details: React.FC = () => {
 
                     <!-- Steps -->
                     ${recipe.steps.length > 0 && recipe.steps[0] ? `
-                    <div>
+                    <div class="break-inside-avoid">
                         <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
                             <span class="w-2 h-2 bg-black rounded-full"></span>
                             Приготовление
@@ -197,7 +168,7 @@ const Details: React.FC = () => {
 
                     <!-- Description -->
                     ${recipe.description ? `
-                    <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic">
+                    <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic break-inside-avoid">
                         ${recipe.description}
                     </div>
                     ` : ''}
@@ -208,30 +179,53 @@ const Details: React.FC = () => {
                     ChefDeck • Kitchen Management System
                 </div>
             </div>
-          </body>
-        </html>
+        </div>
       `;
 
-      doc.open();
-      doc.write(htmlContent);
-      doc.close();
+      document.body.appendChild(printContainer);
 
-      // Wait for content to load (images/tailwind) then print
-      iframe.onload = () => {
+      // 3. Inject Print Styles
+      const style = document.createElement('style');
+      style.id = 'print-style';
+      style.innerHTML = `
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #print-container, #print-container * {
+                visibility: visible;
+            }
+            #print-container {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                z-index: 9999;
+                background: white;
+            }
+            #root {
+                display: none;
+            }
+        }
+        @media screen {
+            #print-container {
+                display: none;
+            }
+        }
+      `;
+      document.head.appendChild(style);
+
+      // 4. Print after a short delay to ensure DOM update
+      setTimeout(() => {
+          window.print();
+          setIsPrinting(false);
+          
+          // Cleanup
           setTimeout(() => {
-              // Ensure focus for keyboard shortcuts/accessibility in some browsers
-              iframe.contentWindow?.focus();
-              iframe.contentWindow?.print();
-              setIsPrinting(false);
-              
-              // Cleanup iframe after print dialog is closed (or after a timeout)
-              setTimeout(() => {
-                  if (document.body.contains(iframe)) {
-                      document.body.removeChild(iframe);
-                  }
-              }, 2000);
-          }, 1000); // 1s delay for styles/images to fully apply
-      };
+              if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
+              if (document.head.contains(style)) document.head.removeChild(style);
+          }, 2000);
+      }, 500);
   };
 
   const getEmbedVideoUrl = (url: string) => {
@@ -294,7 +288,7 @@ const Details: React.FC = () => {
                    )}
                  </button>
 
-                 {/* Print Button (Replaced Edit) */}
+                 {/* Print Button */}
                  <button onClick={handlePrint} disabled={isPrinting} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform disabled:opacity-50">
                     {isPrinting ? (
                         <svg className="animate-spin h-5 w-5 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
