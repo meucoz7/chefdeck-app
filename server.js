@@ -64,10 +64,19 @@ const scheduleSchema = new mongoose.Schema({
     staff: Array
 });
 
+const wastageSchema = new mongoose.Schema({
+    botId: { type: String, required: true, index: true },
+    id: String,
+    date: Number,
+    items: Array,
+    createdBy: String
+});
+
 const BotConfig = mongoose.model('BotConfig', botConfigSchema);
 const Recipe = mongoose.model('Recipe', recipeSchema);
 const User = mongoose.model('User', userSchema);
 const Schedule = mongoose.model('Schedule', scheduleSchema);
+const Wastage = mongoose.model('Wastage', wastageSchema);
 
 // --- DB CONNECTION & INDEX CLEANUP ---
 let isConnected = false;
@@ -289,8 +298,6 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- SYSTEM API (For You/Admin) ---
-// Use this to add new bots to your system
-// curl -X POST http://localhost:3000/admin/register-bot -H "Content-Type: application/json" -d '{"botId":"my_pizza_place", "token":"123:ABC...", "name":"Pizza Bot"}'
 app.post('/admin/register-bot', async (req, res) => {
     const { botId, token, name, ownerId } = req.body;
     
@@ -421,9 +428,7 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
 
 app.get('/api/users', resolveTenant, async (req, res) => {
     try {
-        // LOGGING ADDED HERE
         console.log(`👥 [API] Fetching users for bot scope: '${req.tenant.botId}'`);
-        
         const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
         res.json(users);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -456,16 +461,7 @@ app.post('/api/notify', resolveTenant, async (req, res) => {
         recipients = [targetChatId];
     }
 
-    // Construct deep link using the bot's configured start URL logic
-    // Usually: https://t.me/MyBot?startapp=recipe__123
-    // But since we use Web App Button: https://my-app.com?bot_id=...#/recipe/123
-    // For notification buttons, we need to point to the direct TWA link or the web link
-    
-    // We'll use the WEBHOOK_URL as base. 
-    // IMPORTANT: Frontend will need to handle routing hash
     const appUrl = `${WEBHOOK_URL}/?bot_id=${req.tenant.botId}#/recipe/${recipeId}`;
-    
-    // Safe HTML
     const escape = (s) => (s||"").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const safeTitle = escape(recipeTitle || "Без названия");
     
@@ -556,8 +552,35 @@ app.post('/api/schedule/share', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 5. Wastage
+app.get('/api/wastage', resolveTenant, async (req, res) => {
+    try {
+        const logs = await Wastage.find({ botId: req.tenant.botId }).sort({ date: -1 });
+        res.json(logs);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/wastage', resolveTenant, async (req, res) => {
+    const logData = req.body;
+    logData.botId = req.tenant.botId;
+    try {
+        await Wastage.findOneAndUpdate(
+            { id: logData.id, botId: req.tenant.botId },
+            logData,
+            { upsert: true, new: true }
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
+    try {
+        await Wastage.findOneAndDelete({ id: req.params.id, botId: req.tenant.botId });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // --- DYNAMIC WEBHOOK HANDLER ---
-// Telegram sends updates to https://your-domain.com/webhook/<token>
 app.post('/webhook/:token', (req, res) => {
     const token = req.params.token;
     const bot = botInstances.get(token);
@@ -565,7 +588,6 @@ app.post('/webhook/:token', (req, res) => {
     if (bot) {
         bot.processUpdate(req.body);
     } else {
-        // Try to lazy load if it exists in DB but not in memory (rare case if server restarted)
         BotConfig.findOne({ token }).then(config => {
             if (config) {
                 const newBot = getBotInstance(token);
