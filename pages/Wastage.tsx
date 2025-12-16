@@ -30,6 +30,7 @@ const Wastage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isCreateMode, setIsCreateMode] = useState(false);
     const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
     
     // --- CREATE ACT STATE ---
     const [actDate, setActDate] = useState(new Date().toISOString().split('T')[0]);
@@ -48,6 +49,8 @@ const Wastage: React.FC = () => {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Refs for amount inputs to handle auto-focus
+    const amountInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
     // --- DATA LOADING ---
     useEffect(() => {
@@ -104,6 +107,13 @@ const Wastage: React.FC = () => {
         setActItems(newItems);
         setSuggestions([]);
         setActiveRowIndex(null);
+
+        // Auto-focus next field (amount)
+        setTimeout(() => {
+            if (amountInputRefs.current[index]) {
+                amountInputRefs.current[index]?.focus();
+            }
+        }, 50);
     };
 
     // --- ACTIONS ---
@@ -141,6 +151,8 @@ const Wastage: React.FC = () => {
             return;
         }
 
+        setIsSaving(true);
+
         const finalItems: WastageItem[] = validItems.map(i => ({
             id: i.id || uuidv4(),
             ingredientName: i.ingredientName!,
@@ -176,6 +188,8 @@ const Wastage: React.FC = () => {
             addToast("Акт списания создан", "success");
         } catch (e) {
             addToast("Ошибка сохранения", "error");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -276,14 +290,27 @@ const Wastage: React.FC = () => {
     };
 
     return (
-        <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
+        <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] relative">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+
+            {/* SAVING OVERLAY */}
+            {isSaving && createPortal(
+                <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e1e24] p-8 rounded-3xl shadow-2xl flex flex-col items-center">
+                        <div className="animate-spin text-sky-500 mb-4">
+                            <svg className="w-10 h-10" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        </div>
+                        <p className="font-bold text-gray-900 dark:text-white">Сохранение...</p>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             {/* Header */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-40 bg-[#f2f4f7]/90 dark:bg-[#0f1115]/90 backdrop-blur-md">
                 <div className="flex items-center justify-between pt-4 mb-2">
                     <div className="flex items-center gap-3">
-                        <button onClick={handleBack} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
+                        <button onClick={handleBack} disabled={isSaving} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition disabled:opacity-50">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                         </button>
                         <div>
@@ -357,7 +384,9 @@ const Wastage: React.FC = () => {
                                             )}
                                         </div>
                                         <input 
+                                            ref={el => { amountInputRefs.current[idx] = el; }}
                                             type="number" 
+                                            inputMode="decimal"
                                             placeholder="0.0" 
                                             className="w-20 bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-3 text-sm font-bold text-center dark:text-white outline-none focus:ring-2 focus:ring-sky-500/20"
                                             value={item.amount}
@@ -415,8 +444,8 @@ const Wastage: React.FC = () => {
                             </div>
                         </div>
 
-                        <button onClick={handleSaveAct} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl shadow-xl active:scale-95 transition text-lg">
-                            Сохранить акт
+                        <button onClick={handleSaveAct} disabled={isSaving} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl shadow-xl active:scale-95 transition text-lg disabled:opacity-50 disabled:scale-100">
+                            {isSaving ? 'Сохранение...' : 'Сохранить акт'}
                         </button>
                     </div>
                 ) : selectedLog ? (
