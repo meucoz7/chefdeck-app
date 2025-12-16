@@ -95,6 +95,117 @@ const Details: React.FC = () => {
     }
   };
 
+  const handlePrint = () => {
+      const printWindow = window.open('', '', 'width=900,height=1000');
+      if (!printWindow) return;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${recipe.title}</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+            <style>
+                body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; background-color: #fff; color: #000; }
+                @media print {
+                    @page { margin: 1cm; size: A4; }
+                    .no-print { display: none; }
+                }
+            </style>
+          </head>
+          <body class="p-8">
+            <div class="max-w-3xl mx-auto">
+                <!-- Header -->
+                <div class="flex justify-between items-start mb-8 border-b-2 border-black pb-4">
+                    <div>
+                        <h1 class="text-4xl font-black mb-2 uppercase tracking-tight">${recipe.title}</h1>
+                        <div class="flex gap-4 text-sm font-bold uppercase text-gray-500 tracking-wider">
+                            <span>${recipe.category}</span>
+                            ${recipe.outputWeight ? `<span>• Выход: ${recipe.outputWeight}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs font-bold text-gray-400">ТЕХНОЛОГИЧЕСКАЯ КАРТА</p>
+                        <p class="text-xs text-gray-300 mt-1">${new Date().toLocaleDateString()}</p>
+                    </div>
+                </div>
+
+                <!-- Image -->
+                ${recipe.imageUrl ? `
+                <div class="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100">
+                    <img src="${recipe.imageUrl}" class="w-full h-full object-cover" />
+                </div>
+                ` : ''}
+
+                <!-- Content Grid -->
+                <div class="grid grid-cols-1 gap-12">
+                    
+                    <!-- Ingredients -->
+                    <div>
+                        <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                            <span class="w-2 h-2 bg-black rounded-full"></span>
+                            Ингредиенты
+                        </h3>
+                        <div class="space-y-3">
+                            ${recipe.ingredients.map(ing => `
+                                <div class="flex items-end justify-between text-sm">
+                                    <span class="font-medium bg-white pr-2 z-10 relative">${ing.name}</span>
+                                    <span class="flex-1 border-b border-dotted border-gray-300 mb-1 mx-1"></span>
+                                    <span class="font-bold bg-white pl-2 z-10 relative whitespace-nowrap">${ing.amount} ${ing.unit}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Steps -->
+                    ${recipe.steps.length > 0 && recipe.steps[0] ? `
+                    <div>
+                        <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                            <span class="w-2 h-2 bg-black rounded-full"></span>
+                            Приготовление
+                        </h3>
+                        <div class="space-y-6">
+                            ${recipe.steps.map((step, i) => step.trim() ? `
+                                <div class="flex gap-4">
+                                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm border border-gray-200">${i + 1}</div>
+                                    <p class="text-base leading-relaxed text-gray-800 pt-1">${step}</p>
+                                </div>
+                            ` : '').join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <!-- Description -->
+                    ${recipe.description ? `
+                    <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic">
+                        ${recipe.description}
+                    </div>
+                    ` : ''}
+                </div>
+
+                <!-- Footer -->
+                <div class="mt-12 pt-6 border-t border-gray-100 text-center text-xs text-gray-300 font-bold uppercase tracking-widest">
+                    ChefDeck • Kitchen Management System
+                </div>
+            </div>
+            <script>
+                // Wait for image to load before printing
+                window.onload = () => {
+                    setTimeout(() => {
+                        window.print();
+                        window.close();
+                    }, 500);
+                };
+            </script>
+          </body>
+        </html>
+      `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+  };
+
   const getEmbedVideoUrl = (url: string) => {
       const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
       return ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}` : null;
@@ -146,12 +257,6 @@ const Details: React.FC = () => {
                      </button>
                  )}
                  
-                 {isAdmin && !recipe.isArchived && (
-                    <button onClick={handleEdit} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
-                    </button>
-                 )}
-                 
                  {/* Share to Chat Button */}
                  <button onClick={handleSendToChat} disabled={isSending} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-indigo-500 active:scale-90 transition-transform disabled:opacity-50">
                    {isSending ? (
@@ -159,6 +264,11 @@ const Details: React.FC = () => {
                    ) : (
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                    )}
+                 </button>
+
+                 {/* Print Button (Replaced Edit) */}
+                 <button onClick={handlePrint} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008h-.008V10.5zm-3 0h.008v.008h-.008V10.5z" /></svg>
                  </button>
               </div>
           </div>
@@ -298,22 +408,30 @@ const Details: React.FC = () => {
               </div>
           )}
 
-          {/* Admin Actions */}
+          {/* Admin Actions (Grid) */}
           {isAdmin && (
-            <div className="flex flex-col gap-3 py-6 pb-20">
-                {recipe.isArchived ? (
-                    <>
-                        <button onClick={handleRestore} className="w-full bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 font-bold py-3 rounded-xl hover:bg-green-100 transition">
-                            Восстановить из архива
-                        </button>
-                        <button onClick={handleDeleteForever} className="w-full bg-red-50 dark:bg-red-500/10 text-red-500 font-bold py-3 rounded-xl hover:bg-red-100 transition">
-                            Удалить навсегда
-                        </button>
-                    </>
-                ) : (
-                    <button onClick={handleArchive} className="w-full text-gray-400 text-xs font-bold px-6 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition border border-gray-200 dark:border-white/5">
-                        Архивировать техкарту
-                    </button>
+            <div className="py-6 pb-20">
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                     <button onClick={handleEdit} className="bg-gray-200 dark:bg-white/10 text-gray-900 dark:text-white font-bold py-3.5 rounded-2xl hover:bg-gray-300 dark:hover:bg-white/20 transition shadow-sm active:scale-95 flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
+                        Редактировать
+                     </button>
+
+                     {recipe.isArchived ? (
+                         <button onClick={handleRestore} className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 font-bold py-3.5 rounded-2xl hover:bg-green-200 transition shadow-sm active:scale-95">
+                            Восстановить
+                         </button>
+                     ) : (
+                         <button onClick={handleArchive} className="bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition shadow-sm active:scale-95 border border-gray-200 dark:border-white/5">
+                            В архив
+                         </button>
+                     )}
+                </div>
+                
+                {recipe.isArchived && (
+                     <button onClick={handleDeleteForever} className="w-full bg-red-50 dark:bg-red-500/10 text-red-500 font-bold py-3.5 rounded-2xl hover:bg-red-100 transition shadow-sm active:scale-95 border border-red-100 dark:border-red-500/20">
+                        Удалить навсегда
+                     </button>
                 )}
             </div>
           )}
@@ -323,3 +441,4 @@ const Details: React.FC = () => {
 };
 
 export default Details;
+
