@@ -570,10 +570,10 @@ export default function Editor() {
           if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
           else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
 
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
           const msg = e instanceof Error ? e.message : String(e);
-          addToast("Ошибка парсинга: " + msg, "error");
+          addToast(`Ошибка парсинга: ${msg}`, "error");
       } finally {
           setIsParsing(false);
       }
