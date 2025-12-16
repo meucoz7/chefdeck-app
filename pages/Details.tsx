@@ -99,123 +99,104 @@ const Details: React.FC = () => {
   const handlePrint = () => {
       setIsPrinting(true);
       
-      // 1. Create a container in the main DOM
+      // Create a print container directly in body
       const printContainer = document.createElement('div');
       printContainer.id = 'print-container';
       
-      // 2. Generate HTML (Using standard Tailwind classes available in the main app)
+      // Force light theme and white background for print container
+      printContainer.className = 'fixed inset-0 z-[9999] bg-white text-black overflow-y-auto p-8 hidden print:block';
+      
       printContainer.innerHTML = `
-        <div class="p-8 bg-white text-black font-sans min-h-screen">
-            <div class="max-w-3xl mx-auto">
-                <!-- Header -->
-                <div class="flex justify-between items-start mb-8 border-b-2 border-black pb-4">
-                    <div>
-                        <h1 class="text-4xl font-black mb-2 uppercase tracking-tight">${recipe.title}</h1>
-                        <div class="flex gap-4 text-sm font-bold uppercase text-gray-500 tracking-wider">
-                            <span>${recipe.category}</span>
-                            ${recipe.outputWeight ? `<span>• Выход: ${recipe.outputWeight}</span>` : ''}
-                        </div>
+        <div class="max-w-3xl mx-auto font-sans">
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-8 border-b-2 border-black pb-4">
+                <div>
+                    <h1 class="text-4xl font-black mb-2 uppercase tracking-tight">${recipe.title}</h1>
+                    <div class="flex gap-4 text-sm font-bold uppercase text-gray-500 tracking-wider">
+                        <span>${recipe.category}</span>
+                        ${recipe.outputWeight ? `<span>• Выход: ${recipe.outputWeight}</span>` : ''}
                     </div>
-                    <div class="text-right">
-                        <p class="text-xs font-bold text-gray-400">ТЕХНОЛОГИЧЕСКАЯ КАРТА</p>
-                        <p class="text-xs text-gray-300 mt-1">${new Date().toLocaleDateString()}</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs font-bold text-gray-400">ТЕХНОЛОГИЧЕСКАЯ КАРТА</p>
+                    <p class="text-xs text-gray-300 mt-1">${new Date().toLocaleDateString()}</p>
+                </div>
+            </div>
+
+            <!-- Image -->
+            ${recipe.imageUrl ? `
+            <div class="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100 break-inside-avoid">
+                <img src="${recipe.imageUrl}" class="w-full h-full object-cover" />
+            </div>
+            ` : ''}
+
+            <!-- Content Grid -->
+            <div class="grid grid-cols-1 gap-12">
+                <!-- Ingredients -->
+                <div class="break-inside-avoid">
+                    <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                        <span class="w-2 h-2 bg-black rounded-full"></span>
+                        Ингредиенты
+                    </h3>
+                    <div class="space-y-3">
+                        ${recipe.ingredients.map(ing => `
+                            <div class="flex items-end justify-between text-sm">
+                                <span class="font-medium bg-white pr-2 z-10 relative">${ing.name}</span>
+                                <span class="flex-1 border-b border-dotted border-gray-300 mb-1 mx-1"></span>
+                                <span class="font-bold bg-white pl-2 z-10 relative whitespace-nowrap">${ing.amount} ${ing.unit}</span>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
 
-                <!-- Image -->
-                ${recipe.imageUrl ? `
-                <div class="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100 break-inside-avoid">
-                    <img src="${recipe.imageUrl}" class="w-full h-full object-cover" />
+                <!-- Steps -->
+                ${recipe.steps.length > 0 && recipe.steps[0] ? `
+                <div class="break-inside-avoid">
+                    <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                        <span class="w-2 h-2 bg-black rounded-full"></span>
+                        Приготовление
+                    </h3>
+                    <div class="space-y-6">
+                        ${recipe.steps.map((step, i) => step.trim() ? `
+                            <div class="flex gap-4">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm border border-gray-200">${i + 1}</div>
+                                <p class="text-base leading-relaxed text-gray-800 pt-1">${step}</p>
+                            </div>
+                        ` : '').join('')}
+                    </div>
                 </div>
                 ` : ''}
 
-                <!-- Content Grid -->
-                <div class="grid grid-cols-1 gap-12">
-                    <!-- Ingredients -->
-                    <div class="break-inside-avoid">
-                        <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
-                            <span class="w-2 h-2 bg-black rounded-full"></span>
-                            Ингредиенты
-                        </h3>
-                        <div class="space-y-3">
-                            ${recipe.ingredients.map(ing => `
-                                <div class="flex items-end justify-between text-sm">
-                                    <span class="font-medium bg-white pr-2 z-10 relative">${ing.name}</span>
-                                    <span class="flex-1 border-b border-dotted border-gray-300 mb-1 mx-1"></span>
-                                    <span class="font-bold bg-white pl-2 z-10 relative whitespace-nowrap">${ing.amount} ${ing.unit}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-
-                    <!-- Steps -->
-                    ${recipe.steps.length > 0 && recipe.steps[0] ? `
-                    <div class="break-inside-avoid">
-                        <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
-                            <span class="w-2 h-2 bg-black rounded-full"></span>
-                            Приготовление
-                        </h3>
-                        <div class="space-y-6">
-                            ${recipe.steps.map((step, i) => step.trim() ? `
-                                <div class="flex gap-4">
-                                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm border border-gray-200">${i + 1}</div>
-                                    <p class="text-base leading-relaxed text-gray-800 pt-1">${step}</p>
-                                </div>
-                            ` : '').join('')}
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    <!-- Description -->
-                    ${recipe.description ? `
-                    <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic break-inside-avoid">
-                        ${recipe.description}
-                    </div>
-                    ` : ''}
+                <!-- Description -->
+                ${recipe.description ? `
+                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic break-inside-avoid">
+                    ${recipe.description}
                 </div>
+                ` : ''}
+            </div>
 
-                <!-- Footer -->
-                <div class="mt-12 pt-6 border-t border-gray-100 text-center text-xs text-gray-300 font-bold uppercase tracking-widest">
-                    ChefDeck • Kitchen Management System
-                </div>
+            <!-- Footer -->
+            <div class="mt-12 pt-6 border-t border-gray-100 text-center text-xs text-gray-300 font-bold uppercase tracking-widest">
+                ChefDeck • Kitchen Management System
             </div>
         </div>
       `;
 
       document.body.appendChild(printContainer);
 
-      // 3. Inject Print Styles
+      // Inject strict print styles to hide app root
       const style = document.createElement('style');
-      style.id = 'print-style';
+      style.id = 'print-override';
       style.innerHTML = `
         @media print {
-            body * {
-                visibility: hidden;
-            }
-            #print-container, #print-container * {
-                visibility: visible;
-            }
-            #print-container {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                z-index: 9999;
-                background: white;
-            }
-            #root {
-                display: none;
-            }
-        }
-        @media screen {
-            #print-container {
-                display: none;
-            }
+            body > *:not(#print-container) { display: none !important; }
+            #print-container { display: block !important; position: static !important; overflow: visible !important; }
+            @page { margin: 0.5cm; }
         }
       `;
       document.head.appendChild(style);
 
-      // 4. Print after a short delay to ensure DOM update
+      // Trigger print after slight delay
       setTimeout(() => {
           window.print();
           setIsPrinting(false);
@@ -224,8 +205,8 @@ const Details: React.FC = () => {
           setTimeout(() => {
               if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
               if (document.head.contains(style)) document.head.removeChild(style);
-          }, 2000);
-      }, 500);
+          }, 1000);
+      }, 100);
   };
 
   const getEmbedVideoUrl = (url: string) => {
@@ -260,18 +241,15 @@ const Details: React.FC = () => {
           </div>, document.body
       )}
 
-      {/* Header */}
+      {/* Header - Buttons Only */}
       <div className="pt-safe-top px-4 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
           <div className="flex items-center justify-between pt-4">
               <div className="flex items-center gap-3 overflow-hidden">
                  <button onClick={handleBack} className="flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform hover:bg-gray-50 dark:hover:bg-white/10">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                  </button>
-                 <div className="min-w-0">
-                    <h1 className="text-xl font-black text-gray-900 dark:text-white leading-none truncate">{recipe.title}</h1>
-                    <p className="text-xs text-gray-400 font-bold tracking-wider uppercase truncate">{recipe.category}</p>
-                 </div>
               </div>
+              
               <div className="flex gap-2 flex-shrink-0">
                  {!recipe.isArchived && (
                      <button onClick={() => toggleFavorite(recipe.id)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm border border-transparent ${recipe.isFavorite ? 'bg-red-500 text-white' : 'bg-white dark:bg-[#1e1e24] text-gray-400 dark:text-gray-300 hover:text-red-500'}`}>
@@ -300,8 +278,13 @@ const Details: React.FC = () => {
           </div>
       </div>
 
-      <div className="px-5 space-y-6">
+      <div className="px-5 space-y-6 pt-4">
           <div className="animate-slide-up space-y-4">
+              {/* Title Section (Moved from Header) */}
+              <div>
+                  <h1 className="text-3xl font-black text-gray-900 dark:text-white leading-tight mb-2">{recipe.title}</h1>
+              </div>
+
               {/* Archive Banner */}
               {recipe.isArchived && (
                   <div className="bg-gray-800 text-white px-4 py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg">
@@ -311,7 +294,7 @@ const Details: React.FC = () => {
               )}
 
               {/* Tags */}
-              <div className="flex flex-wrap gap-2 mt-2">
+              <div className="flex flex-wrap gap-2">
                    <div className="px-3 py-1.5 bg-white dark:bg-white/5 rounded-full shadow-sm border border-gray-100 dark:border-white/5 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
                       <span className="text-[10px] font-bold tracking-widest uppercase text-gray-600 dark:text-gray-300">{recipe.category}</span>
