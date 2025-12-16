@@ -10,7 +10,7 @@ import { useRecipes } from '../context/RecipeContext';
 import { apiFetch } from '../services/api';
 import { useTelegram } from '../context/TelegramContext';
 
-// Updated Reasons (Removed 'training', removed carousel style in UI)
+// Updated Reasons
 const REASONS: { key: WastageReason; label: string; icon: string; color: string }[] = [
     { key: 'spoilage', label: 'Порча', icon: '🤢', color: 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400' },
     { key: 'expired', label: 'Срок годности', icon: '📅', color: 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400' },
@@ -24,17 +24,16 @@ const Wastage: React.FC = () => {
     const navigate = useNavigate();
     const { addToast } = useToast();
     const { recipes } = useRecipes();
-    const { user } = useTelegram();
+    const { user, isAdmin } = useTelegram();
     
     const [logs, setLogs] = useState<WastageLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreateMode, setIsCreateMode] = useState(false);
+    const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
     
     // --- CREATE ACT STATE ---
     const [actDate, setActDate] = useState(new Date().toISOString().split('T')[0]);
-    // Items in the current act
     const [actItems, setActItems] = useState<Partial<WastageItem>[]>([{ id: uuidv4(), ingredientName: '', amount: '', unit: '' }]);
-    // Global act details
     const [actReason, setActReason] = useState<WastageReason>('spoilage');
     const [actComment, setActComment] = useState('');
     const [actPhoto, setActPhoto] = useState<string | null>(null);
@@ -69,7 +68,9 @@ const Wastage: React.FC = () => {
             });
     };
 
-    // --- AUTOCOMPLETE LOGIC ---
+    // --- HELPERS ---
+    const selectedLog = useMemo(() => logs.find(l => l.id === selectedLogId), [logs, selectedLogId]);
+
     const ingredientNames = useMemo(() => {
         const set = new Set<string>();
         recipes.forEach(r => r.ingredients.forEach(i => set.add(i.name)));
@@ -105,7 +106,7 @@ const Wastage: React.FC = () => {
         setActiveRowIndex(null);
     };
 
-    // --- ACT FORM ACTIONS ---
+    // --- ACTIONS ---
     const addRow = () => {
         setActItems([...actItems, { id: uuidv4(), ingredientName: '', amount: '', unit: '' }]);
     };
@@ -133,7 +134,6 @@ const Wastage: React.FC = () => {
     };
 
     const handleSaveAct = async () => {
-        // Filter empty rows
         const validItems = actItems.filter(i => i.ingredientName?.trim() && i.amount?.trim());
         
         if (validItems.length === 0) {
@@ -141,8 +141,6 @@ const Wastage: React.FC = () => {
             return;
         }
 
-        // Apply global reason/comment/photo to all items in this act
-        // (Backend expects array of items, we treat this Act as a container of items with same meta)
         const finalItems: WastageItem[] = validItems.map(i => ({
             id: i.id || uuidv4(),
             ingredientName: i.ingredientName!,
@@ -181,6 +179,25 @@ const Wastage: React.FC = () => {
         }
     };
 
+    const deleteLog = async (id: string) => {
+        if(confirm("Удалить этот акт?")) {
+            try {
+                await apiFetch(`/api/wastage/${id}`, { method: 'DELETE' });
+                setLogs(prev => prev.filter(l => l.id !== id));
+                if(selectedLogId === id) setSelectedLogId(null);
+                addToast("Акт удален", "info");
+            } catch(e) {
+                addToast("Ошибка удаления", "error");
+            }
+        }
+    };
+
+    const handleBack = () => {
+        if (selectedLogId) setSelectedLogId(null);
+        else if (isCreateMode) setIsCreateMode(false);
+        else navigate('/');
+    };
+
     // --- HISTORY GROUPING ---
     const groupedLogs = useMemo(() => {
         const groups: Record<string, WastageLog[]> = {};
@@ -211,7 +228,7 @@ const Wastage: React.FC = () => {
                 return;
             }
             const start = new Date(dateRange.start).getTime();
-            const end = new Date(dateRange.end).getTime() + 86400000; // End of day
+            const end = new Date(dateRange.end).getTime() + 86400000;
             filteredLogs = logs.filter(l => l.date >= start && l.date <= end);
             filename += `_${dateRange.start}_${dateRange.end}`;
         }
@@ -221,7 +238,6 @@ const Wastage: React.FC = () => {
             return;
         }
 
-        // Aggregate Data: Name+Unit -> Total Amount
         const aggregation: Record<string, { name: string, amount: number, unit: string, reasons: Set<string> }> = {};
 
         filteredLogs.forEach(log => {
@@ -259,13 +275,6 @@ const Wastage: React.FC = () => {
         addToast("Скачивание началось", "success");
     };
 
-    const deleteLog = async (id: string) => {
-        if(confirm("Удалить этот акт?")) {
-            await apiFetch(`/api/wastage/${id}`, { method: 'DELETE' });
-            setLogs(prev => prev.filter(l => l.id !== id));
-        }
-    };
-
     return (
         <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
@@ -274,24 +283,35 @@ const Wastage: React.FC = () => {
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-40 bg-[#f2f4f7]/90 dark:bg-[#0f1115]/90 backdrop-blur-md">
                 <div className="flex items-center justify-between pt-4 mb-2">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => isCreateMode ? setIsCreateMode(false) : navigate('/')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
+                        <button onClick={handleBack} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                         </button>
                         <div>
-                            <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">{isCreateMode ? 'Новый акт' : 'Журнал'}</h1>
-                            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">{isCreateMode ? 'Заполните форму' : 'Учет списаний'}</p>
+                            <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">
+                                {isCreateMode ? 'Новый акт' : (selectedLog ? 'Просмотр' : 'Журнал')}
+                            </h1>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">
+                                {isCreateMode ? 'Заполните форму' : (selectedLog ? 'Детали списания' : 'Учет потерь')}
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        {!isCreateMode && (
+                        {!isCreateMode && !selectedLog && (
                             <>
-                                <button onClick={() => setShowExportModal(true)} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-green-600 dark:text-green-400 border border-gray-100 dark:border-white/10 active:scale-95 transition">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                                </button>
+                                {isAdmin && (
+                                    <button onClick={() => setShowExportModal(true)} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-green-600 dark:text-green-400 border border-gray-100 dark:border-white/10 active:scale-95 transition">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                                    </button>
+                                )}
                                 <button onClick={() => setIsCreateMode(true)} className="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-500/30 active:scale-95 transition hover:bg-red-600">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                                 </button>
                             </>
+                        )}
+                        {selectedLog && (
+                            <button onClick={() => deleteLog(selectedLog.id)} className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-500/20 text-red-500 flex items-center justify-center active:scale-95 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                            </button>
                         )}
                     </div>
                 </div>
@@ -301,8 +321,8 @@ const Wastage: React.FC = () => {
                 {isLoading ? (
                     <div className="text-center py-10 opacity-50"><div className="animate-spin text-red-500 text-2xl">⏳</div></div>
                 ) : isCreateMode ? (
+                    /* CREATE MODE */
                     <div className="animate-slide-up space-y-6 pb-20">
-                        {/* 1. Date */}
                         <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-between">
                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Дата акта</span>
                             <input 
@@ -313,7 +333,6 @@ const Wastage: React.FC = () => {
                             />
                         </div>
 
-                        {/* 2. Ingredients List */}
                         <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Состав списания</h3>
                             <div className="space-y-3">
@@ -351,8 +370,6 @@ const Wastage: React.FC = () => {
                                             value={item.unit}
                                             onChange={e => updateRow(idx, 'unit', e.target.value)}
                                         />
-                                        
-                                        {/* Action Button: Remove or Add (on last) */}
                                         {idx === actItems.length - 1 ? (
                                             <button onClick={addRow} className="w-10 h-10 flex items-center justify-center bg-sky-500 text-white rounded-xl shadow-lg shadow-sky-500/30 active:scale-95 transition">
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -367,7 +384,6 @@ const Wastage: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* 3. Reason, Comment, Photo (Grouped) */}
                         <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 space-y-5">
                             <div>
                                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Причина списания</h3>
@@ -403,8 +419,58 @@ const Wastage: React.FC = () => {
                             Сохранить акт
                         </button>
                     </div>
+                ) : selectedLog ? (
+                    /* DETAIL VIEW */
+                    <div className="animate-slide-up space-y-6 pb-20">
+                        <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
+                            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-white/5">
+                                {(() => {
+                                    const r = REASONS.find(res => res.key === selectedLog.items[0].reason);
+                                    return (
+                                        <>
+                                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl shadow-sm ${r?.color.replace('text-', 'bg-opacity-20 text-')}`}>
+                                                {r?.icon}
+                                            </div>
+                                            <div>
+                                                <h2 className="text-xl font-black text-gray-900 dark:text-white leading-none mb-2">{r?.label}</h2>
+                                                <p className="text-sm text-gray-500 font-medium">Автор: {selectedLog.createdBy}</p>
+                                                <p className="text-xs text-gray-400 mt-1">{new Date(selectedLog.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Позиции ({selectedLog.items.length})</h3>
+                            <div className="space-y-3">
+                                {selectedLog.items.map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-black/20 rounded-xl">
+                                        <span className="font-bold text-gray-900 dark:text-white text-sm">{item.ingredientName}</span>
+                                        <span className="font-mono font-bold text-gray-900 dark:text-white bg-white dark:bg-white/10 px-2 py-1 rounded-lg text-sm">{item.amount} <span className="text-xs text-gray-500">{item.unit}</span></span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {(selectedLog.items[0].comment || selectedLog.items[0].photoUrl) && (
+                                <div className="mt-6 pt-4 border-t border-gray-100 dark:border-white/5 space-y-4">
+                                    {selectedLog.items[0].comment && (
+                                        <div>
+                                            <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-2">Комментарий</h4>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{selectedLog.items[0].comment}"</p>
+                                        </div>
+                                    )}
+                                    {selectedLog.items[0].photoUrl && (
+                                        <div>
+                                            <h4 className="text-[10px] font-bold text-gray-400 uppercase mb-2">Фотоотчет</h4>
+                                            <img src={selectedLog.items[0].photoUrl} className="w-full rounded-xl" />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 ) : (
-                    /* HISTORY LIST MODE */
+                    /* COMPACT LIST MODE */
                     <div className="space-y-6 pb-20">
                         {groupedLogs.length === 0 ? (
                             <div className="text-center py-20 opacity-50">
@@ -415,63 +481,49 @@ const Wastage: React.FC = () => {
                         ) : (
                             groupedLogs.map(([dateStr, logsInGroup]) => {
                                 const dateObj = new Date(logsInGroup[0].date);
-                                const totalItems = logsInGroup.reduce((sum, log) => sum + log.items.length, 0);
-
+                                
                                 return (
                                     <div key={dateStr} className="animate-slide-up">
                                         <div className="flex items-center gap-3 mb-3 px-2">
                                             <div className="h-[1px] flex-1 bg-gray-200 dark:bg-white/10"></div>
                                             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                                                {dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                                {dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
                                             </span>
                                             <div className="h-[1px] flex-1 bg-gray-200 dark:bg-white/10"></div>
                                         </div>
 
-                                        <div className="bg-white dark:bg-[#1e1e24] rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
-                                            <div className="p-1">
-                                                {logsInGroup.map(log => (
-                                                    <div key={log.id} className="relative group border-b border-gray-50 dark:border-white/5 last:border-0">
-                                                        {/* Log Header info */}
-                                                        <div className="px-4 pt-3 flex justify-between items-center text-[10px] text-gray-400">
-                                                            <span>Автор: {log.createdBy}</span>
-                                                            <button onClick={() => deleteLog(log.id)} className="text-red-400 opacity-0 group-hover:opacity-100 transition px-2">Удалить</button>
-                                                        </div>
-                                                        
-                                                        {/* Items */}
-                                                        <div className="px-2 pb-2">
-                                                            {log.items.map((item, i) => {
-                                                                const reason = REASONS.find(r => r.key === item.reason);
-                                                                return (
-                                                                    <div key={i} className="flex justify-between items-center p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-sm ${reason?.color.replace('text-', 'bg-opacity-20 text-') || 'bg-gray-100'}`}>
-                                                                                {reason?.icon}
-                                                                            </span>
-                                                                            <div>
-                                                                                <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight">{item.ingredientName}</div>
-                                                                                <div className="text-[10px] text-gray-400">{reason?.label}</div>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <div className="font-black text-sm dark:text-white">{item.amount} <span className="text-xs font-medium text-gray-400">{item.unit}</span></div>
-                                                                            {item.photoUrl && <span className="text-[10px] text-sky-500 font-bold">📷 Фото</span>}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {log.items[0].comment && (
-                                                                <div className="px-2 pt-1 pb-2 text-xs text-gray-500 italic">
-                                                                    "{log.items[0].comment}"
+                                        <div className="space-y-3">
+                                            {logsInGroup.map(log => {
+                                                // Determine main reason from first item
+                                                const mainReasonKey = log.items[0]?.reason || 'other';
+                                                const reasonConfig = REASONS.find(r => r.key === mainReasonKey) || REASONS[REASONS.length - 1];
+                                                const totalItems = log.items.length;
+
+                                                return (
+                                                    <div 
+                                                        key={log.id} 
+                                                        onClick={() => setSelectedLogId(log.id)}
+                                                        className="bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all flex items-center justify-between cursor-pointer hover:shadow-md"
+                                                    >
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-sm ${reasonConfig.color.replace('text-', 'bg-opacity-20 text-')}`}>
+                                                                {reasonConfig.icon}
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="font-black text-base text-gray-900 dark:text-white leading-tight mb-1">
+                                                                    {reasonConfig.label}
+                                                                </h3>
+                                                                <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
+                                                                    <span>{log.createdBy}</span>
+                                                                    <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                                                                    <span>{totalItems} поз.</span>
                                                                 </div>
-                                                            )}
+                                                            </div>
                                                         </div>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                                                     </div>
-                                                ))}
-                                            </div>
-                                            <div className="bg-gray-50 dark:bg-white/5 px-5 py-3 flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-gray-400 uppercase">Всего позиций</span>
-                                                <span className="text-sm font-black text-gray-900 dark:text-white">{totalItems}</span>
-                                            </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 );
@@ -494,14 +546,24 @@ const Wastage: React.FC = () => {
                             </div>
 
                             {exportType === 'period' && (
-                                <div className="flex gap-2">
-                                    <div className="flex-1">
-                                        <label className="text-[9px] font-bold text-gray-400 uppercase ml-1">От</label>
-                                        <input type="date" className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-2 text-sm font-bold dark:text-white outline-none" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
+                                <div className="flex gap-3">
+                                    <div className="flex-1 space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">От</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35]" 
+                                            value={dateRange.start} 
+                                            onChange={e => setDateRange({...dateRange, start: e.target.value})} 
+                                        />
                                     </div>
-                                    <div className="flex-1">
-                                        <label className="text-[9px] font-bold text-gray-400 uppercase ml-1">До</label>
-                                        <input type="date" className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-2 text-sm font-bold dark:text-white outline-none" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
+                                    <div className="flex-1 space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">До</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35]" 
+                                            value={dateRange.end} 
+                                            onChange={e => setDateRange({...dateRange, end: e.target.value})} 
+                                        />
                                     </div>
                                 </div>
                             )}
