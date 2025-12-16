@@ -34,7 +34,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const favoritesCount = recipes.filter(r => r.isFavorite).length;
   
   // Hide nav on Editor and Recipe Details to give max screen space
-  const hideNav = location.pathname.includes('add') || location.pathname.includes('recipe') || location.pathname.includes('edit');
+  const hideNav = location.pathname.includes('add') || location.pathname.includes('recipe') || location.pathname.includes('edit') || location.pathname.includes('wastage');
 
   // Scroll Restoration Logic
   useEffect(() => {
