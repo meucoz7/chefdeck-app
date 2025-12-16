@@ -108,12 +108,13 @@ const Wastage: React.FC = () => {
         setSuggestions([]);
         setActiveRowIndex(null);
 
-        // Auto-focus next field (amount)
+        // Auto-focus next field (amount) with slight delay to ensure re-render
+        // Using setTimeout(..., 0) pushes to next tick, usually enough
         setTimeout(() => {
             if (amountInputRefs.current[index]) {
                 amountInputRefs.current[index]?.focus();
             }
-        }, 50);
+        }, 10);
     };
 
     // --- ACTIONS ---
@@ -290,7 +291,7 @@ const Wastage: React.FC = () => {
     };
 
     return (
-        <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] relative">
+        <div className="pb-safe-bottom animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] relative">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
 
             {/* SAVING OVERLAY */}
@@ -385,12 +386,18 @@ const Wastage: React.FC = () => {
                                         </div>
                                         <input 
                                             ref={el => { amountInputRefs.current[idx] = el; }}
-                                            type="number" 
+                                            type="text" 
                                             inputMode="decimal"
                                             placeholder="0.0" 
                                             className="w-20 bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-3 text-sm font-bold text-center dark:text-white outline-none focus:ring-2 focus:ring-sky-500/20"
                                             value={item.amount}
-                                            onChange={e => updateRow(idx, 'amount', e.target.value)}
+                                            onChange={e => {
+                                                // Replace comma with dot and validate number format
+                                                const val = e.target.value.replace(',', '.');
+                                                if (/^\d*\.?\d*$/.test(val)) {
+                                                    updateRow(idx, 'amount', val);
+                                                }
+                                            }}
                                         />
                                         <input 
                                             type="text" 
