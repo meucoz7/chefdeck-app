@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRecipes } from '../context/RecipeContext';
@@ -20,10 +20,36 @@ const Details: React.FC = () => {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
   
   // Font Size State (Default index 2 = text-base)
   const [textSizeIndex, setTextSizeIndex] = useState(2);
+
+  // Inject Print Styles
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @media print {
+        @page { margin: 1cm; size: auto; }
+        html, body, #root, main, .scroll-container {
+            height: auto !important;
+            overflow: visible !important;
+            position: static !important;
+            display: block !important;
+            background: white !important;
+            color: black !important;
+        }
+        .no-print { display: none !important; }
+        .print-only { display: block !important; }
+        
+        /* Ensure images print */
+        img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+        if(document.head.contains(style)) document.head.removeChild(style);
+    };
+  }, []);
 
   if (!recipe) return null;
 
@@ -97,116 +123,7 @@ const Details: React.FC = () => {
   };
 
   const handlePrint = () => {
-      setIsPrinting(true);
-      
-      // Create a print container directly in body
-      const printContainer = document.createElement('div');
-      printContainer.id = 'print-container';
-      
-      // Force light theme and white background for print container
-      printContainer.className = 'fixed inset-0 z-[9999] bg-white text-black overflow-y-auto p-8 hidden print:block';
-      
-      printContainer.innerHTML = `
-        <div class="max-w-3xl mx-auto font-sans">
-            <!-- Header -->
-            <div class="flex justify-between items-start mb-8 border-b-2 border-black pb-4">
-                <div>
-                    <h1 class="text-4xl font-black mb-2 uppercase tracking-tight">${recipe.title}</h1>
-                    <div class="flex gap-4 text-sm font-bold uppercase text-gray-500 tracking-wider">
-                        <span>${recipe.category}</span>
-                        ${recipe.outputWeight ? `<span>• Выход: ${recipe.outputWeight}</span>` : ''}
-                    </div>
-                </div>
-                <div class="text-right">
-                    <p class="text-xs font-bold text-gray-400">ТЕХНОЛОГИЧЕСКАЯ КАРТА</p>
-                    <p class="text-xs text-gray-300 mt-1">${new Date().toLocaleDateString()}</p>
-                </div>
-            </div>
-
-            <!-- Image -->
-            ${recipe.imageUrl ? `
-            <div class="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100 break-inside-avoid">
-                <img src="${recipe.imageUrl}" class="w-full h-full object-cover" />
-            </div>
-            ` : ''}
-
-            <!-- Content Grid -->
-            <div class="grid grid-cols-1 gap-12">
-                <!-- Ingredients -->
-                <div class="break-inside-avoid">
-                    <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
-                        <span class="w-2 h-2 bg-black rounded-full"></span>
-                        Ингредиенты
-                    </h3>
-                    <div class="space-y-3">
-                        ${recipe.ingredients.map(ing => `
-                            <div class="flex items-end justify-between text-sm">
-                                <span class="font-medium bg-white pr-2 z-10 relative">${ing.name}</span>
-                                <span class="flex-1 border-b border-dotted border-gray-300 mb-1 mx-1"></span>
-                                <span class="font-bold bg-white pl-2 z-10 relative whitespace-nowrap">${ing.amount} ${ing.unit}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-
-                <!-- Steps -->
-                ${recipe.steps.length > 0 && recipe.steps[0] ? `
-                <div class="break-inside-avoid">
-                    <h3 class="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
-                        <span class="w-2 h-2 bg-black rounded-full"></span>
-                        Приготовление
-                    </h3>
-                    <div class="space-y-6">
-                        ${recipe.steps.map((step, i) => step.trim() ? `
-                            <div class="flex gap-4">
-                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm border border-gray-200">${i + 1}</div>
-                                <p class="text-base leading-relaxed text-gray-800 pt-1">${step}</p>
-                            </div>
-                        ` : '').join('')}
-                    </div>
-                </div>
-                ` : ''}
-
-                <!-- Description -->
-                ${recipe.description ? `
-                <div class="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic break-inside-avoid">
-                    ${recipe.description}
-                </div>
-                ` : ''}
-            </div>
-
-            <!-- Footer -->
-            <div class="mt-12 pt-6 border-t border-gray-100 text-center text-xs text-gray-300 font-bold uppercase tracking-widest">
-                ChefDeck • Kitchen Management System
-            </div>
-        </div>
-      `;
-
-      document.body.appendChild(printContainer);
-
-      // Inject strict print styles to hide app root
-      const style = document.createElement('style');
-      style.id = 'print-override';
-      style.innerHTML = `
-        @media print {
-            body > *:not(#print-container) { display: none !important; }
-            #print-container { display: block !important; position: static !important; overflow: visible !important; }
-            @page { margin: 0.5cm; }
-        }
-      `;
-      document.head.appendChild(style);
-
-      // Trigger print after slight delay
-      setTimeout(() => {
-          window.print();
-          setIsPrinting(false);
-          
-          // Cleanup
-          setTimeout(() => {
-              if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
-              if (document.head.contains(style)) document.head.removeChild(style);
-          }, 1000);
-      }, 100);
+      window.print();
   };
 
   const getEmbedVideoUrl = (url: string) => {
@@ -221,7 +138,9 @@ const Details: React.FC = () => {
   const currentTextSize = TEXT_SIZES[textSizeIndex];
 
   return (
-    <div className="animate-fade-in bg-[#f2f4f7] dark:bg-[#0f1115] min-h-screen relative pb-safe-bottom">
+    <>
+    {/* --- SCREEN VIEW (HIDDEN ON PRINT) --- */}
+    <div className="no-print animate-fade-in bg-[#f2f4f7] dark:bg-[#0f1115] min-h-screen relative pb-safe-bottom">
       
       {isImageOpen && createPortal(
           <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-fade-in backdrop-blur-md" onClick={() => setIsImageOpen(false)}>
@@ -267,12 +186,8 @@ const Details: React.FC = () => {
                  </button>
 
                  {/* Print Button */}
-                 <button onClick={handlePrint} disabled={isPrinting} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform disabled:opacity-50">
-                    {isPrinting ? (
-                        <svg className="animate-spin h-5 w-5 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008h-.008V10.5zm-3 0h.008v.008h-.008V10.5z" /></svg>
-                    )}
+                 <button onClick={handlePrint} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-sky-500 active:scale-90 transition-transform">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008h-.008V10.5zm-3 0h.008v.008h-.008V10.5z" /></svg>
                  </button>
               </div>
           </div>
@@ -446,6 +361,84 @@ const Details: React.FC = () => {
           )}
       </div>
     </div>
+
+    {/* --- PRINT VIEW (HIDDEN ON SCREEN, VISIBLE ON PRINT) --- */}
+    <div className="print-only hidden font-sans text-black bg-white p-8">
+        <div className="max-w-3xl mx-auto">
+            {/* Header */}
+            <div className="flex justify-between items-start mb-8 border-b-2 border-black pb-4">
+                <div>
+                    <h1 className="text-4xl font-black mb-2 uppercase tracking-tight">{recipe.title}</h1>
+                    <div className="flex gap-4 text-sm font-bold uppercase text-gray-500 tracking-wider">
+                        <span>{recipe.category}</span>
+                        {recipe.outputWeight && <span>• Выход: {recipe.outputWeight}</span>}
+                    </div>
+                </div>
+                <div className="text-right">
+                    <p className="text-xs font-bold text-gray-400">ТЕХНОЛОГИЧЕСКАЯ КАРТА</p>
+                    <p className="text-xs text-gray-300 mt-1">{new Date().toLocaleDateString()}</p>
+                </div>
+            </div>
+
+            {/* Image */}
+            {recipe.imageUrl && (
+            <div className="w-full h-80 mb-8 rounded-3xl overflow-hidden border border-gray-100 break-inside-avoid">
+                <img src={recipe.imageUrl} className="w-full h-full object-cover" />
+            </div>
+            )}
+
+            {/* Content Grid */}
+            <div className="grid grid-cols-1 gap-12">
+                {/* Ingredients */}
+                <div className="break-inside-avoid">
+                    <h3 className="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-black rounded-full"></span>
+                        Ингредиенты
+                    </h3>
+                    <div className="space-y-3">
+                        {recipe.ingredients.map((ing, i) => (
+                            <div key={i} className="flex items-end justify-between text-sm">
+                                <span className="font-medium bg-white pr-2 z-10 relative">{ing.name}</span>
+                                <span className="flex-1 border-b border-dotted border-gray-300 mb-1 mx-1"></span>
+                                <span className="font-bold bg-white pl-2 z-10 relative whitespace-nowrap">{ing.amount} {ing.unit}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Steps */}
+                {recipe.steps.length > 0 && recipe.steps[0] && (
+                <div className="break-inside-avoid">
+                    <h3 className="text-lg font-black uppercase mb-4 border-b border-gray-200 pb-2 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-black rounded-full"></span>
+                        Приготовление
+                    </h3>
+                    <div className="space-y-6">
+                        {recipe.steps.map((step, i) => step.trim() ? (
+                            <div key={i} className="flex gap-4">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm border border-gray-200">{i + 1}</div>
+                                <p className="text-base leading-relaxed text-gray-800 pt-1">{step}</p>
+                            </div>
+                        ) : null)}
+                    </div>
+                </div>
+                )}
+
+                {/* Description */}
+                {recipe.description && (
+                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-sm leading-relaxed text-gray-600 italic break-inside-avoid">
+                    {recipe.description}
+                </div>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="mt-12 pt-6 border-t border-gray-100 text-center text-xs text-gray-300 font-bold uppercase tracking-widest">
+                ChefDeck • Kitchen Management System
+            </div>
+        </div>
+    </div>
+    </>
   );
 };
 
