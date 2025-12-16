@@ -98,7 +98,11 @@ const Wastage: React.FC = () => {
         }
     };
 
-    const selectSuggestion = (index: number, name: string) => {
+    const selectSuggestion = (index: number, name: string, e: React.MouseEvent) => {
+        // Critical: Prevent the input blur event from firing immediately on click.
+        // This keeps the keyboard context active while we switch focus.
+        e.preventDefault();
+
         const newItems = [...actItems];
         newItems[index].ingredientName = name;
         const unit = getUnitForIngredient(name);
@@ -108,13 +112,13 @@ const Wastage: React.FC = () => {
         setSuggestions([]);
         setActiveRowIndex(null);
 
-        // Auto-focus next field (amount) with slight delay to ensure re-render
-        // Using setTimeout(..., 0) pushes to next tick, usually enough
-        setTimeout(() => {
-            if (amountInputRefs.current[index]) {
-                amountInputRefs.current[index]?.focus();
+        // Use requestAnimationFrame for smoother focus transfer on mobile devices
+        requestAnimationFrame(() => {
+            const input = amountInputRefs.current[index];
+            if (input) {
+                input.focus();
             }
-        }, 10);
+        });
     };
 
     // --- ACTIONS ---
@@ -379,7 +383,7 @@ const Wastage: React.FC = () => {
                                             {activeRowIndex === idx && suggestions.length > 0 && (
                                                 <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-xl z-50 border border-gray-100 dark:border-white/10 overflow-hidden">
                                                     {suggestions.map(s => (
-                                                        <div key={s} onMouseDown={() => selectSuggestion(idx, s)} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-white/10 cursor-pointer dark:text-white text-sm font-medium border-b border-gray-50 dark:border-white/5 last:border-0">{s}</div>
+                                                        <div key={s} onMouseDown={(e) => selectSuggestion(idx, s, e)} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-white/10 cursor-pointer dark:text-white text-sm font-medium border-b border-gray-50 dark:border-white/5 last:border-0">{s}</div>
                                                     ))}
                                                 </div>
                                             )}
