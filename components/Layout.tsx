@@ -30,15 +30,13 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { recipes } = useRecipes();
   const mainRef = useRef<HTMLDivElement>(null);
   
+  // Calculate favorites count
   const favoritesCount = recipes.filter(r => r.isFavorite).length;
   
-  // Bottom nav is hidden on these specific pages
-  const hideNav = location.pathname.includes('add') || 
-                  location.pathname.includes('recipe') || 
-                  location.pathname.includes('edit') || 
-                  location.pathname.includes('wastage') ||
-                  location.pathname.includes('inventory');
+  // Hide nav on Editor and Recipe Details to give max screen space
+  const hideNav = location.pathname.includes('add') || location.pathname.includes('recipe') || location.pathname.includes('edit') || location.pathname.includes('wastage');
 
+  // Scroll Restoration Logic
   useEffect(() => {
       if (mainRef.current) {
           mainRef.current.scrollTo(0, 0);
@@ -47,8 +45,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f2f4f7] dark:bg-[#0f1115] text-gray-900 dark:text-gray-100 font-sans selection:bg-sky-500/30">
+      
+      {/* Background Gradient Spot */}
       <div className="fixed top-[-20%] left-[-20%] w-[80%] h-[60%] bg-sky-200/20 dark:bg-sky-900/10 rounded-full blur-[100px] pointer-events-none z-0"></div>
 
+      {/* Toasts Container */}
       <div className="fixed top-4 left-0 right-0 z-[60] px-4 pointer-events-none flex flex-col items-center gap-2">
          {toasts.map(toast => (
             <div 
@@ -67,21 +68,27 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
          ))}
       </div>
       
+      {/* Main Content */}
       <main ref={mainRef} className="flex-1 overflow-y-auto no-scrollbar relative z-10 scroll-smooth">
-        <div className="max-w-md mx-auto min-h-full">
+        <div className="max-w-md mx-auto min-h-full pb-28">
            {children}
         </div>
       </main>
 
+      {/* Floating Bottom Navigation */}
       {!hideNav && (
         <div className="fixed bottom-5 left-0 right-0 z-30 px-6 pointer-events-none">
             <nav className={`max-w-[260px] mx-auto pointer-events-auto bg-white/95 dark:bg-[#1e1e24]/95 backdrop-blur-xl border border-gray-100 dark:border-white/5 rounded-[2rem] shadow-[0_15px_30px_rgba(0,0,0,0.08)] dark:shadow-black/50 p-1.5 relative`}>
+                
                 <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} items-center`}>
+                    {/* Home */}
                     <div className="flex justify-center">
                         <NavLink to="/" end className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${isActive ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
                             <HomeIcon active={false} />
                         </NavLink>
                     </div>
+
+                    {/* Add Button - Only for Admins */}
                     {isAdmin && (
                        <div className="flex justify-center -mt-8">
                            <NavLink to="/add" className="flex items-center justify-center w-12 h-12 bg-gray-900 dark:bg-sky-500 text-white rounded-full shadow-[0_8px_16px_rgba(0,0,0,0.2)] dark:shadow-sky-500/30 transition-transform active:scale-90 hover:scale-105 duration-300 ring-4 ring-[#f2f4f7] dark:ring-[#0f1115]">
@@ -89,6 +96,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                            </NavLink>
                        </div>
                     )}
+
+                    {/* Favorites */}
                     <div className="flex justify-center relative">
                         <NavLink to="/favorites" className={({ isActive }) => `py-3 px-5 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 relative ${isActive ? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10' : 'text-gray-400 dark:text-gray-600 active:scale-90'}`}>
                             <HeartIcon active={false} />
@@ -100,6 +109,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         </NavLink>
                     </div>
                 </div>
+
             </nav>
         </div>
       )}
