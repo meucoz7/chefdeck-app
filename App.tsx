@@ -13,12 +13,13 @@ import Profile from './pages/Profile';
 import Schedule from './pages/Schedule';
 import Archive from './pages/Archive';
 import Users from './pages/Users';
+import Checklists from './pages/Checklists';
+import CreateChecklist from './pages/CreateChecklist';
+import RDCalendar from './pages/RDCalendar';
 import MenuPlanner from './pages/MenuPlanner';
 import Tools from './pages/Tools';
 import ShoppingList from './pages/ShoppingList';
 import Wastage from './pages/Wastage';
-import AppSettings from './pages/AppSettings';
-import Inventory from './pages/Inventory';
 
 const App: React.FC = () => {
   return (
@@ -35,11 +36,12 @@ const App: React.FC = () => {
                     <Route path="/add" element={<Editor />} />
                     <Route path="/edit/:id" element={<Editor />} />
                     <Route path="/profile" element={<Profile />} />
-                    <Route path="/settings" element={<AppSettings />} />
-                    <Route path="/inventory" element={<Inventory />} />
                     <Route path="/schedule" element={<Schedule />} />
                     <Route path="/archive" element={<Archive />} />
                     <Route path="/users" element={<Users />} />
+                    <Route path="/checklists" element={<Checklists />} />
+                    <Route path="/checklists/new" element={<CreateChecklist />} />
+                    <Route path="/rd" element={<RDCalendar />} />
                     <Route path="/menu" element={<MenuPlanner />} />
                     <Route path="/tools" element={<Tools />} />
                     <Route path="/shopping" element={<ShoppingList />} />
