@@ -32,7 +32,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   
   const favoritesCount = recipes.filter(r => r.isFavorite).length;
   
-  // Added /inventory to hideNav list
+  // Bottom nav is hidden on these specific pages
   const hideNav = location.pathname.includes('add') || 
                   location.pathname.includes('recipe') || 
                   location.pathname.includes('edit') || 
@@ -68,7 +68,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </div>
       
       <main ref={mainRef} className="flex-1 overflow-y-auto no-scrollbar relative z-10 scroll-smooth">
-        <div className="max-w-md mx-auto min-h-full pb-28">
+        <div className="max-w-md mx-auto min-h-full">
            {children}
         </div>
       </main>
