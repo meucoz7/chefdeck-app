@@ -16,7 +16,7 @@ export interface TechCard {
   category: string;
   outputWeight?: string;
   isFavorite: boolean;
-  isArchived?: boolean; // New flag
+  isArchived?: boolean;
   createdAt: number;
   lastModified?: number;
   lastModifiedBy?: string;
@@ -95,7 +95,6 @@ export interface WebApp {
     setHeaderColor: (color: string) => void;
     setBackgroundColor: (color: string) => void;
     isVersionAtLeast: (version: string) => boolean;
-    // New Mini App 7.6+ methods
     requestFullscreen?: () => void;
     isFullscreen?: boolean;
     disableVerticalSwipes?: () => void;
@@ -110,7 +109,36 @@ declare global {
     }
 }
 
-// Schedule Types
+// App Settings
+export interface AppSettings {
+    showSchedule: boolean;
+    showWastage: boolean;
+    showInventory: boolean;
+    showArchive: boolean;
+}
+
+// Inventory Types
+export interface InvItem {
+    id: string;
+    name: string;
+    unit: string;
+    amount: string; // user input
+    initialAmount?: string; // from excel
+}
+
+export interface InvStation {
+    id: string;
+    name: string;
+    items: InvItem[];
+}
+
+export interface InvReport {
+    id: string;
+    date: number;
+    stations: InvStation[];
+    createdBy: string;
+}
+
 export type ShiftType = 'work' | 'off' | 'sick' | 'vacation' | 'empty';
 
 export interface ChefScheduleItem {
@@ -121,45 +149,6 @@ export interface ChefScheduleItem {
     shifts: Record<string, ShiftType>;
 }
 
-// RD Calendar Types
-export type RDStatus = 'idea' | 'work' | 'tasting' | 'done';
-
-export interface RDTask {
-    id: string;
-    title: string;
-    notes?: string;
-    status: RDStatus;
-    imageUrl?: string;
-    tastingRating?: number;
-    tastingFeedback?: string;
-    createdAt: number;
-}
-
-// Checklist Types
-export type ItemInputType = 'boolean' | 'number' | 'text' | 'health';
-export type ChecklistType = 'task' | 'log';
-
-export interface ChecklistItem {
-    id: string;
-    text: string;
-    completed: boolean;
-    inputType?: ItemInputType;
-    value?: string;
-    requiresPhoto?: boolean;
-    photoUrl?: string;
-}
-
-export interface Checklist {
-    id: string;
-    title: string;
-    subtitle?: string;
-    type: ChecklistType;
-    icon: string;
-    items: ChecklistItem[];
-    lastCompleted?: number;
-}
-
-// Wastage Types
 export type WastageReason = 'spoilage' | 'expired' | 'mistake' | 'training' | 'staff' | 'employee' | 'other';
 
 export interface WastageItem {
@@ -174,8 +163,45 @@ export interface WastageItem {
 
 export interface WastageLog {
     id: string;
-    date: number; // timestamp
+    date: number;
     items: WastageItem[];
     createdBy?: string;
 }
 
+// R&D Calendar Types
+export type RDStatus = 'idea' | 'work' | 'tasting' | 'done';
+
+export interface RDTask {
+    id: string;
+    title: string;
+    notes: string;
+    status: RDStatus;
+    imageUrl?: string;
+    tastingRating?: number;
+    tastingFeedback?: string;
+    createdAt: number;
+}
+
+// Checklist Types
+export type ChecklistType = 'task' | 'log';
+export type ItemInputType = 'boolean' | 'number' | 'text' | 'health';
+
+export interface ChecklistItem {
+    id: string;
+    text: string;
+    completed: boolean;
+    inputType: ItemInputType;
+    value?: string;
+    requiresPhoto?: boolean;
+    photoUrl?: string;
+}
+
+export interface Checklist {
+    id: string;
+    title: string;
+    subtitle?: string;
+    type: ChecklistType;
+    icon: string;
+    items: ChecklistItem[];
+    lastCompleted?: number;
+}
