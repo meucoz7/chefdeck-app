@@ -21,22 +21,23 @@ const Details: React.FC = () => {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   
-  // Font Size State (Default index 2 = text-base)
   const [textSizeIndex, setTextSizeIndex] = useState(2);
 
   if (!recipe) return null;
 
   const handleBack = () => {
-    if (window.history.state && window.history.state.idx > 0) {
-        navigate(-1);
-    } else {
+    // Robust check: if we are at root or just came from editor, go to main home to prevent loops
+    if (window.history.length <= 1 || (window.history.state && window.history.state.idx <= 1)) {
         navigate('/', { replace: true });
+    } else {
+        // Specifically for details, sometimes it's better to force go to '/' 
+        // if we detect we've been bouncing between Details and Edit
+        navigate(-1);
     }
   };
 
   const handleEdit = () => navigate(`/edit/${recipe.id}`);
 
-  // Archive / Delete Logic
   const handleArchive = () => {
       if (!isAdmin) return;
       if (confirm("Переместить карту в архив?")) {
@@ -64,7 +65,6 @@ const Details: React.FC = () => {
   const findLinkedRecipe = (ingredientName: string) => {
       const normalize = (s: string) => s.trim().toLowerCase();
       const targetName = normalize(ingredientName);
-      // Search only active recipes for links
       return recipes.find(r => normalize(r.title) === targetName && r.id !== recipe.id && !r.isArchived);
   };
 
@@ -127,7 +127,6 @@ const Details: React.FC = () => {
           </div>, document.body
       )}
 
-      {/* Header - Buttons Only */}
       <div className="pt-safe-top px-4 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
           <div className="flex items-center justify-between pt-4">
               <div className="flex items-center gap-3 overflow-hidden">
@@ -142,8 +141,6 @@ const Details: React.FC = () => {
                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={recipe.isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={recipe.isFavorite ? 0 : 2} className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
                      </button>
                  )}
-                 
-                 {/* Share to Chat Button */}
                  <button onClick={handleSendToChat} disabled={isSending} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 hover:text-indigo-500 active:scale-90 transition-transform disabled:opacity-50">
                    {isSending ? (
                       <svg className="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -157,20 +154,15 @@ const Details: React.FC = () => {
 
       <div className="px-5 space-y-6 pt-4">
           <div className="animate-slide-up space-y-4">
-              {/* Title Section (Moved from Header) */}
               <div>
                   <h1 className="text-3xl font-black text-gray-900 dark:text-white leading-tight mb-2">{recipe.title}</h1>
               </div>
-
-              {/* Archive Banner */}
               {recipe.isArchived && (
                   <div className="bg-gray-800 text-white px-4 py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg>
                       <span className="font-bold text-sm">В АРХИВЕ</span>
                   </div>
               )}
-
-              {/* Tags */}
               <div className="flex flex-wrap gap-2">
                    <div className="px-3 py-1.5 bg-white dark:bg-white/5 rounded-full shadow-sm border border-gray-100 dark:border-white/5 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
@@ -183,15 +175,11 @@ const Details: React.FC = () => {
                       </div>
                    )}
               </div>
-              
-              {/* Description - Only Show if Exists */}
               {hasDescription && (
                   <div className="bg-white dark:bg-[#1e1e24] rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-white/5">
                       <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-line">{recipe.description}</p>
                   </div>
               )}
-
-              {/* Media Buttons */}
               <div className="flex gap-3">
                   <button onClick={() => setIsImageOpen(true)} className="flex-1 bg-white dark:bg-[#1e1e24] border border-gray-200 dark:border-white/10 rounded-2xl py-3 px-4 shadow-sm active:scale-95 transition hover:shadow-md flex items-center justify-center gap-2">
                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-indigo-500"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
@@ -209,30 +197,18 @@ const Details: React.FC = () => {
                   )}
               </div>
           </div>
-
-          {/* Ingredients */}
           <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 flex justify-between items-center">
                   <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
                       Состав ({recipe.ingredients.length})
                   </h2>
-                  
-                  {/* Font Size Controls */}
                   <div className="flex items-center gap-1 bg-white dark:bg-[#2a2a35] rounded-lg p-0.5 border border-gray-100 dark:border-white/5">
-                      <button 
-                        onClick={() => setTextSizeIndex(prev => Math.max(0, prev - 1))}
-                        disabled={textSizeIndex === 0}
-                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition"
-                      >
+                      <button onClick={() => setTextSizeIndex(prev => Math.max(0, prev - 1))} disabled={textSizeIndex === 0} className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition">
                           <span className="text-xs font-bold">A-</span>
                       </button>
                       <div className="w-[1px] h-4 bg-gray-200 dark:bg-white/10"></div>
-                      <button 
-                        onClick={() => setTextSizeIndex(prev => Math.min(TEXT_SIZES.length - 1, prev + 1))}
-                        disabled={textSizeIndex === TEXT_SIZES.length - 1}
-                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition"
-                      >
+                      <button onClick={() => setTextSizeIndex(prev => Math.min(TEXT_SIZES.length - 1, prev + 1))} disabled={textSizeIndex === TEXT_SIZES.length - 1} className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition">
                           <span className="text-sm font-bold">A+</span>
                       </button>
                   </div>
@@ -240,7 +216,6 @@ const Details: React.FC = () => {
               <div className="flex flex-col">
                   {recipe.ingredients.map((ing, idx) => {
                       const linkedRecipe = findLinkedRecipe(ing.name);
-                      
                       return (
                           <div 
                               key={idx} 
@@ -273,8 +248,6 @@ const Details: React.FC = () => {
                   })}
               </div>
           </div>
-
-          {/* Steps */}
           {hasSteps && (
               <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up pb-5" style={{ animationDelay: '0.2s' }}>
                    <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
@@ -293,8 +266,6 @@ const Details: React.FC = () => {
                    </div>
               </div>
           )}
-
-          {/* Admin Actions (Grid) */}
           {isAdmin && (
             <div className="py-6 pb-20">
                 <div className="grid grid-cols-2 gap-3 mb-3">
@@ -302,7 +273,6 @@ const Details: React.FC = () => {
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
                         Редактировать
                      </button>
-
                      {recipe.isArchived ? (
                          <button onClick={handleRestore} className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 font-bold py-3.5 rounded-2xl hover:bg-green-200 transition shadow-sm active:scale-95">
                             Восстановить
@@ -313,7 +283,6 @@ const Details: React.FC = () => {
                          </button>
                      )}
                 </div>
-                
                 {recipe.isArchived && (
                      <button onClick={handleDeleteForever} className="w-full bg-red-50 dark:bg-red-500/10 text-red-500 font-bold py-3.5 rounded-2xl hover:bg-red-100 transition shadow-sm active:scale-95 border border-red-100 dark:border-red-500/20">
                         Удалить навсегда
@@ -327,4 +296,3 @@ const Details: React.FC = () => {
 };
 
 export default Details;
-
