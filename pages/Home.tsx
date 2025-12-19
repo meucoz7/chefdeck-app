@@ -244,63 +244,60 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     </div>
                 )}
 
-                {/* Recipes List (When category selected or searching) */}
-                {!showCategoriesView && (
-                    <div className="animate-slide-up space-y-4">
-                        {/* Selected Category Header */}
-                        {selectedCategory && (
-                            <div className="flex items-center gap-2 mb-2">
-                                <button onClick={() => setSearchParams({})} className="text-sky-500 font-bold text-xs uppercase flex items-center gap-1 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 px-3 py-1.5 rounded-full transition active:scale-95 shadow-sm">
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-                                    Все категории
-                                </button>
-                                <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest bg-gray-50 dark:bg-black/20 px-3 py-1.5 rounded-full border border-gray-100 dark:border-white/5">{selectedCategory}</span>
-                            </div>
-                        )}
-
-                        {filteredRecipes.length === 0 ? (
-                            <div className="text-center py-20 opacity-50 flex flex-col items-center">
-                                <span className="text-4xl mb-3">🔍</span>
-                                <p className="font-bold dark:text-white">Ничего не найдено</p>
-                                <p className="text-xs text-gray-400 mt-1">Попробуйте изменить запрос</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-3">
-                                {filteredRecipes.map(recipe => (
-                                    <Link 
-                                        key={recipe.id} 
-                                        to={`/recipe/${recipe.id}`} 
-                                        className="bg-white dark:bg-[#1e1e24] rounded-[1.8rem] overflow-hidden shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition group flex gap-4 p-3.5"
-                                    >
-                                        <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-black/40 border border-gray-100 dark:border-white/5">
-                                            <img 
-                                                src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}`} 
-                                                className="w-full h-full object-cover transition duration-500 group-hover:scale-110" 
-                                                loading="lazy"
-                                            />
-                                        </div>
-                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                            <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight mb-1 truncate group-hover:text-sky-500 transition-colors">
-                                                {recipe.title}
-                                            </h3>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter bg-gray-50 dark:bg-white/5 px-2 py-0.5 rounded border border-gray-100 dark:border-white/5">
-                                                    {recipe.category}
-                                                </span>
-                                                {recipe.isFavorite && <span className="text-xs">❤️</span>}
-                                                {recipe.outputWeight && (
-                                                    <span className="text-[9px] font-bold text-sky-500/70 uppercase">{recipe.outputWeight}</span>
-                                                )}
+                {/* VIEW 2: RECIPE LIST */}
+                {(!showCategoriesView) && (
+                    <div className="grid grid-cols-2 gap-4 animate-fade-in pb-10">
+                        {filteredRecipes.map((recipe) => (
+                            <Link
+                                to={`/recipe/${recipe.id}`}
+                                key={recipe.id}
+                                className={`group relative bg-white dark:bg-[#1e1e24] rounded-[1.8rem] p-2.5 shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all duration-300 flex flex-col hover:shadow-lg ${recipe.isArchived ? 'opacity-60 grayscale-[0.8]' : ''}`}
+                            >
+                                {recipe.isArchived && (
+                                    <div className="absolute top-3 left-3 z-10 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-md">АРХИВ</div>
+                                )}
+                                <div className="aspect-square w-full relative overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 mb-3">
+                                    <img
+                                        src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}&background=random`}
+                                        alt={recipe.title}
+                                        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                        loading="lazy"
+                                    />
+                                    <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                                        {recipe.isFavorite && (
+                                            <div className="bg-white/90 dark:bg-black/60 backdrop-blur-md p-1.5 rounded-full shadow-sm">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-red-500">
+                                                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.433 2.322 5.433 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                                                </svg>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center text-gray-300 group-hover:text-sky-500 transition-colors">
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-                                        </div>
-                                    </Link>
-                                ))}
-                            </div>
-                        )}
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <div className="flex-1 flex flex-col px-1 pb-1">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight mb-2 line-clamp-2 min-h-[2.5rem]">
+                                        {recipe.title}
+                                    </h3>
+                                    <div className="flex items-center gap-1.5 mt-auto">
+                                        <span className="text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded-lg">
+                                            {recipe.ingredients.length} ингр
+                                        </span>
+                                        {recipe.outputWeight && (
+                                            <span className="text-[10px] font-bold text-sky-600 bg-sky-50 dark:bg-sky-500/10 px-2 py-1 rounded-lg">
+                                                {recipe.outputWeight}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </Link>
+                        ))}
                     </div>
+                )}
+            
+                {!showCategoriesView && filteredRecipes.length === 0 && (
+                    <div className="flex flex-col items-center justify-center mt-20 text-center opacity-70">
+                        <p className="text-lg font-bold dark:text-white">Ничего не найдено</p>
+                     </div>
                 )}
             </>
         )}
