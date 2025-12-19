@@ -19,6 +19,94 @@ interface ImportSheet {
 
 const UNITS = ['кг', 'г', 'л', 'мл', 'шт', 'упак'];
 
+// --- SUB-COMPONENT: SWIPEABLE ITEM ROW ---
+const InventoryItemRow: React.FC<{
+    item: InventoryItem;
+    inputValue: string;
+    onDelete: (id: string) => void;
+    onChange: (id: string, val: string) => void;
+}> = ({ item, inputValue, onDelete, onChange }) => {
+    const [startX, setStartX] = useState(0);
+    const [offsetX, setOffsetX] = useState(0);
+    const [isSwiped, setIsSwiped] = useState(false);
+    const { webApp } = useTelegram();
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        setStartX(e.touches[0].clientX);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        const currentX = e.touches[0].clientX;
+        const diff = currentX - startX;
+
+        // Only allow swiping to the left
+        if (diff < 0) {
+            setOffsetX(Math.max(diff, -100)); // Limit to 100px
+        } else if (isSwiped && diff > 0) {
+            setOffsetX(Math.min(-80 + diff, 0));
+        }
+    };
+
+    const handleTouchEnd = () => {
+        if (offsetX < -50) {
+            setOffsetX(-80);
+            setIsSwiped(true);
+            if (webApp?.HapticFeedback) webApp.HapticFeedback.impactOccurred('light');
+        } else {
+            setOffsetX(0);
+            setIsSwiped(false);
+        }
+    };
+
+    const resetSwipe = () => {
+        setOffsetX(0);
+        setIsSwiped(false);
+    };
+
+    return (
+        <div className="relative overflow-hidden rounded-2xl mb-3 group select-none touch-pan-y">
+            {/* Background Action Area (Revealed on Swipe) */}
+            <div 
+                className="absolute inset-0 bg-red-500 flex justify-end items-center pr-6 cursor-pointer active:bg-red-600 transition-colors"
+                onClick={() => { onDelete(item.id); resetSwipe(); }}
+            >
+                <div className="flex flex-col items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-white">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                    <span className="text-[8px] font-black text-white uppercase tracking-tighter">Удалить</span>
+                </div>
+            </div>
+
+            {/* Foreground Content */}
+            <div 
+                style={{ transform: `translateX(${offsetX}px)` }}
+                className="relative bg-white dark:bg-[#1e1e24] p-4 flex items-center justify-between border border-gray-100 dark:border-white/5 transition-transform duration-200 ease-out z-10"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onClick={() => isSwiped && resetSwipe()}
+            >
+                <div className="flex-1 min-w-0 pr-4">
+                    <h4 className="font-bold text-gray-900 dark:text-white truncate text-sm">{item.name}</h4>
+                    <p className="text-[9px] text-gray-400 font-black uppercase mt-0.5">{item.unit}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <input 
+                        type="text" 
+                        inputMode="decimal"
+                        className="w-24 bg-gray-50 dark:bg-black/40 border border-transparent focus:border-sky-500 rounded-xl px-2 py-3 text-center font-black text-lg dark:text-white outline-none transition-all shadow-inner"
+                        placeholder="0"
+                        value={inputValue}
+                        onChange={e => onChange(item.id, e.target.value)}
+                        onFocus={resetSwipe}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Inventory: React.FC = () => {
     const navigate = useNavigate();
     const { isAdmin, user } = useTelegram();
@@ -245,13 +333,12 @@ const Inventory: React.FC = () => {
         let normalizedVal = rawVal.replace(',', '.');
         
         // 2. Filter input: allow only digits and at most one dot
-        // We also allow an empty string and a leading dot or minus
         if (normalizedVal !== '' && !/^-?\d*\.?\d*$/.test(normalizedVal)) return;
 
-        // 3. Update the UI state string (preserving trailing dot for typing)
+        // 3. Update UI state string (preserving trailing dot for typing)
         setInputValues(prev => ({ ...prev, [itemId]: normalizedVal }));
 
-        // 4. Update the actual data cycle state for calculation and saving
+        // 4. Update data state for numeric values
         const numeric = parseFloat(normalizedVal);
         const updatedCycle = { ...activeCycle };
         const sheet = updatedCycle.sheets.find(s => s.id === activeSheetId);
@@ -455,7 +542,7 @@ const Inventory: React.FC = () => {
                                     <button onClick={() => setViewMode('admin')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0m-9.75 0h9.75" /></svg>
                                     </button>
-                                    <button onClick={() => setViewMode('manage')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
+                                    <button onClick={() => setViewMode('manage')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-900 dark:text-white border border-gray-100 dark:border-white/10 active:scale-95 transition">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1115 0 7.5 7.5 0 01-15 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                     </button>
                                 </>
@@ -559,34 +646,21 @@ const Inventory: React.FC = () => {
                 )}
 
                 {viewMode === 'filling' && (
-                    <div className="space-y-3 pb-32">
+                    <div className="space-y-1 pb-32">
+                        <div className="mb-4 px-1 text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-2 animate-pulse">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+                            Свайп влево для удаления позиции
+                        </div>
                         {filteredItems.map(item => (
-                            <div key={item.id} className="bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-between group">
-                                <div className="flex-1 min-w-0 pr-2 flex items-center gap-3">
-                                    <button 
-                                        onClick={() => handleDeleteItem(item.id)}
-                                        className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 active:opacity-100 transition-opacity"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                                    </button>
-                                    <div className="min-w-0">
-                                        <h4 className="font-bold text-gray-900 dark:text-white truncate text-sm">{item.name}</h4>
-                                        <p className="text-[9px] text-gray-400 font-black uppercase mt-0.5">{item.unit}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="text" 
-                                        inputMode="decimal"
-                                        className="w-24 bg-gray-50 dark:bg-black/40 border border-transparent focus:border-sky-500 rounded-xl px-2 py-3 text-center font-black text-lg dark:text-white outline-none transition-all shadow-inner"
-                                        placeholder="0"
-                                        value={inputValues[item.id] ?? ''}
-                                        onChange={e => handleActualChange(item.id, e.target.value)}
-                                    />
-                                </div>
-                            </div>
+                            <InventoryItemRow 
+                                key={item.id}
+                                item={item}
+                                inputValue={inputValues[item.id] ?? ''}
+                                onChange={handleActualChange}
+                                onDelete={handleDeleteItem}
+                            />
                         ))}
-                        <button onClick={() => setIsAddingItem(true)} className="w-full py-4 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-xs font-black uppercase tracking-widest active:bg-gray-50 transition">+ Добавить в бланк</button>
+                        <button onClick={() => setIsAddingItem(true)} className="w-full py-4 mt-4 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-xs font-black uppercase tracking-widest active:bg-gray-50 transition">+ Добавить в бланк</button>
                         <div className="fixed bottom-6 left-4 right-4 z-40 bg-[#f2f4f7]/80 dark:bg-[#0f1115]/80 backdrop-blur-md p-2 rounded-3xl">
                              <button onClick={submitSheet} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-2xl shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-2 uppercase text-xs tracking-widest">
                                 {isSaving ? '📦 Сохранение...' : '🚀 Сдать бланк'}
