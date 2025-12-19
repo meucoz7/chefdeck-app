@@ -12,7 +12,7 @@ interface HomeProps {
 }
 
 const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
-  const { recipes, isLoading, archiveRecipesBulk } = useRecipes();
+  const { recipes, isLoading, archiveRecipesBulk, updateRecipe } = useRecipes();
   const { user, isAdmin } = useTelegram();
   const { settings, isLoadingSettings } = useSettings();
   const { addToast } = useToast();
@@ -32,7 +32,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const selectedCategory = searchParams.get('category');
   const activeRecipes = recipes.filter(r => r.isArchived === false);
   
-  // Logic for what to display (Favorites vs Search vs Active)
   const displayRecipes = favoritesOnly 
       ? activeRecipes.filter(r => r.isFavorite) 
       : (includeArchive && search ? recipes : activeRecipes);
@@ -86,6 +85,31 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       }
   };
 
+  const renameCategory = async (oldName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const newName = prompt(`Переименовать категорию "${oldName}" в:`, oldName);
+      if (!newName || newName.trim() === oldName || newName.trim() === "") return;
+
+      const trimmedName = newName.trim();
+      
+      try {
+          const targets = recipes.filter(r => r.category === oldName);
+          addToast(`Обновление ${targets.length} карт...`, "info");
+          
+          for (const recipe of targets) {
+              await updateRecipe({ ...recipe, category: trimmedName }, false, true);
+          }
+
+          const newOrder = safeOrder.map(c => c === oldName ? trimmedName : c);
+          setCategoryOrder(newOrder);
+          scopedStorage.setJson('category_order', newOrder);
+          
+          addToast("Категория переименована", "success");
+      } catch (err) {
+          addToast("Ошибка при переименовании", "error");
+      }
+  };
+
   const archiveCategoryGroup = async (catName: string, e: React.MouseEvent) => {
       e.stopPropagation();
       const targets = activeRecipes.filter(r => r.category === catName);
@@ -131,7 +155,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       }
   };
 
-  // --- Filter buttons based on settings ---
   const visibleButtons = [];
   if (!isLoadingSettings) {
       if (settings.showInventory) visibleButtons.push('inventory');
@@ -145,7 +168,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-30 transition-all duration-300">
           <div className="flex items-center justify-between pt-4 mb-3">
              <div className="flex items-center gap-3 w-full">
-                {/* Back Button - Conditional */}
                 {!showCategoriesView && (
                     <button 
                         onClick={handleBackToMain}
@@ -192,7 +214,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             <div className="flex justify-center py-20"><div className="animate-spin text-sky-500">⏳</div></div>
         ) : (
             <>
-                {/* Management Buttons Grid */}
                 {!search && !favoritesOnly && !selectedCategory && !isReordering && visibleButtons.length > 0 && (
                     <div className={`grid grid-cols-${Math.min(visibleButtons.length, 4)} gap-2.5 mb-6`}>
                         {settings.showInventory && (
@@ -230,7 +251,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     </div>
                 )}
 
-                {/* Categories Grid */}
                 {showCategoriesView && (
                     <div className="animate-slide-up">
                         <div className="grid grid-cols-2 gap-3">
@@ -251,7 +271,14 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                             <div className={`w-10 h-10 rounded-xl ${getCategoryColor(idx)} flex items-center justify-center`}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M19.5 21a3 3 0 003-3v-4.5a3 3 0 00-3-3h-15a3 3 0 00-3 3V18a3 3 0 003 3h15zM1.5 10.146V6a3 3 0 013-3h5.379a2.25 2.25 0 011.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 013 3v1.146A4.483 4.483 0 0019.5 9h-15a4.483 4.483 0 00-3 1.146z" /></svg>
                                             </div>
-                                            <span className="text-xs font-bold text-gray-400">{count}</span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="text-xs font-bold text-gray-400">{count}</span>
+                                                {isReordering && isAdmin && (
+                                                    <button onClick={(e) => renameCategory(cat, e)} className="w-7 h-7 bg-white dark:bg-[#2a2a35] border border-gray-100 dark:border-white/10 rounded-full flex items-center justify-center text-sky-500 shadow-sm active:scale-90 transition-transform">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="flex items-end justify-between gap-2 mt-auto">
                                             <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors line-clamp-2">{cat}</h3>
@@ -266,7 +293,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     </div>
                 )}
 
-                {/* VIEW 2: RECIPE LIST */}
                 {(!showCategoriesView) && (
                     <div className="grid grid-cols-2 gap-4 animate-fade-in pb-10">
                         {filteredRecipes.map((recipe) => (
