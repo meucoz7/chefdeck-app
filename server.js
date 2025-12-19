@@ -111,7 +111,7 @@ const setupBotListeners = (bot, token) => {
                 );
             }
             const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
-            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать!</b>`, {
+            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ChefDeck!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
@@ -156,7 +156,6 @@ app.use((req, res, next) => {
 });
 
 // --- INVENTORY API ---
-
 app.get('/api/inventory', resolveTenant, async (req, res) => {
     try {
         const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 }).limit(10);
@@ -168,26 +167,7 @@ app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
     try {
         const cycle = req.body;
         cycle.botId = req.tenant.botId;
-        
-        await InventoryCycle.findOneAndUpdate(
-            { id: cycle.id, botId: req.tenant.botId },
-            cycle,
-            { upsert: true, new: true }
-        );
-
-        // Auto-cleanup: keep only 3 most recent, and remove older than 3 months
-        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
-        await InventoryCycle.deleteMany({
-            botId: req.tenant.botId,
-            date: { $lt: threeMonthsAgo }
-        });
-
-        const allCycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
-        if (allCycles.length > 3) {
-            const idsToDelete = allCycles.slice(3).map(c => c.id);
-            await InventoryCycle.deleteMany({ id: { $in: idsToDelete }, botId: req.tenant.botId });
-        }
-
+        await InventoryCycle.findOneAndUpdate({ id: cycle.id, botId: req.tenant.botId }, cycle, { upsert: true });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -197,19 +177,13 @@ app.post('/api/inventory/lock', resolveTenant, async (req, res) => {
     try {
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
         if (!cycle) return res.status(404).json({ error: "Cycle not found" });
-
         const sheet = cycle.sheets.find(s => s.id === sheetId);
-        if (sheet.lockedBy && sheet.lockedBy.id !== user.id) {
-            return res.json({ success: false, lockedBy: sheet.lockedBy });
-        }
-
-        // Unlock other sheets for this user in this cycle
+        if (sheet.lockedBy && sheet.lockedBy.id !== user.id) return res.json({ success: false, lockedBy: sheet.lockedBy });
         cycle.sheets = cycle.sheets.map(s => {
             if (s.lockedBy && s.lockedBy.id === user.id) delete s.lockedBy;
             if (s.id === sheetId) s.lockedBy = { id: user.id, name: user.name };
             return s;
         });
-
         await InventoryCycle.updateOne({ id: cycleId, botId: req.tenant.botId }, { sheets: cycle.sheets });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -220,16 +194,42 @@ app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
     try {
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
         if (!cycle) return res.sendStatus(404);
-        cycle.sheets = cycle.sheets.map(s => {
-            if (s.id === sheetId) delete s.lockedBy;
-            return s;
-        });
+        cycle.sheets = cycle.sheets.map(s => { if (s.id === sheetId) delete s.lockedBy; return s; });
         await InventoryCycle.updateOne({ id: cycleId, botId: req.tenant.botId }, { sheets: cycle.sheets });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Standard routes...
+// --- USERS & ADMIN API ---
+app.get('/api/users', resolveTenant, async (req, res) => {
+    try {
+        const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
+        res.json(users);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/users/toggle-admin', resolveTenant, async (req, res) => {
+    const { targetId, status } = req.body;
+    try {
+        await User.updateOne({ id: targetId, botId: req.tenant.botId }, { isAdmin: status });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/admin/register-bot', async (req, res) => {
+    try {
+        const { botId, token, name, ownerId } = req.body;
+        const existing = await BotConfig.findOne({ botId });
+        if (existing) return res.status(400).json({ error: "Этот ID уже занят" });
+        
+        const newBot = new BotConfig({ botId, token, name, ownerId });
+        await newBot.save();
+        getBotInstance(token); // Initialize immediately
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- RECIPES API ---
 app.get('/api/recipes', resolveTenant, async (req, res) => {
     try { res.json(await Recipe.find({ botId: req.tenant.botId })); } catch (e) { res.status(500).send(e.message); }
 });
@@ -251,6 +251,16 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
             { upsert: true, new: true }
         );
         res.json({ success: true, user });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+// --- OTHER API ---
+app.get('/api/proxy', async (req, res) => {
+    try {
+        const url = req.query.url;
+        const response = await fetch(url);
+        const text = await response.text();
+        res.send(text);
     } catch (e) { res.status(500).send(e.message); }
 });
 
