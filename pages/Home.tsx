@@ -122,6 +122,15 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       return colors[index % colors.length];
   };
 
+  const handleBackToMain = () => {
+      if (selectedCategory) {
+          setSearchParams({});
+      } else if (favoritesOnly || search) {
+          if (search) setSearch('');
+          if (favoritesOnly) navigate('/');
+      }
+  };
+
   // --- Filter buttons based on settings ---
   const visibleButtons = [];
   if (!isLoadingSettings) {
@@ -135,22 +144,35 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
     <div className="pb-28 animate-fade-in min-h-screen flex flex-col">
       <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-30 transition-all duration-300">
           <div className="flex items-center justify-between pt-4 mb-3">
-             <div className="flex items-center justify-between w-full">
-                <div>
-                    <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none">
-                        {favoritesOnly ? 'Избранное' : (isReordering ? 'Сортировка' : 'Главная')}
-                    </h1>
-                    <p className="text-xs text-gray-400 font-bold tracking-wider uppercase">
-                        {favoritesOnly ? 'Ваши рецепты' : (isReordering ? 'Нажмите чтобы поменять' : 'База знаний')}
-                    </p>
-                </div>
-                {isReordering ? (
-                    <button onClick={() => { setIsReordering(false); setSelectedSwap(null); }} className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-green-500/30 active:scale-95 transition">Готово</button>
-                ) : (
-                    <button onClick={() => navigate('/profile')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform overflow-hidden">
-                        {user?.photo_url ? <img src={user.photo_url} alt="User" className="w-full h-full object-cover" /> : <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>}
+             <div className="flex items-center gap-3 w-full">
+                {/* Back Button - Conditional */}
+                {!showCategoriesView && (
+                    <button 
+                        onClick={handleBackToMain}
+                        className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                     </button>
                 )}
+
+                <div className="flex-1 min-w-0">
+                    <h1 className="text-2xl font-black text-gray-900 dark:text-white leading-none truncate">
+                        {selectedCategory || (favoritesOnly ? 'Избранное' : (isReordering ? 'Сортировка' : 'Главная'))}
+                    </h1>
+                    <p className="text-xs text-gray-400 font-bold tracking-wider uppercase">
+                        {selectedCategory ? 'Категория' : (favoritesOnly ? 'Ваши рецепты' : (isReordering ? 'Нажмите чтобы поменять' : 'База знаний'))}
+                    </p>
+                </div>
+
+                <div className="flex-shrink-0">
+                    {isReordering ? (
+                        <button onClick={() => { setIsReordering(false); setSelectedSwap(null); }} className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-green-500/30 active:scale-95 transition">Готово</button>
+                    ) : (
+                        <button onClick={() => navigate('/profile')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-center text-gray-900 dark:text-white active:scale-90 transition-transform overflow-hidden">
+                            {user?.photo_url ? <img src={user.photo_url} alt="User" className="w-full h-full object-cover" /> : <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>}
+                        </button>
+                    )}
+                </div>
              </div>
           </div>
           <div className="space-y-2">
