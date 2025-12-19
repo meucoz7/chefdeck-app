@@ -14,7 +14,7 @@ interface HomeProps {
 const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const { recipes, isLoading, archiveRecipesBulk } = useRecipes();
   const { user, isAdmin } = useTelegram();
-  const { settings } = useSettings();
+  const { settings, isLoadingSettings } = useSettings();
   const { addToast } = useToast();
   const [search, setSearch] = useState('');
   const [includeArchive, setIncludeArchive] = useState(false);
@@ -122,10 +122,12 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
 
   // --- Filter buttons based on settings ---
   const visibleButtons = [];
-  if (settings.showInventory) visibleButtons.push('inventory');
-  if (settings.showSchedule) visibleButtons.push('schedule');
-  if (settings.showWastage) visibleButtons.push('wastage');
-  if (settings.showArchive) visibleButtons.push('archive');
+  if (!isLoadingSettings) {
+      if (settings.showInventory) visibleButtons.push('inventory');
+      if (settings.showSchedule) visibleButtons.push('schedule');
+      if (settings.showWastage) visibleButtons.push('wastage');
+      if (settings.showArchive) visibleButtons.push('archive');
+  }
 
   return (
     <div className="pb-28 animate-fade-in min-h-screen flex flex-col">
