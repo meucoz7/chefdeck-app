@@ -246,10 +246,21 @@ const Inventory: React.FC = () => {
             const bstr = evt.target?.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
             const sheets: ImportSheet[] = wb.SheetNames.map((name, idx) => {
-                const data = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1 }) as any[][];
+                const sheet = wb.Sheets[name];
+                const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+                
+                // --- FILTER OUT HIDDEN ROWS ---
+                // Meta info for rows is in sheet['!rows']
+                const rowsMeta = sheet['!rows'] || [];
+                const visibleData = rawData.filter((row, rowIndex) => {
+                    // Check if this row is explicitly marked as hidden
+                    const isHidden = rowsMeta[rowIndex] && rowsMeta[rowIndex].hidden === true;
+                    return !isHidden;
+                });
+
                 return { 
                     name, 
-                    data, 
+                    data: visibleData, 
                     isSummary: name.toLowerCase().includes('свод') || idx === 0,
                     isSelected: true,
                     mapping: { name: 0, unit: 1 } 
