@@ -33,8 +33,13 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Calculate favorites count
   const favoritesCount = recipes.filter(r => r.isFavorite).length;
   
-  // Hide nav on Editor and Recipe Details to give max screen space
-  const hideNav = location.pathname.includes('add') || location.pathname.includes('recipe') || location.pathname.includes('edit') || location.pathname.includes('wastage');
+  // Hide nav on specific sections
+  const hideNav = 
+    location.pathname.includes('add') || 
+    location.pathname.includes('recipe') || 
+    location.pathname.includes('edit') || 
+    location.pathname.includes('wastage') ||
+    location.pathname.includes('inventory');
 
   // Scroll Restoration Logic
   useEffect(() => {
@@ -62,7 +67,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               }`}
             >
                {toast.type === 'success' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
-               {toast.type === 'error' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>}
+               {toast.type === 'error' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>}
                <span className="font-bold text-xs">{toast.message}</span>
             </div>
          ))}
