@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { InventoryCycle, InventorySheet, InventoryItem } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
+import { useRecipes } from '../context/RecipeContext';
 import { apiFetch } from '../services/api';
 
 interface ImportSheet {
@@ -39,9 +40,8 @@ const InventoryItemRow: React.FC<{
         const currentX = e.touches[0].clientX;
         const diff = currentX - startX;
 
-        // Only allow swiping to the left
         if (diff < 0) {
-            setOffsetX(Math.max(diff, -100)); // Limit to 100px
+            setOffsetX(Math.max(diff, -100));
         } else if (isSwiped && diff > 0) {
             setOffsetX(Math.min(-80 + diff, 0));
         }
@@ -65,7 +65,6 @@ const InventoryItemRow: React.FC<{
 
     return (
         <div className="relative overflow-hidden rounded-2xl mb-3 group select-none touch-pan-y">
-            {/* Background Action Area (Revealed on Swipe) - Neutral background */}
             <div 
                 className="absolute inset-0 bg-[#f2f4f7] dark:bg-[#0f1115] flex justify-end items-center pr-6 cursor-pointer active:opacity-70 transition-opacity"
                 onClick={() => { onDelete(item.id); resetSwipe(); }}
@@ -78,7 +77,6 @@ const InventoryItemRow: React.FC<{
                 </div>
             </div>
 
-            {/* Foreground Content */}
             <div 
                 style={{ transform: `translateX(${offsetX}px)` }}
                 className="relative bg-white dark:bg-[#1e1e24] p-4 flex items-center justify-between border border-gray-100 dark:border-white/5 transition-transform duration-200 ease-out z-10"
@@ -111,6 +109,7 @@ const Inventory: React.FC = () => {
     const navigate = useNavigate();
     const { isAdmin, user } = useTelegram();
     const { addToast } = useToast();
+    const { recipes } = useRecipes();
 
     const [cycles, setCycles] = useState<InventoryCycle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -118,14 +117,11 @@ const Inventory: React.FC = () => {
     const [viewMode, setViewMode] = useState<'list' | 'filling' | 'admin' | 'manage'>('list');
     const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
     
-    // UI state for inputs
     const [inputValues, setInputValues] = useState<Record<string, string>>({});
     
-    // Import state
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
     
-    // Filling state
     const [searchTerm, setSearchTerm] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
@@ -133,6 +129,29 @@ const Inventory: React.FC = () => {
     const [isAddingItem, setIsAddingItem] = useState(false);
     const [newItemName, setNewItemName] = useState('');
     const [newItemUnit, setNewItemUnit] = useState('кг');
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    // --- DERIVED DATABASE OF INGREDIENTS ---
+    const ingredientDatabase = useMemo(() => {
+        const map = new Map<string, string>();
+        recipes.forEach(r => {
+            r.ingredients.forEach(i => {
+                const cleanName = i.name.trim();
+                if (cleanName && (!map.has(cleanName) || i.unit)) {
+                    map.set(cleanName, i.unit);
+                }
+            });
+        });
+        return map;
+    }, [recipes]);
+
+    const suggestions = useMemo(() => {
+        if (!newItemName || newItemName.length < 2) return [];
+        const query = newItemName.toLowerCase();
+        return Array.from(ingredientDatabase.keys())
+            .filter(name => name.toLowerCase().includes(query))
+            .slice(0, 5);
+    }, [newItemName, ingredientDatabase]);
 
     useEffect(() => {
         loadData();
@@ -456,8 +475,6 @@ const Inventory: React.FC = () => {
 
     const exportConsolidated = () => {
         if (!activeCycle) return;
-        // Force replacement of commas with dots by ensuring values are stringified if needed, 
-        // though XLSX handles numbers. Forcing string representation ensures dots.
         const data = consolidatedData.map(d => ({
             "Наименование": d.name,
             "Ед.изм": d.unit,
@@ -519,6 +536,13 @@ const Inventory: React.FC = () => {
         }
     };
 
+    const selectSuggestion = (name: string) => {
+        setNewItemName(name);
+        const unit = ingredientDatabase.get(name);
+        if (unit) setNewItemUnit(unit);
+        setShowSuggestions(false);
+    };
+
     if (isLoading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin text-sky-500">⏳</div></div>;
 
     return (
@@ -557,7 +581,6 @@ const Inventory: React.FC = () => {
             <div className="px-5 pt-6">
                 {viewMode === 'list' && (
                     <div className="space-y-6">
-                        {/* Compact Management Grid for Admins */}
                         {isAdmin && (
                             <div className={`grid ${activeCycle ? 'grid-cols-3' : 'grid-cols-1'} gap-2.5 mb-2`}>
                                 <div onClick={() => document.getElementById('xl-import')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-1 h-20 cursor-pointer active:scale-[0.98] transition-transform group">
@@ -786,14 +809,14 @@ const Inventory: React.FC = () => {
             {/* ADD ITEM MODAL */}
             {isAddingItem && createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in" onClick={(e) => e.target === e.currentTarget && setIsAddingItem(false)}>
-                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl p-6 animate-slide-up">
+                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl p-6 animate-slide-up relative">
                          <div className="flex justify-between items-center mb-6">
                              <h2 className="text-xl font-black dark:text-white leading-none">Новая позиция</h2>
                              <button onClick={() => setIsAddingItem(false)} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 text-gray-400 flex items-center justify-center">✕</button>
                          </div>
                          
                          <div className="space-y-6">
-                             <div>
+                             <div className="relative">
                                  <label className="text-[9px] font-black text-gray-400 uppercase mb-2 block ml-1">Наименование товара</label>
                                  <input 
                                     autoFocus
@@ -801,9 +824,29 @@ const Inventory: React.FC = () => {
                                     className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl px-5 py-4 font-bold dark:text-white outline-none border border-transparent focus:border-sky-500 shadow-inner transition-all" 
                                     placeholder="Напр. Сыр Моцарелла"
                                     value={newItemName}
-                                    onChange={e => setNewItemName(e.target.value)}
+                                    onChange={e => {
+                                        setNewItemName(e.target.value);
+                                        setShowSuggestions(true);
+                                    }}
+                                    onFocus={() => setShowSuggestions(true)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddItem()}
                                  />
+
+                                 {/* Suggestions Dropdown */}
+                                 {showSuggestions && suggestions.length > 0 && (
+                                     <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 z-[110] overflow-hidden max-h-48 overflow-y-auto">
+                                         {suggestions.map(s => (
+                                             <div 
+                                                key={s} 
+                                                onClick={() => selectSuggestion(s)}
+                                                className="px-5 py-3.5 hover:bg-sky-50 dark:hover:bg-white/5 cursor-pointer flex justify-between items-center group transition-colors"
+                                             >
+                                                 <span className="text-sm font-bold dark:text-white">{s}</span>
+                                                 <span className="text-[10px] font-black text-gray-400 uppercase bg-gray-50 dark:bg-black/20 px-2 py-0.5 rounded group-hover:bg-sky-100 transition-colors">{ingredientDatabase.get(s)}</span>
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
                              </div>
 
                              <div>
@@ -828,7 +871,6 @@ const Inventory: React.FC = () => {
                                  >
                                     🚀 Добавить в бланк
                                  </button>
-                                 <p className="text-[9px] text-gray-400 text-center uppercase font-black tracking-widest mt-4 opacity-50">Вы также можете нажать Enter</p>
                              </div>
                          </div>
                     </div>
