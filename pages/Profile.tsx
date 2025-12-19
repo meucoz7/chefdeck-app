@@ -112,7 +112,7 @@ const Profile: React.FC = () => {
                          <div onClick={toggleTheme} className="p-5 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition">
                              <div className="flex items-center gap-4">
                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm transition-colors ${theme === 'dark' ? 'bg-indigo-500' : 'bg-orange-400'}`}>
-                                    {theme === 'dark' ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>}
+                                    {theme === 'dark' ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>}
                                  </div>
                                  <div>
                                      <span className="font-bold dark:text-white text-base block">Оформление</span>
@@ -144,7 +144,6 @@ const Profile: React.FC = () => {
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                              </div>
 
-                             {/* App Settings Toggle */}
                              <div onClick={() => navigate('/app-settings')} className="p-5 flex items-center justify-between cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition">
                                  <div className="flex items-center gap-4">
                                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white bg-sky-500 shadow-sm">
@@ -178,7 +177,7 @@ const Profile: React.FC = () => {
                 )}
 
                 <div className="text-center pt-10 opacity-50 pb-safe-bottom">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.4</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">ChefDeck v1.8.5</p>
                     <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">{isTwa ? `Secure Connection via Telegram` : 'Web Mode'}</p>
                 </div>
 
@@ -186,8 +185,8 @@ const Profile: React.FC = () => {
 
              {/* Registration Modal */}
              {isRegModalOpen && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-scale-in">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in" style={{ touchAction: 'none' }}>
+                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-scale-in" style={{ touchAction: 'auto' }}>
                         <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">Новый бот</h2>
                         
                         <div className="space-y-4">
@@ -196,9 +195,9 @@ const Profile: React.FC = () => {
                                 <input 
                                     type="text" 
                                     placeholder="my_rest_bot" 
-                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500/50 dark:text-white"
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none border border-transparent focus:border-purple-500/50 dark:text-white"
                                     value={regForm.botId}
-                                    onChange={e => setRegForm({...regForm, botId: e.target.value.toLowerCase().replace(/\s/g, '_')})}
+                                    onChange={e => setRegForm(prev => ({...prev, botId: e.target.value.toLowerCase().replace(/\s/g, '_')}))}
                                 />
                                 <p className="text-[10px] text-gray-400 mt-1">Только латиница и _</p>
                             </div>
@@ -208,9 +207,9 @@ const Profile: React.FC = () => {
                                 <input 
                                     type="text" 
                                     placeholder="Pizza Roma" 
-                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500/50 dark:text-white"
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none border border-transparent focus:border-purple-500/50 dark:text-white"
                                     value={regForm.name}
-                                    onChange={e => setRegForm({...regForm, name: e.target.value})}
+                                    onChange={e => setRegForm(prev => ({...prev, name: e.target.value}))}
                                 />
                             </div>
 
@@ -219,9 +218,9 @@ const Profile: React.FC = () => {
                                 <input 
                                     type="text" 
                                     placeholder="12345:AAH..." 
-                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500/50 dark:text-white font-mono text-xs"
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none border border-transparent focus:border-purple-500/50 dark:text-white font-mono text-xs"
                                     value={regForm.token}
-                                    onChange={e => setRegForm({...regForm, token: e.target.value})}
+                                    onChange={e => setRegForm(prev => ({...prev, token: e.target.value}))}
                                 />
                             </div>
                         </div>
