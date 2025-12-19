@@ -129,7 +129,7 @@ const setupBotListeners = (bot, token) => {
                 );
             }
             const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
-            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ChefDeck!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
+            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
