@@ -241,15 +241,17 @@ const Inventory: React.FC = () => {
     const handleActualChange = (itemId: string, rawVal: string) => {
         if (!activeCycle || !activeSheetId) return;
 
-        // 1. Update UI state immediately (allows typing , or .)
-        const normalizedVal = rawVal.replace(',', '.');
+        // 1. Instant Auto-replace comma with dot
+        let normalizedVal = rawVal.replace(',', '.');
         
-        // Validation: allow empty, minus sign, or valid decimal pattern (including trailing dot)
-        if (normalizedVal !== '' && normalizedVal !== '-' && !/^-?\d*\.?\d*$/.test(normalizedVal)) return;
+        // 2. Filter input: allow only digits and at most one dot
+        // We also allow an empty string and a leading dot or minus
+        if (normalizedVal !== '' && !/^-?\d*\.?\d*$/.test(normalizedVal)) return;
 
-        setInputValues(prev => ({ ...prev, [itemId]: rawVal }));
+        // 3. Update the UI state string (preserving trailing dot for typing)
+        setInputValues(prev => ({ ...prev, [itemId]: normalizedVal }));
 
-        // 2. Sync to main state only if it's a valid complete number
+        // 4. Update the actual data cycle state for calculation and saving
         const numeric = parseFloat(normalizedVal);
         const updatedCycle = { ...activeCycle };
         const sheet = updatedCycle.sheets.find(s => s.id === activeSheetId);
@@ -264,6 +266,28 @@ const Inventory: React.FC = () => {
             sheet.updatedBy = user?.first_name;
             setActiveCycle(updatedCycle);
             saveCycleDebounced(updatedCycle);
+        }
+    };
+
+    const handleDeleteItem = (itemId: string) => {
+        if (!activeCycle || !activeSheetId) return;
+        if (!confirm("Удалить эту позицию из бланка?")) return;
+
+        const updatedCycle = { ...activeCycle };
+        const sheet = updatedCycle.sheets.find(s => s.id === activeSheetId);
+        if (sheet) {
+            sheet.items = sheet.items.filter(i => i.id !== itemId);
+            setActiveCycle(updatedCycle);
+            saveCycleDebounced(updatedCycle);
+            
+            // Clean up UI state
+            setInputValues(prev => {
+                const next = { ...prev };
+                delete next[itemId];
+                return next;
+            });
+            
+            addToast("Позиция удалена", "info");
         }
     };
 
@@ -537,10 +561,18 @@ const Inventory: React.FC = () => {
                 {viewMode === 'filling' && (
                     <div className="space-y-3 pb-32">
                         {filteredItems.map(item => (
-                            <div key={item.id} className="bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-between">
-                                <div className="flex-1 min-w-0 pr-4">
-                                    <h4 className="font-bold text-gray-900 dark:text-white truncate text-sm">{item.name}</h4>
-                                    <p className="text-[9px] text-gray-400 font-black uppercase mt-0.5">{item.unit}</p>
+                            <div key={item.id} className="bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-between group">
+                                <div className="flex-1 min-w-0 pr-2 flex items-center gap-3">
+                                    <button 
+                                        onClick={() => handleDeleteItem(item.id)}
+                                        className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 active:opacity-100 transition-opacity"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                    </button>
+                                    <div className="min-w-0">
+                                        <h4 className="font-bold text-gray-900 dark:text-white truncate text-sm">{item.name}</h4>
+                                        <p className="text-[9px] text-gray-400 font-black uppercase mt-0.5">{item.unit}</p>
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <input 
