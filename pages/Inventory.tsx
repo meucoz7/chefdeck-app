@@ -27,7 +27,7 @@ const Inventory: React.FC = () => {
     const [cycles, setCycles] = useState<InventoryCycle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeCycle, setActiveCycle] = useState<InventoryCycle | null>(null);
-    const [viewMode, setViewMode] = useState<'list' | 'filling' | 'admin'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'filling' | 'admin' | 'manage'>('list');
     const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
     
     // Import state
@@ -55,10 +55,77 @@ const Inventory: React.FC = () => {
             setCycles(data);
             const active = data.find((c: any) => !c.isFinalized);
             if (active) setActiveCycle(active);
+            else setActiveCycle(null);
         } catch (e) {
             addToast("Ошибка загрузки", "error");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // --- ADMIN MANAGEMENT LOGIC ---
+    const resetInventory = async () => {
+        if (!activeCycle) return;
+        if (!confirm("ВНИМАНИЕ! Это полностью удалит текущие бланки и все введенные остатки. Это действие нельзя отменить. Продолжить?")) return;
+
+        try {
+            setIsSaving(true);
+            // In a real app, we might have a specific delete endpoint, 
+            // but here we can just update the cycle as finalized or remove it.
+            // Let's assume finalizing effectively "clears" it from active status.
+            const updated = { ...activeCycle, isFinalized: true };
+            await apiFetch('/api/inventory/cycle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updated)
+            });
+            setActiveCycle(null);
+            setViewMode('list');
+            addToast("Инвентаризация сброшена", "success");
+            loadData();
+        } catch (e) {
+            addToast("Ошибка при сбросе", "error");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const renameSheet = (id: string) => {
+        if (!activeCycle) return;
+        const sheet = activeCycle.sheets.find(s => s.id === id);
+        const newTitle = prompt("Введите новое название станции:", sheet?.title);
+        if (newTitle && newTitle.trim()) {
+            const updated = { ...activeCycle };
+            updated.sheets = updated.sheets.map(s => s.id === id ? { ...s, title: newTitle.trim() } : s);
+            setActiveCycle(updated);
+            saveCycleDebounced(updated);
+        }
+    };
+
+    const deleteSheet = (id: string) => {
+        if (!activeCycle) return;
+        if (!confirm("Удалить этот бланк и все данные в нем?")) return;
+        const updated = { ...activeCycle };
+        updated.sheets = updated.sheets.filter(s => s.id !== id);
+        setActiveCycle(updated);
+        saveCycleDebounced(updated);
+        addToast("Бланк удален", "info");
+    };
+
+    const addNewSheet = () => {
+        if (!activeCycle) return;
+        const name = prompt("Название новой станции (напр. Бар):");
+        if (name && name.trim()) {
+            const newSheet: InventorySheet = {
+                id: uuidv4(),
+                title: name.trim(),
+                items: [],
+                status: 'active'
+            };
+            const updated = { ...activeCycle };
+            updated.sheets.push(newSheet);
+            setActiveCycle(updated);
+            saveCycleDebounced(updated);
         }
     };
 
@@ -100,7 +167,7 @@ const Inventory: React.FC = () => {
                 })).filter(i => 
                     i.name.length > 2 && 
                     i.unit.length >= 1 && 
-                    !['наименование', 'товар', 'итого', 'подпись'].some(k => i.name.toLowerCase().includes(k))
+                    !['наименование', 'товар', 'итого', 'подпись', 'станция'].some(k => i.name.toLowerCase().includes(k))
                 );
 
                 return {
@@ -272,7 +339,7 @@ const Inventory: React.FC = () => {
                 setViewMode('list');
                 setActiveSheetId(null);
             }
-        } else if (viewMode === 'admin') {
+        } else if (viewMode === 'admin' || viewMode === 'manage') {
             setViewMode('list');
         } else {
             navigate('/');
@@ -323,7 +390,7 @@ const Inventory: React.FC = () => {
                         </button>
                         <div>
                             <h1 className="text-xl font-black text-gray-900 dark:text-white leading-none">
-                                {viewMode === 'list' ? 'Инвентаризация' : (viewMode === 'filling' ? 'Бланк' : 'Сводная')}
+                                {viewMode === 'list' ? 'Инвентаризация' : (viewMode === 'filling' ? 'Бланк' : (viewMode === 'admin' ? 'Сводная' : 'Управление'))}
                             </h1>
                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
                                 {activeCycle ? new Date(activeCycle.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'Создайте новую'}
@@ -337,9 +404,14 @@ const Inventory: React.FC = () => {
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
                              </label>
                              {activeCycle && (
-                                <button onClick={() => setViewMode('admin')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0m-9.75 0h9.75" /></svg>
-                                </button>
+                                <>
+                                    <button onClick={() => setViewMode('admin')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0m-9.75 0h9.75" /></svg>
+                                    </button>
+                                    <button onClick={() => setViewMode('manage')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 1115 0 7.5 7.5 0 01-15 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                    </button>
+                                </>
                              )}
                         </div>
                     )}
@@ -397,6 +469,45 @@ const Inventory: React.FC = () => {
                                 })}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {viewMode === 'manage' && activeCycle && (
+                    <div className="animate-slide-up space-y-6 pb-20">
+                         <div className="bg-red-50 dark:bg-red-500/10 p-5 rounded-3xl border border-red-100 dark:border-red-500/20 mb-6">
+                            <h3 className="text-red-600 dark:text-red-400 font-black uppercase text-xs mb-2">Опасная зона</h3>
+                            <p className="text-[10px] text-red-500/70 mb-4 font-medium uppercase leading-tight">Удаление текущих данных позволит загрузить новый Excel-файл</p>
+                            <button 
+                                onClick={resetInventory}
+                                className="w-full py-3.5 bg-red-600 text-white font-black rounded-2xl shadow-lg shadow-red-600/20 active:scale-95 transition flex items-center justify-center gap-2 uppercase text-[10px] tracking-widest"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                Сбросить всё
+                            </button>
+                         </div>
+
+                         <div className="space-y-3">
+                             <div className="flex items-center justify-between px-1">
+                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Управление бланками</h3>
+                                <button onClick={addNewSheet} className="text-[10px] font-black text-sky-500 uppercase">+ Новый бланк</button>
+                             </div>
+                             {activeCycle.sheets.map(sheet => (
+                                 <div key={sheet.id} className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl border border-gray-100 dark:border-white/5 flex items-center justify-between shadow-sm">
+                                     <div className="flex flex-col">
+                                         <span className="text-xs font-black dark:text-white">{sheet.title}</span>
+                                         <span className="text-[9px] text-gray-400 uppercase font-bold">{sheet.items.length} позиций</span>
+                                     </div>
+                                     <div className="flex gap-1">
+                                         <button onClick={() => renameSheet(sheet.id)} className="w-9 h-9 rounded-xl bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 hover:text-sky-500 transition">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
+                                         </button>
+                                         <button onClick={() => deleteSheet(sheet.id)} className="w-9 h-9 rounded-xl bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 hover:text-red-500 transition">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                         </button>
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
                     </div>
                 )}
 
