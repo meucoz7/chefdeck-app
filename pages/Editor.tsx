@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -37,10 +38,8 @@ export default function Editor() {
   const { isAdmin } = useTelegram();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- STATE ---
   const [mode, setMode] = useState<EditorMode>('create');
   
-  // Create/Edit Mode State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -51,37 +50,30 @@ export default function Editor() {
   const [steps, setSteps] = useState<string[]>(['']);
   const [isFavorite, setIsFavorite] = useState(false);
   
-  // Notification Feature
   const [shouldNotify, setShouldNotify] = useState(true); 
   const [showUrlInput, setShowUrlInput] = useState(false);
 
-  // Import PDF Mode State
   const [isParsing, setIsParsing] = useState(false);
-  const [parsingProgress, setParsingProgress] = useState(0); // 0-100
+  const [parsingProgress, setParsingProgress] = useState(0); 
   const [parsingStatus, setParsingStatus] = useState('');
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [importNotify, setImportNotify] = useState(false);
   
-  // Import Images Mode State
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [imageMatches, setImageMatches] = useState<ImageMatch[]>([]);
   
-  // Saving Progress
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false); 
 
-  // --- AUTOCOMPLETE LOGIC ---
   const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
   
-  // Build a map of "Ingredient Name" -> "Last used Unit"
   const ingredientDatabase = useMemo(() => {
       const map = new Map<string, string>();
       recipes.forEach(r => {
           r.ingredients.forEach(i => {
               const cleanName = i.name.trim();
               if (cleanName) {
-                  // Prefer existing unit, or overwrite if current map value is empty
                   if (!map.has(cleanName) || !map.get(cleanName)) {
                       map.set(cleanName, i.unit);
                   }
@@ -94,10 +86,9 @@ export default function Editor() {
   const getSuggestions = (query: string) => {
       if (!query || query.length < 2) return [];
       const lowerQuery = query.toLowerCase();
-      // Convert map keys to array and filter
       return Array.from(ingredientDatabase.keys())
           .filter((name: string) => name.toLowerCase().includes(lowerQuery) && name.toLowerCase() !== lowerQuery)
-          .slice(0, 5); // Limit to 5 suggestions
+          .slice(0, 5); 
   };
 
   const handleIngredientNameChange = (index: number, value: string) => {
@@ -113,27 +104,24 @@ export default function Editor() {
       n[index] = { 
           ...n[index], 
           name: name,
-          unit: suggestedUnit || n[index].unit // Only auto-fill unit if found
+          unit: suggestedUnit || n[index].unit 
       };
       setIngredients(n);
-      setActiveIngIndex(null); // Close dropdown
+      setActiveIngIndex(null); 
   };
 
-  // --- ACCESS CONTROL ---
   useEffect(() => {
     if (!isAdmin) {
-        navigate('/');
+        navigate('/', { replace: true });
         addToast("Доступ запрещен", "error");
     }
   }, [isAdmin, navigate, addToast]);
 
-  // --- EFFECT: LOAD DATA FOR EDITING ---
   useEffect(() => {
       if (id) {
           const recipeRef = getRecipe(id);
           if (recipeRef) {
               const recipe = JSON.parse(JSON.stringify(recipeRef));
-
               setTitle(recipe.title);
               setDescription(recipe.description);
               setCategory(recipe.category);
@@ -156,8 +144,12 @@ export default function Editor() {
       } else if (mode === 'import-upload' || mode === 'import-images') {
           setMode('create');
       } else {
-          if (id) navigate(`/recipe/${id}`);
-          else navigate('/');
+          if (id) {
+              // Using replace: true to break the back navigation loop
+              navigate(`/recipe/${id}`, { replace: true });
+          } else {
+              navigate('/', { replace: true });
+          }
       }
   };
 
@@ -181,7 +173,6 @@ export default function Editor() {
       return total > 0 ? `${total.toFixed(0)} г` : '';
   };
 
-  // --- SAVE / UPDATE ---
   const handleSave = async () => {
     if (!title) { addToast("Укажите название", "error"); return; }
     
@@ -220,7 +211,6 @@ export default function Editor() {
     }
   };
 
-  // --- PDF IMPORT ACTIONS ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -246,7 +236,6 @@ export default function Editor() {
 
         await new Promise(r => setTimeout(r, 500));
 
-        // Prepare set of existing normalized titles for duplicate detection
         const existingTitles = new Set(recipes.map(r => r.title.toLowerCase().trim()));
 
         const staged: StagedRecipe[] = data.map(item => {
@@ -258,7 +247,7 @@ export default function Editor() {
                 outputWeight: calculateWeightValue(item.ingredients),
                 steps: [''], 
                 imageUrl: '',
-                selected: !isDuplicate, // Uncheck if already exists
+                selected: !isDuplicate, 
                 collapsed: true,
                 isDuplicate: isDuplicate
             };
@@ -292,7 +281,7 @@ export default function Editor() {
       
       try {
           const finalRecipes: TechCard[] = selected.map(r => ({
-              id: uuidv4(), // Generate fresh ID just in case
+              id: uuidv4(), 
               title: r.title,
               description: '',
               imageUrl: r.imageUrl,
@@ -304,9 +293,7 @@ export default function Editor() {
               createdAt: Date.now()
           }));
 
-          // BULK INSERT
           await addRecipesBulk(finalRecipes, importNotify);
-          
           addToast(`Импортировано: ${selected.length}`, "success");
           navigate('/', { replace: true });
       } catch (e: any) {
@@ -317,16 +304,13 @@ export default function Editor() {
       }
   };
 
-  // --- IMAGE IMPORT ACTIONS ---
   const handleUrlScrape = async () => {
       if (!scrapeUrl) { addToast("Введите ссылку", "error"); return; }
-      
       setIsParsing(true);
       setParsingStatus('Сканирование сайта...');
       setImageMatches([]);
 
       try {
-          // Use Proxy to fetch HTML
           const encodedUrl = encodeURIComponent(scrapeUrl);
           const res = await apiFetch(`/api/proxy?url=${encodedUrl}`);
           if (!res.ok) throw new Error("Ошибка доступа к сайту");
@@ -337,9 +321,6 @@ export default function Editor() {
           
           const matches: ImageMatch[] = [];
           
-          // --- ADVANCED FUZZY MATCHING WITH STEMMING ---
-
-          // 1. Simple Russian Stemmer (Removes common endings)
           const getStem = (word: string) => {
               const w = word.toLowerCase();
               const endings = /(?:ами|ями|ов|ев|ей|ой|ий|ый|ая|яя|ое|ее|ые|ие|ыми|ими|им|ым|ом|ем|ах|ях|ую|юю|ы|и|а|я|о|е|у|ю)$/i;
@@ -360,10 +341,10 @@ export default function Editor() {
                           matrix[i][j] = matrix[i - 1][j - 1];
                       } else {
                           matrix[i][j] = Math.min(
-                              matrix[i - 1][j - 1] + 1, // substitution
+                              matrix[i - 1][j - 1] + 1, 
                               Math.min(
-                                  matrix[i][j - 1] + 1, // insertion
-                                  matrix[i - 1][j] + 1  // deletion
+                                  matrix[i][j - 1] + 1, 
+                                  matrix[i - 1][j] + 1  
                               )
                           );
                       }
@@ -398,12 +379,9 @@ export default function Editor() {
           const calculateScore = (strA: string, strB: string) => {
               const tokensA = getTokens(strA);
               const tokensB = getTokens(strB);
-
               if (tokensA.length === 0 || tokensB.length === 0) return 0;
-
               const [short, long] = tokensA.length < tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
               let totalScore = 0;
-
               short.forEach(sToken => {
                   const sStem = getStem(sToken);
                   let maxTokenScore = 0;
@@ -423,7 +401,6 @@ export default function Editor() {
               return totalScore / short.length;
           };
 
-          // Helper to resolve URL
           const resolveUrl = (src: string) => {
               try {
                   return new URL(src, scrapeUrl).href;
@@ -432,18 +409,12 @@ export default function Editor() {
               }
           };
 
-          // --- EXTRACTING DATA FROM HTML ---
-          
-          // 1. Structure Site Data by Category (H2 -> Next UL)
-          const siteMap: Record<string, { title: string, img: string }[]> = {};
           const allSiteItems: { title: string, img: string }[] = [];
+          const siteMap: Record<string, { title: string, img: string }[]> = {};
 
-          // Helper to extract data from a card
           const extractCardData = (card: Element) => {
               let title = '';
               let imageSrc = '';
-              
-              // Title from hidden input or text
               const hiddenInput = card.querySelector('input.dish-name');
               if (hiddenInput && (hiddenInput as HTMLInputElement).value) {
                   title = (hiddenInput as HTMLInputElement).value;
@@ -451,37 +422,29 @@ export default function Editor() {
                   const titleEl = card.querySelector('.menu-dish-list-item-name');
                   if (titleEl && titleEl.textContent) title = titleEl.textContent;
               }
-
-              // Image
               const imgEl = card.querySelector('img');
               if (imgEl) {
                   imageSrc = imgEl.getAttribute('src') || '';
                   if (!imageSrc || imageSrc.includes('noimg')) imageSrc = imgEl.getAttribute('data-src') || '';
               }
-              
               return { title, img: imageSrc };
           };
 
-          // Parse Headers and sections
           const headers = doc.querySelectorAll('h2');
           headers.forEach(h2 => {
               const catName = normalize(h2.textContent || '');
-              
-              // Find the next UL that contains items
               let sibling = h2.nextElementSibling;
               while (sibling) {
-                  if (sibling.tagName === 'H2') break; // Stop at next header
-                  
+                  if (sibling.tagName === 'H2') break; 
                   if (sibling.tagName === 'UL') {
                       const items: { title: string, img: string }[] = [];
                       sibling.querySelectorAll('.menu-dish-list-item').forEach(card => {
                           const data = extractCardData(card);
                           if (data.title && data.img) {
                               items.push(data);
-                              allSiteItems.push(data); // Add to global backup
+                              allSiteItems.push(data);
                           }
                       });
-                      
                       if (items.length > 0) {
                           if (!siteMap[catName]) siteMap[catName] = [];
                           siteMap[catName].push(...items);
@@ -491,7 +454,6 @@ export default function Editor() {
               }
           });
 
-          // Fallback: If no headers/sections found, just grab all items from document
           if (allSiteItems.length === 0) {
                doc.querySelectorAll('.menu-dish-list-item').forEach(card => {
                   const data = extractCardData(card);
@@ -505,38 +467,26 @@ export default function Editor() {
               return;
           }
 
-          // 2. Iterate Recipes and Find Matches
           recipes.forEach(r => {
-              if (r.isArchived) return;
-              if (r.imageUrl) return; // CRITICAL: SKIP EXISTING IMAGES
+              if (r.isArchived || r.imageUrl) return; 
 
-              // Determine where to look
-              let searchPool = allSiteItems; // Default: look everywhere
-              
+              let searchPool = allSiteItems; 
               if (r.category) {
-                  // Try to find matching category in siteMap
                   const rCat = normalize(r.category);
                   let bestSiteCatKey = '';
                   let bestCatScore = 0;
-
                   Object.keys(siteMap).forEach(siteCat => {
                       const score = calculateScore(rCat, siteCat);
-                      // Use a high threshold for category mapping
                       if (score > 0.8 && score > bestCatScore) { 
                           bestCatScore = score;
                           bestSiteCatKey = siteCat;
                       }
                   });
-
-                  if (bestSiteCatKey) {
-                      searchPool = siteMap[bestSiteCatKey];
-                  }
+                  if (bestSiteCatKey) searchPool = siteMap[bestSiteCatKey];
               }
 
-              // Find best dish match in the specific pool
               let bestItem = null;
               let bestItemScore = 0;
-
               searchPool.forEach(item => {
                   const score = calculateScore(r.title, item.title);
                   if (score > 0.65 && score > bestItemScore) {
@@ -556,7 +506,6 @@ export default function Editor() {
               }
           });
 
-          // Deduplicate matches
           const uniqueMatches = matches.reduce((acc, current) => {
               if (!acc.find(m => m.recipeId === current.recipeId)) {
                   acc.push(current);
@@ -565,13 +514,10 @@ export default function Editor() {
           }, [] as ImageMatch[]);
 
           setImageMatches(uniqueMatches);
-          
           if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
           else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
 
-      // Change error type to any to fix TypeScript "unknown" error in catch block
       } catch (e: any) {
-          // Use String() to ensure e is treated as string to avoid 'unknown' type issues in addToast
           console.error(e);
           const msg = e?.message || String(e);
           addToast(`Ошибка парсинга: ${msg}`, "error");
@@ -583,20 +529,17 @@ export default function Editor() {
   const handleApplyImages = async () => {
       const selected = imageMatches.filter(m => m.selected);
       if (selected.length === 0) return;
-
       setIsImporting(true);
       try {
-          // Process sequentially to avoid race conditions/overload
           for (const match of selected) {
               const recipe = recipes.find(r => r.id === match.recipeId);
               if (recipe) {
                   const updated = { ...recipe, imageUrl: match.newImage };
-                  // Silent update: notifyAll=false, silent=true
                   await updateRecipe(updated, false, true); 
               }
           }
           addToast("Изображения обновлены", "success");
-          navigate('/');
+          navigate('/', { replace: true });
       } catch (e) {
           addToast("Ошибка обновления", "error");
       } finally {
@@ -608,25 +551,20 @@ export default function Editor() {
 
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
-       
-       {/* Saving Overlay */}
        {(isImporting || isSaving) && (
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
                 <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
                     <h3 className="font-bold text-xl mb-6 dark:text-white">
                         {isImporting ? 'Обработка...' : 'Сохранение...'}
                     </h3>
-                    
                     <div className="flex justify-center mb-4">
                             <svg className="animate-spin h-10 w-10 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     </div>
-                    
                     <p className="text-xs text-gray-400 mt-2 uppercase tracking-wider">Не закрывайте приложение</p>
                 </div>
            </div>
        )}
 
-       {/* HEADER */}
        <div className="px-5 pt-safe-top flex justify-between items-center mb-2">
           <button onClick={handleBack} disabled={isImporting || isSaving} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
@@ -672,9 +610,7 @@ export default function Editor() {
 
           {mode === 'create' && (
              <div className="space-y-5">
-                {/* Image & Main Info */}
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 space-y-5">
-                    {/* Image Input */}
                     <div 
                         className="relative w-full aspect-video rounded-2xl bg-gray-50 dark:bg-black/20 border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center overflow-hidden transition hover:border-sky-400 group cursor-pointer"
                         onClick={() => !imageUrl && !showUrlInput && fileInputRef.current?.click()} 
@@ -726,13 +662,11 @@ export default function Editor() {
                     </div>
                 </div>
 
-                {/* Ingredients */}
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Ингредиенты</h3>
                     <div className="space-y-3">
                         {ingredients.map((ing, i) => {
                             const suggestions = activeIngIndex === i ? getSuggestions(ing.name) : [];
-                            
                             return (
                                 <div key={i} className="grid grid-cols-[1fr_4rem_3rem_2rem] gap-2 items-center relative z-20">
                                     <div className="relative">
@@ -745,7 +679,6 @@ export default function Editor() {
                                             onFocus={() => setActiveIngIndex(i)}
                                             onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
                                         />
-                                        {/* Autocomplete Dropdown */}
                                         {suggestions.length > 0 && (
                                             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-xl border border-gray-100 dark:border-white/10 z-50 overflow-hidden">
                                                 {suggestions.map((suggestion) => (
@@ -763,10 +696,8 @@ export default function Editor() {
                                             </div>
                                         )}
                                     </div>
-                                    
                                     <input type="text" placeholder="Кол-во" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], amount: e.target.value}; setIngredients(n); }} />
                                     <input type="text" placeholder="Ед." className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], unit: e.target.value}; setIngredients(n); }} />
-                                    
                                     <div className="flex justify-center">
                                         {ingredients.length > 1 && (
                                             <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
@@ -781,17 +712,14 @@ export default function Editor() {
                     <button onClick={() => setIngredients([...ingredients, {name:'', amount:'', unit:''}])} className="mt-4 text-xs font-bold uppercase tracking-wider text-sky-600 w-full py-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl hover:bg-sky-100 transition border border-dashed border-sky-200 dark:border-sky-500/30">+ Добавить ряд</button>
                 </div>
 
-                {/* Steps */}
                 <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Технология</h3>
                     </div>
-                    
                     <textarea 
                         className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-4 text-sm mb-4 outline-none dark:text-white focus:ring-2 focus:ring-purple-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
                         rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="Короткое описание блюда..." 
                     />
-                    
                     <div className="space-y-4">
                         {steps.map((step, i) => (
                             <div key={i} className="flex gap-3 group relative pr-8">
@@ -807,7 +735,6 @@ export default function Editor() {
                     <button onClick={() => setSteps([...steps, ''])} className="mt-6 text-xs font-bold uppercase tracking-wider text-orange-500 w-full py-3 bg-orange-50 dark:bg-orange-500/10 rounded-xl hover:bg-orange-100 transition border border-dashed border-orange-200 dark:border-orange-500/30">+ Добавить шаг</button>
                 </div>
                 
-                {/* NOTIFICATION CHECKBOX */}
                 <div className="flex items-center justify-between bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 cursor-pointer" onClick={() => setShouldNotify(!shouldNotify)}>
                      <div className="flex items-center gap-3">
                          <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
@@ -831,12 +758,10 @@ export default function Editor() {
              </div>
           )}
 
-          {/* Import Modes */}
           {mode === 'import-upload' && (
               <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
                  <div className="bg-white dark:bg-[#1e1e24] p-10 rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-white/5 text-center w-full relative overflow-hidden group">
                      <h2 className="font-black dark:text-white text-2xl mb-2 tracking-tight">Загрузка PDF</h2>
-                     
                      {isParsing ? (
                          <div className="py-6 w-full animate-fade-in">
                             <div className="w-full h-3 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden relative">
@@ -858,10 +783,8 @@ export default function Editor() {
               </div>
           )}
           
-          {/* IMPORT IMAGES MODE */}
           {mode === 'import-images' && (
               <div className="space-y-6 animate-slide-up pb-28">
-                  {/* Input Card */}
                   <div className="bg-white dark:bg-[#1e1e24] p-6 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-white/5">
                       <h2 className="font-black dark:text-white text-xl mb-4">Скрапинг изображений</h2>
                       <div className="space-y-4">
@@ -875,28 +798,19 @@ export default function Editor() {
                                     value={scrapeUrl}
                                     onChange={e => setScrapeUrl(e.target.value)}
                                   />
-                                  <button 
-                                    onClick={handleUrlScrape} 
-                                    disabled={isParsing}
-                                    className="bg-indigo-600 text-white rounded-xl px-4 font-bold disabled:opacity-50"
-                                  >
+                                  <button onClick={handleUrlScrape} disabled={isParsing} className="bg-indigo-600 text-white rounded-xl px-4 font-bold disabled:opacity-50">
                                       {isParsing ? '...' : '🔍'}
                                   </button>
                               </div>
-                              <p className="text-[10px] text-gray-400 leading-tight">
-                                  Система проанализирует сайт, найдет фото и сопоставит их с названиями в вашей базе.
-                              </p>
+                              <p className="text-[10px] text-gray-400 leading-tight">Система проанализирует сайт, найдет фото и сопоставит их с названиями в вашей базе.</p>
                           </div>
                       </div>
                   </div>
-
-                  {/* Matches Grid */}
                   {imageMatches.length > 0 && (
                       <div className="space-y-4">
                           <div className="flex justify-between items-center px-2">
                               <h3 className="font-bold text-sm text-gray-500 uppercase tracking-widest">Совпадения ({imageMatches.length})</h3>
                           </div>
-                          
                           {imageMatches.map((match, idx) => (
                               <div 
                                 key={idx} 
@@ -907,11 +821,9 @@ export default function Editor() {
                                 }}
                                 className={`bg-white dark:bg-[#1e1e24] rounded-3xl p-3 border-2 transition-all cursor-pointer flex gap-3 items-center ${match.selected ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-transparent opacity-60'}`}
                               >
-                                  {/* Checkbox */}
                                   <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${match.selected ? 'bg-indigo-500 border-indigo-500' : 'border-gray-300'}`}>
                                       {match.selected && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
                                   </div>
-
                                   <div className="flex-1 min-w-0">
                                       <h4 className="font-bold text-sm dark:text-white truncate">{match.recipeName}</h4>
                                       <div className="flex gap-2 mt-2">
@@ -939,7 +851,6 @@ export default function Editor() {
           
           {mode === 'import-staging' && (
               <div className="space-y-6 animate-slide-up pb-28">
-                 {/* BULK ACTIONS HEADER */}
                  <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 space-y-3">
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Массовые действия</h3>
                      <div className="flex gap-3 items-center">
@@ -955,10 +866,8 @@ export default function Editor() {
                      </div>
                      <p className="text-[10px] text-gray-400 text-right pr-2">Уведомить пользователей</p>
                  </div>
-
                  {stagedRecipes.map((recipe: StagedRecipe) => (
                      <div key={recipe.id} className={`bg-white dark:bg-[#1e1e24] rounded-3xl overflow-hidden border-2 transition-all duration-300 shadow-sm ${recipe.selected ? 'border-sky-500 shadow-sky-500/10' : 'border-transparent opacity-70'}`}>
-                         {/* Card Header */}
                          <div className="p-3 flex items-center gap-3 bg-gray-50/50 dark:bg-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition" onClick={() => updateStagedRecipe(recipe.id, 'collapsed', !recipe.collapsed)}>
                              <div onClick={(e) => { e.stopPropagation(); updateStagedRecipe(recipe.id, 'selected', !recipe.selected); }} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${recipe.selected ? 'bg-sky-500 border-sky-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-white/5'}`}>
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-3.5 h-3.5 text-white transition-all ${recipe.selected ? 'scale-100' : 'scale-0'}`}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
@@ -970,14 +879,10 @@ export default function Editor() {
                                 <span className="text-[9px] bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 px-2 py-0.5 rounded font-bold uppercase whitespace-nowrap">УЖЕ В БАЗЕ</span>
                              )}
                          </div>
-                         
-                         {/* Staging Editor */}
                          {!recipe.collapsed && (
                              <div className="p-5 space-y-6 animate-fade-in bg-white dark:bg-[#1e1e24]">
                                   <div className="space-y-3">
                                       <input type="text" className="w-full bg-transparent text-base font-bold dark:text-white outline-none border-b border-gray-100 dark:border-white/10" value={recipe.title} onChange={e => updateStagedRecipe(recipe.id, 'title', e.target.value)} />
-                                      
-                                      {/* Ingredient Editor for Staging (Simplified) */}
                                        <div className="space-y-2">
                                             {recipe.ingredients.map((ing, i) => (
                                                 <div key={i} className="grid grid-cols-[1fr_3rem] gap-2">
@@ -986,7 +891,6 @@ export default function Editor() {
                                                 </div>
                                             ))}
                                        </div>
-
                                        <textarea 
                                             className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
                                             rows={3} 
