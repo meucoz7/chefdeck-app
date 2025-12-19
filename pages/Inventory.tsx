@@ -30,6 +30,9 @@ const Inventory: React.FC = () => {
     const [viewMode, setViewMode] = useState<'list' | 'filling' | 'admin' | 'manage'>('list');
     const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
     
+    // UI state for inputs to allow smooth decimal typing (prevents disappearing dots)
+    const [inputValues, setInputValues] = useState<Record<string, string>>({});
+    
     // Import state
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
@@ -70,9 +73,6 @@ const Inventory: React.FC = () => {
 
         try {
             setIsSaving(true);
-            // In a real app, we might have a specific delete endpoint, 
-            // but here we can just update the cycle as finalized or remove it.
-            // Let's assume finalizing effectively "clears" it from active status.
             const updated = { ...activeCycle, isFinalized: true };
             await apiFetch('/api/inventory/cycle', {
                 method: 'POST',
@@ -220,6 +220,17 @@ const Inventory: React.FC = () => {
                 addToast(`Эта станция уже занята: ${data.lockedBy.name}`, "error");
                 return;
             }
+
+            // Sync local input values with actual data
+            const sheet = activeCycle.sheets.find(s => s.id === sheetId);
+            if (sheet) {
+                const initialInputs: Record<string, string> = {};
+                sheet.items.forEach(item => {
+                    initialInputs[item.id] = item.actual !== undefined ? item.actual.toString() : '';
+                });
+                setInputValues(initialInputs);
+            }
+
             setActiveSheetId(sheetId);
             setViewMode('filling');
         } catch (e) {
@@ -227,16 +238,28 @@ const Inventory: React.FC = () => {
         }
     };
 
-    const updateActual = (itemId: string, val: string) => {
+    const handleActualChange = (itemId: string, rawVal: string) => {
         if (!activeCycle || !activeSheetId) return;
-        
-        const cleanVal = val.replace(',', '.');
-        if (cleanVal !== '' && !/^-?\d*\.?\d*$/.test(cleanVal)) return;
 
+        // 1. Update UI state immediately (allows typing , or .)
+        const normalizedVal = rawVal.replace(',', '.');
+        
+        // Validation: allow empty, minus sign, or valid decimal pattern (including trailing dot)
+        if (normalizedVal !== '' && normalizedVal !== '-' && !/^-?\d*\.?\d*$/.test(normalizedVal)) return;
+
+        setInputValues(prev => ({ ...prev, [itemId]: rawVal }));
+
+        // 2. Sync to main state only if it's a valid complete number
+        const numeric = parseFloat(normalizedVal);
         const updatedCycle = { ...activeCycle };
         const sheet = updatedCycle.sheets.find(s => s.id === activeSheetId);
+        
         if (sheet) {
-            sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: cleanVal === '' ? undefined : Number(cleanVal) } : i);
+            sheet.items = sheet.items.map(i => 
+                i.id === itemId 
+                ? { ...i, actual: isNaN(numeric) ? undefined : numeric } 
+                : i
+            );
             sheet.updatedAt = Date.now();
             sheet.updatedBy = user?.first_name;
             setActiveCycle(updatedCycle);
@@ -525,8 +548,8 @@ const Inventory: React.FC = () => {
                                         inputMode="decimal"
                                         className="w-24 bg-gray-50 dark:bg-black/40 border border-transparent focus:border-sky-500 rounded-xl px-2 py-3 text-center font-black text-lg dark:text-white outline-none transition-all shadow-inner"
                                         placeholder="0"
-                                        value={item.actual ?? ''}
-                                        onChange={e => updateActual(item.id, e.target.value)}
+                                        value={inputValues[item.id] ?? ''}
+                                        onChange={e => handleActualChange(item.id, e.target.value)}
                                     />
                                 </div>
                             </div>
