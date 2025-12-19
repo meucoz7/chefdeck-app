@@ -7,7 +7,6 @@ import * as XLSX from 'xlsx';
 import { InventoryCycle, InventorySheet, InventoryItem, GlobalInventoryItem } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
-import { useRecipes } from '../context/RecipeContext';
 import { apiFetch } from '../services/api';
 
 interface ImportSheet {
@@ -17,8 +16,6 @@ interface ImportSheet {
     isSelected: boolean;
     mapping: { name: number; unit: number; code: number };
 }
-
-const UNITS = ['кг', 'г', 'л', 'мл', 'шт', 'упак'];
 
 // --- SUB-COMPONENT: SWIPEABLE ITEM ROW ---
 const InventoryItemRow: React.FC<{
@@ -39,7 +36,6 @@ const InventoryItemRow: React.FC<{
     const handleTouchMove = (e: React.TouchEvent) => {
         const currentX = e.touches[0].clientX;
         const diff = currentX - startX;
-
         if (diff < 0) {
             setOffsetX(Math.max(diff, -100));
         } else if (isSwiped && diff > 0) {
@@ -154,6 +150,7 @@ const Inventory: React.FC = () => {
             const res = await apiFetch('/api/inventory');
             const data = await res.json();
             setCycles(data);
+            // ONLY show non-finalized cycle as active
             const active = data.find((c: any) => !c.isFinalized);
             if (active) setActiveCycle(active);
             else setActiveCycle(null);
@@ -161,66 +158,6 @@ const Inventory: React.FC = () => {
             addToast("Ошибка загрузки", "error");
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const resetInventory = async () => {
-        if (!activeCycle) return;
-        if (!confirm("ВНИМАНИЕ! Это полностью удалит текущие бланки. Продолжить?")) return;
-        try {
-            setIsSaving(true);
-            const updated = { ...activeCycle, isFinalized: true };
-            await apiFetch('/api/inventory/cycle', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updated)
-            });
-            setActiveCycle(null);
-            setViewMode('list');
-            addToast("Инвентаризация сброшена", "success");
-            loadData();
-        } catch (e) {
-            addToast("Ошибка при сбросе", "error");
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const renameSheet = (id: string) => {
-        if (!activeCycle) return;
-        const sheet = activeCycle.sheets.find(s => s.id === id);
-        const newTitle = prompt("Название станции:", sheet?.title);
-        if (newTitle && newTitle.trim()) {
-            const updated = { ...activeCycle };
-            updated.sheets = updated.sheets.map(s => s.id === id ? { ...s, title: newTitle.trim() } : s);
-            setActiveCycle(updated);
-            saveCycleDebounced(updated);
-        }
-    };
-
-    const deleteSheet = (id: string) => {
-        if (!activeCycle) return;
-        if (!confirm("Удалить этот бланк?")) return;
-        const updated = { ...activeCycle };
-        updated.sheets = updated.sheets.filter(s => s.id !== id);
-        setActiveCycle(updated);
-        saveCycleDebounced(updated);
-    };
-
-    const addNewSheet = () => {
-        if (!activeCycle) return;
-        const name = prompt("Название новой станции:");
-        if (name && name.trim()) {
-            const newSheet: InventorySheet = {
-                id: uuidv4(),
-                title: name.trim(),
-                items: [],
-                status: 'active'
-            };
-            const updated = { ...activeCycle };
-            updated.sheets.push(newSheet);
-            setActiveCycle(updated);
-            saveCycleDebounced(updated);
         }
     };
 
@@ -237,7 +174,6 @@ const Inventory: React.FC = () => {
                 const sheet = wb.Sheets[name];
                 const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 
-                // Visible Row Filter
                 const rowsMeta = sheet['!rows'] || [];
                 const visibleData = rawData.filter((_, rowIndex) => {
                     return !(rowsMeta[rowIndex] && rowsMeta[rowIndex].hidden === true);
@@ -248,10 +184,12 @@ const Inventory: React.FC = () => {
                     data: visibleData, 
                     isSummary: idx === 0,
                     isSelected: true,
-                    mapping: { code: 1, name: 2, unit: 5 } // Indices: B=1, C=2, F=5
+                    // Default mappings
+                    mapping: type === 'summary' ? { code: 1, name: 2, unit: 5 } : { code: -1, name: 0, unit: 1 } 
                 };
             });
             setImportSheets(sheets);
+            // Summary doesn't need mapping adjustment usually but we show the modal anyway to confirm sheets
             setIsImportModalOpen(true);
         };
         reader.readAsBinaryString(file);
@@ -259,54 +197,42 @@ const Inventory: React.FC = () => {
 
     const confirmImport = async () => {
         if (importSheets.length === 0) return;
-        
         setIsSaving(true);
         try {
             if (importType === 'summary') {
-                // UPDATE GLOBAL SUMMARY
                 const allNewItems: GlobalInventoryItem[] = [];
                 importSheets.filter(s => s.isSelected).forEach(s => {
                     s.data.forEach(row => {
-                        const code = String(row[s.mapping.code] || '').trim();
-                        const name = String(row[s.mapping.name] || '').trim();
-                        const unit = String(row[s.mapping.unit] || '').trim();
-                        
-                        // Garbage filter: must have code, name, unit and not be header
+                        const code = String(row[1] || '').trim(); // B
+                        const name = String(row[2] || '').trim(); // C
+                        const unit = String(row[5] || '').trim(); // F
                         if (code && name && unit && !name.toLowerCase().includes('наименование') && code.length > 1) {
                             allNewItems.push({ botId: '', code, name, unit });
                         }
                     });
                 });
-
                 await apiFetch('/api/inventory/global-items/upsert', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ items: allNewItems })
                 });
-                addToast("Сводная обновлена", "success");
+                addToast("База обновлена", "success");
                 fetchGlobalItems();
             } else {
-                // CREATE NEW INVENTORY CYCLE
                 const newSheets: InventorySheet[] = importSheets
                     .filter(s => s.isSelected && !s.isSummary)
                     .map(s => {
                         const items: InventoryItem[] = s.data.map(row => {
-                            const code = String(row[s.mapping.code] || '').trim();
                             const name = String(row[s.mapping.name] || '').trim();
                             const unit = String(row[s.mapping.unit] || '').trim();
-                            
-                            if (code && name && unit && !name.toLowerCase().includes('наименование')) {
+                            const code = s.mapping.code !== -1 ? String(row[s.mapping.code] || '').trim() : '';
+                            if (name && unit && name.length > 2 && !['товар', 'итого', 'наименование'].some(k => name.toLowerCase().includes(k))) {
                                 return { id: uuidv4(), code, name, unit };
                             }
                             return null;
                         }).filter(i => i !== null) as InventoryItem[];
 
-                        return {
-                            id: uuidv4(),
-                            title: s.name,
-                            items,
-                            status: 'active' as const
-                        };
+                        return { id: uuidv4(), title: s.name, items, status: 'active' as const };
                     });
 
                 const newCycle: InventoryCycle = {
@@ -316,7 +242,6 @@ const Inventory: React.FC = () => {
                     isFinalized: false,
                     createdBy: user?.first_name || 'Admin'
                 };
-
                 await apiFetch('/api/inventory/cycle', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -324,7 +249,7 @@ const Inventory: React.FC = () => {
                 });
                 setActiveCycle(newCycle);
                 setCycles([newCycle, ...cycles]);
-                addToast("Инвентаризация начата", "success");
+                addToast("Бланки загружены", "success");
             }
         } catch (e) {
             addToast("Ошибка импорта", "error");
@@ -391,7 +316,6 @@ const Inventory: React.FC = () => {
         if (!activeCycle || !activeSheetId) return;
         const sheet = activeCycle.sheets.find(s => s.id === activeSheetId);
         if (!sheet) return;
-        
         const empty = sheet.items.filter(i => i.actual === undefined).length;
         if (empty > 0 && !confirm(`Осталось ${empty} позиций. Сдать?`)) return;
         
@@ -399,7 +323,7 @@ const Inventory: React.FC = () => {
         const target = updatedCycle.sheets.find(s => s.id === activeSheetId);
         if (target) target.status = 'submitted';
         
-        // --- CHECK IF ALL SHEETS SUBMITTED -> AUTO FINALIZE ---
+        // CHECK COMPLETION
         const allDone = updatedCycle.sheets.every(s => s.status === 'submitted');
         if (allDone) {
             updatedCycle.isFinalized = true;
@@ -408,16 +332,9 @@ const Inventory: React.FC = () => {
         try {
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updatedCycle) });
             await apiFetch('/api/inventory/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId }) });
-            
-            setActiveSheetId(null); 
-            setViewMode('list'); 
-            loadData(); 
-            
-            if (allDone) {
-                addToast("Все бланки сданы! Инвентаризация перенесена в архив.", "success");
-            } else {
-                addToast("Бланк сдан!", "success");
-            }
+            setActiveSheetId(null); setViewMode('list'); loadData();
+            if (allDone) addToast("Инвентаризация завершена и отправлена в архив!", "success");
+            else addToast("Бланк сдан!", "success");
         } catch (e) { addToast("Ошибка", "error"); }
     };
 
@@ -460,49 +377,10 @@ const Inventory: React.FC = () => {
         }
     };
 
-    // --- CONSOLIDATED DATA & EXPORT LOGIC ---
-    const consolidatedData = useMemo(() => {
-        if (!activeCycle) return [];
-        const aggregation: Record<string, { name: string; unit: string; totalActual: number }> = {};
-        
-        activeCycle.sheets.forEach(sheet => {
-            sheet.items.forEach(item => {
-                if (item.actual === undefined) return;
-                const key = `${item.name.toLowerCase().trim()}_${item.unit.toLowerCase().trim()}`;
-                if (!aggregation[key]) {
-                    aggregation[key] = { name: item.name, unit: item.unit, totalActual: 0 };
-                }
-                aggregation[key].totalActual += item.actual;
-            });
-        });
-        
-        return Object.values(aggregation).sort((a, b) => a.name.localeCompare(b.name));
-    }, [activeCycle]);
-
-    const exportConsolidated = () => {
-        if (consolidatedData.length === 0) {
-            addToast("Нет данных для экспорта", "info");
-            return;
-        }
-
-        const excelRows = consolidatedData.map(d => ({
-            "Наименование": d.name,
-            "Ед. изм.": d.unit,
-            "Фактический остаток": d.totalActual.toFixed(3).replace(/\.?0+$/, '')
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(excelRows);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Итоги инвентаризации");
-        XLSX.writeFile(wb, `Inventory_Summary_${new Date().toISOString().split('T')[0]}.xlsx`);
-        addToast("Экспорт завершен", "success");
-    };
-
     if (isLoading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin text-sky-500">⏳</div></div>;
 
     return (
         <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
-            {/* Header */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-50 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md border-b border-gray-100 dark:border-white/5">
                 <div className="flex items-center justify-between pt-4">
                     <div className="flex items-center gap-3">
@@ -510,11 +388,9 @@ const Inventory: React.FC = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                         </button>
                         <div>
-                            <h1 className="text-xl font-black text-gray-900 dark:text-white leading-none">
-                                {viewMode === 'list' ? 'Инвентаризация' : (viewMode === 'filling' ? 'Бланк' : (viewMode === 'admin' ? 'Сводная' : 'Управление'))}
-                            </h1>
+                            <h1 className="text-xl font-black text-gray-900 dark:text-white leading-none">Инвентаризация</h1>
                             <p className="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-widest truncate max-w-[200px]">
-                                {activeCycle ? new Date(activeCycle.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'Мастер-база: ' + globalItems.length}
+                                {activeCycle ? new Date(activeCycle.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'Создать новую'}
                             </p>
                         </div>
                     </div>
@@ -525,38 +401,26 @@ const Inventory: React.FC = () => {
                 {viewMode === 'list' && (
                     <div className="space-y-6">
                         {isAdmin && (
-                            <div className="grid grid-cols-5 gap-2 mb-2">
-                                <div onClick={() => document.getElementById('xl-cycle')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-1 h-20 cursor-pointer active:scale-[0.98] transition group">
+                            <div className="grid grid-cols-4 gap-2.5 mb-2">
+                                <div onClick={() => document.getElementById('xl-cycle')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-1 h-20 active:scale-[0.98] transition group">
                                     <input type="file" id="xl-cycle" className="hidden" accept=".xlsx,.xls" onChange={e => handleFileUpload(e, 'cycle')} />
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                                    </div>
-                                    <h3 className="font-bold text-[7px] uppercase tracking-tighter">Бланки</h3>
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></div>
+                                    <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Загрузить бланки</h3>
                                 </div>
-                                <div onClick={() => document.getElementById('xl-summary')?.click()} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 dark:text-amber-400 flex flex-col items-center justify-center gap-1 h-20 cursor-pointer active:scale-[0.98] transition group">
+                                <div onClick={() => document.getElementById('xl-summary')?.click()} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 dark:text-amber-400 flex flex-col items-center justify-center gap-1 h-20 active:scale-[0.98] transition group">
                                     <input type="file" id="xl-summary" className="hidden" accept=".xlsx,.xls" onChange={e => handleFileUpload(e, 'summary')} />
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                                    </div>
-                                    <h3 className="font-bold text-[7px] uppercase tracking-tighter text-center">База</h3>
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg></div>
+                                    <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Обновить базу</h3>
                                 </div>
                                 <div onClick={() => navigate('/inventory/archive')} className="col-span-1 bg-purple-100 dark:bg-purple-500/20 rounded-2xl p-2 text-purple-600 dark:text-purple-400 flex flex-col items-center justify-center gap-1 h-20 active:scale-[0.98] transition group">
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg>
-                                    </div>
-                                    <h3 className="font-bold text-[7px] uppercase tracking-tighter">Архив</h3>
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg></div>
+                                    <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Архив инвента</h3>
                                 </div>
                                 {activeCycle && (
-                                    <>
-                                        <div onClick={() => setViewMode('admin')} className="col-span-1 bg-indigo-100 dark:bg-indigo-500/20 rounded-2xl p-2 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center gap-1 h-20 active:scale-[0.98] transition group">
-                                            <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></div>
-                                            <h3 className="font-bold text-[7px] uppercase tracking-tighter">Итоги</h3>
-                                        </div>
-                                        <div onClick={() => setViewMode('manage')} className="col-span-1 bg-slate-100 dark:bg-white/5 rounded-2xl p-2 text-slate-600 dark:text-gray-300 flex flex-col items-center justify-center gap-1 h-20 active:scale-[0.98] transition group">
-                                            <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg></div>
-                                            <h3 className="font-bold text-[7px] uppercase tracking-tighter">Настр.</h3>
-                                        </div>
-                                    </>
+                                    <div onClick={() => setViewMode('manage')} className="col-span-1 bg-slate-100 dark:bg-white/5 rounded-2xl p-2 text-slate-600 dark:text-gray-300 flex flex-col items-center justify-center gap-1 h-20 active:scale-[0.98] transition group">
+                                        <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg></div>
+                                        <h3 className="font-bold text-[8px] uppercase tracking-tighter">Настройки</h3>
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -564,12 +428,12 @@ const Inventory: React.FC = () => {
                         {!activeCycle ? (
                             <div className="text-center py-20 opacity-50 flex flex-col items-center">
                                 <span className="text-6xl mb-4">📦</span>
-                                <h3 className="font-bold dark:text-white text-lg">Нет активных бланков</h3>
-                                <p className="text-xs text-gray-400 mt-2 px-10 leading-relaxed text-center uppercase tracking-tighter font-medium">Загрузите файл Excel (Колонки B, C, F) чтобы начать снятие остатков</p>
+                                <h3 className="font-bold dark:text-white text-lg">Инвентаризация не активна</h3>
+                                <p className="text-xs text-gray-400 mt-2 px-10 leading-relaxed text-center uppercase tracking-tighter font-medium">Загрузите Excel файл с товарами по станциям, чтобы начать</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
-                                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-1">Станции</h3>
+                                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-1">Станции / Смены</h3>
                                 {activeCycle.sheets.map(sheet => {
                                     const filled = sheet.items.filter(i => i.actual !== undefined).length;
                                     const total = sheet.items.length;
@@ -579,7 +443,7 @@ const Inventory: React.FC = () => {
                                             <div className="absolute bottom-0 left-0 h-1 bg-sky-500/20" style={{ width: `${pct}%` }}></div>
                                             <div className="flex items-center gap-4 relative z-10">
                                                 <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xl ${sheet.status === 'submitted' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20' : 'bg-sky-100 text-sky-600 dark:bg-sky-500/20'}`}>
-                                                    {sheet.status === 'submitted' ? '✅' : '📦'}
+                                                    {sheet.status === 'submitted' ? '✅' : '👨‍🍳'}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-gray-900 dark:text-white leading-tight">{sheet.title}</h4>
@@ -599,25 +463,13 @@ const Inventory: React.FC = () => {
                     <div className="animate-slide-up space-y-6 pb-20">
                          <div className="bg-red-50 dark:bg-red-500/10 p-5 rounded-3xl border border-red-100 dark:border-red-500/20">
                             <h3 className="text-red-600 dark:text-red-400 font-black uppercase text-[10px] mb-1">Сброс</h3>
-                            <p className="text-[9px] text-red-500/70 mb-4 font-medium uppercase leading-tight">Удалит текущие бланки. Вы сможете загрузить новые.</p>
-                            <button onClick={resetInventory} className="w-full py-3 bg-red-600 text-white font-black rounded-2xl shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition">Сбросить всё</button>
-                         </div>
-                         <div className="space-y-3">
-                             <div className="flex items-center justify-between px-1"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Бланки</h3><button onClick={addNewSheet} className="text-[9px] font-black text-sky-500 uppercase">+ Новый</button></div>
-                             {activeCycle.sheets.map(sheet => (
-                                 <div key={sheet.id} className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
-                                     <div><span className="text-xs font-black dark:text-white">{sheet.title}</span><p className="text-[9px] text-gray-400 uppercase font-bold">{sheet.items.length} поз.</p></div>
-                                     <div className="flex gap-2">
-                                         <button onClick={() => renameSheet(sheet.id)} className="w-8 h-8 rounded-xl bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 hover:text-sky-500 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                                         <button onClick={() => deleteSheet(sheet.id)} className="w-8 h-8 rounded-xl bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 hover:text-red-500 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                                     </div>
-                                 </div>
-                             ))}
+                            <p className="text-[9px] text-red-500/70 mb-4 font-medium uppercase leading-tight">Удалит текущую инвентаризацию без сохранения в архив.</p>
+                            <button onClick={() => { if(confirm("Сбросить всё?")) { setActiveCycle(null); loadData(); } }} className="w-full py-3 bg-red-600 text-white font-black rounded-2xl shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition">Сбросить всё</button>
                          </div>
                     </div>
                 )}
 
-                {viewMode === 'filling' && (activeSheetId && activeCycle) && (
+                {viewMode === 'filling' && activeSheetId && activeCycle && (
                     <div className="space-y-1 pb-32">
                         <div className="mb-4 px-1 text-[9px] text-gray-400 font-black uppercase tracking-widest flex items-center gap-2">📦 {activeCycle.sheets.find(s=>s.id===activeSheetId)?.title}</div>
                         {activeCycle.sheets.find(s=>s.id===activeSheetId)?.items.filter(i => !searchTerm || i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(item => (
@@ -634,44 +486,35 @@ const Inventory: React.FC = () => {
                         </div>
                     </div>
                 )}
-
-                {viewMode === 'admin' && (
-                    <div className="space-y-6 pb-20">
-                         <div className="flex items-center justify-between"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Итоги</h3><button onClick={exportConsolidated} className="text-[9px] font-black text-sky-500 uppercase border border-sky-500 px-3 py-1.5 rounded-full">Экспорт XLSX</button></div>
-                         <div className="bg-white dark:bg-[#1e1e24] rounded-[2rem] shadow-xl overflow-hidden border border-gray-100 dark:border-white/5">
-                             <table className="w-full text-left border-collapse">
-                                 <thead className="bg-gray-50 dark:bg-black/40 text-[8px] font-black text-gray-400 uppercase tracking-widest"><tr><th className="px-5 py-4">Товар</th><th className="px-2 py-4">Ед.</th><th className="px-5 py-4 text-right">Факт</th></tr></thead>
-                                 <tbody className="text-sm divide-y divide-gray-50 dark:divide-white/5">
-                                     {consolidatedData.map((d, i) => (
-                                         <tr key={i} className="hover:bg-gray-50 dark:hover:bg-white/[0.01]">
-                                             <td className="px-5 py-3.5 font-bold text-gray-800 dark:text-gray-200 text-xs leading-tight">{d.name}</td>
-                                             <td className="px-2 py-3.5 opacity-40 uppercase font-black text-[9px]">{d.unit}</td>
-                                             <td className="px-5 py-3.5 text-right font-mono font-black text-sky-500">{d.totalActual.toFixed(3).replace(/\.?0+$/, '')}</td>
-                                         </tr>
-                                     ))}
-                                 </tbody>
-                             </table>
-                         </div>
-                    </div>
-                )}
             </div>
 
-            {/* IMPORT MODAL */}
+            {/* IMPORT MODAL (FLEXIBLE EDITOR) */}
             {isImportModalOpen && createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
                     <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-                        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center">
-                            <div><h2 className="text-xl font-black dark:text-white leading-none">Импорт Excel</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">{importType === 'summary' ? 'Обновление справочника' : 'Создание инвентаризации'}</p></div>
-                            <button onClick={() => setIsImportModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">✕</button>
+                        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
+                            <div><h2 className="text-xl font-black dark:text-white leading-none">Настройка импорта</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">{importType === 'summary' ? 'Обновление базы товаров (B,C,F)' : 'Импорт бланков станций'}</p></div>
+                            <button onClick={() => setIsImportModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center">✕</button>
                         </div>
                         <div className="p-4 overflow-y-auto space-y-4 no-scrollbar">
-                            <p className="text-[10px] text-indigo-500 font-black uppercase text-center px-4">Скрипт читает колонки B(Код), C(Название) и F(Ед.изм)</p>
                             {importSheets.map((s, i) => (
                                 <div key={i} className={`p-4 rounded-3xl border-2 transition-all ${s.isSelected ? 'border-sky-500 bg-sky-500/5' : 'border-gray-100 dark:border-white/5 opacity-50'}`}>
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-3 mb-3">
                                         <input type="checkbox" checked={s.isSelected} onChange={e => { const ns = [...importSheets]; ns[i].isSelected = e.target.checked; setImportSheets(ns); }} className="w-5 h-5 rounded-lg" />
                                         <h4 className="font-bold text-sm dark:text-white truncate">{s.name}</h4>
                                     </div>
+                                    {importType === 'cycle' && s.isSelected && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black text-gray-400 uppercase">Кол. Товар</label>
+                                                <input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white border border-gray-100 dark:border-white/5" value={s.mapping.name} onChange={e => { const ns = [...importSheets]; ns[i].mapping.name = Number(e.target.value); setImportSheets(ns); }} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black text-gray-400 uppercase">Кол. Ед.изм</label>
+                                                <input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white border border-gray-100 dark:border-white/5" value={s.mapping.unit} onChange={e => { const ns = [...importSheets]; ns[i].mapping.unit = Number(e.target.value); setImportSheets(ns); }} />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
