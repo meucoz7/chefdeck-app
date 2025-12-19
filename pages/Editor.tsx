@@ -569,10 +569,11 @@ export default function Editor() {
           if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
           else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
 
-      } catch (e: unknown) {
+      // Change error type to any to fix TypeScript "unknown" error in catch block
+      } catch (e: any) {
           // Use String() to ensure e is treated as string to avoid 'unknown' type issues in addToast
           console.error(e);
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = e?.message || String(e);
           addToast(`Ошибка парсинга: ${msg}`, "error");
       } finally {
           setIsParsing(false);
