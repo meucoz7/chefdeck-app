@@ -76,7 +76,6 @@ const inventoryCycleSchema = new mongoose.Schema({
     createdBy: String
 });
 
-// Master Database for Inventory Items
 const globalInventoryItemSchema = new mongoose.Schema({
     botId: { type: String, required: true, index: true },
     code: { type: String, required: true },
@@ -134,25 +133,58 @@ const setupBotListeners = (bot, token) => {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error("❌ Start command error:", e); }
     });
 };
 
 const getBotInstance = (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
     try {
-        const bot = new TelegramBot(token, { polling: !WEBHOOK_URL });
-        if (WEBHOOK_URL) bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
+        const useWebhooks = !!WEBHOOK_URL;
+        const bot = new TelegramBot(token, { polling: !useWebhooks });
+        
+        if (useWebhooks) {
+            const webhookPath = `${WEBHOOK_URL}/webhook/${token}`;
+            bot.setWebHook(webhookPath)
+                .then(() => console.log(`🔗 Webhook set for bot: ${webhookPath}`))
+                .catch(e => console.error(`❌ Webhook failed for ${token}:`, e));
+        }
+
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) { return null; }
+    } catch (e) { 
+        console.error("❌ Bot creation error:", e);
+        return null; 
+    }
 };
 
 const initializeDefaultBot = async () => {
     const bots = await BotConfig.find({});
+    console.log(`🤖 Initializing ${bots.length} bot(s)...`);
     bots.forEach(b => getBotInstance(b.token));
 };
+
+// --- API MIDDLEWARES ---
+app.use(express.json({ limit: '50mb' }));
+
+// --- TELEGRAM WEBHOOK ENDPOINT ---
+app.post('/webhook/:token', (req, res) => {
+    const { token } = req.params;
+    const bot = botInstances.get(token);
+    if (bot) {
+        bot.processUpdate(req.body);
+    }
+    res.sendStatus(200);
+});
+
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
+    res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
 
 const resolveTenant = async (req, res, next) => {
     let botId = req.headers['x-bot-id'] || req.query.bot_id || 'default';
@@ -164,15 +196,6 @@ const resolveTenant = async (req, res, next) => {
         next();
     } catch (e) { res.status(500).send("Server Error"); }
 };
-
-app.use(express.json({ limit: '50mb' }));
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
-    res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-});
 
 // --- SETTINGS API ---
 app.get('/api/settings', resolveTenant, async (req, res) => {
@@ -197,10 +220,8 @@ app.post('/api/settings', resolveTenant, async (req, res) => {
 // --- INVENTORY API ---
 app.get('/api/inventory', resolveTenant, async (req, res) => {
     try {
-        // --- 3 MONTH TTL CLEANUP ---
         const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
         await InventoryCycle.deleteMany({ botId: req.tenant.botId, date: { $lt: threeMonthsAgo } });
-
         const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
         res.json(cycles);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -215,7 +236,6 @@ app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Master Summary API
 app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
     try {
         const items = await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 });
@@ -227,7 +247,6 @@ app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) =
     try {
         const { items } = req.body;
         if (!Array.isArray(items)) return res.status(400).send("Invalid items array");
-        
         for (const item of items) {
             await GlobalInventoryItem.findOneAndUpdate(
                 { botId: req.tenant.botId, code: item.code, name: item.name },
@@ -267,7 +286,7 @@ app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- USERS & ADMIN API ---
+// --- USERS API ---
 app.get('/api/users', resolveTenant, async (req, res) => {
     try {
         const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
@@ -288,7 +307,6 @@ app.post('/admin/register-bot', async (req, res) => {
         const { botId, token, name, ownerId } = req.body;
         const existing = await BotConfig.findOne({ botId });
         if (existing) return res.status(400).json({ error: "Этот ID уже занят" });
-        
         const newBot = new BotConfig({ botId, token, name, ownerId });
         await newBot.save();
         getBotInstance(token); 
@@ -310,6 +328,13 @@ app.post('/api/recipes', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
+app.delete('/api/recipes/:id', resolveTenant, async (req, res) => {
+    try {
+        await Recipe.deleteOne({ id: req.params.id, botId: req.tenant.botId });
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
 app.post('/api/sync-user', resolveTenant, async (req, res) => {
     try {
         const user = await User.findOneAndUpdate(
@@ -321,7 +346,76 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// --- OTHER API ---
+// --- SCHEDULE API ---
+app.get('/api/schedule', resolveTenant, async (req, res) => {
+    try {
+        const sched = await Schedule.findOne({ botId: req.tenant.botId });
+        res.json(sched ? sched.staff : []);
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/schedule', resolveTenant, async (req, res) => {
+    try {
+        await Schedule.findOneAndUpdate(
+            { botId: req.tenant.botId },
+            { botId: req.tenant.botId, staff: req.body },
+            { upsert: true }
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+// --- WASTAGE API ---
+app.get('/api/wastage', resolveTenant, async (req, res) => {
+    try {
+        const logs = await Wastage.find({ botId: req.tenant.botId }).sort({ date: -1 });
+        res.json(logs);
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/wastage', resolveTenant, async (req, res) => {
+    try {
+        const data = req.body;
+        data.botId = req.tenant.botId;
+        await Wastage.create(data);
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
+    try {
+        await Wastage.deleteOne({ id: req.params.id, botId: req.tenant.botId });
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+// --- NOTIFY API ---
+app.post('/api/notify', resolveTenant, async (req, res) => {
+    try {
+        const { action, recipeTitle, changes, notifyAll } = req.body;
+        const usersToNotify = notifyAll 
+            ? await User.find({ botId: req.tenant.botId }) 
+            : await User.find({ botId: req.tenant.botId, isAdmin: true });
+
+        const bot = req.botInstance;
+        if (!bot) return res.sendStatus(500);
+
+        let msg = "";
+        if (action === 'create') msg = `🆕 <b>Добавлена карта:</b> ${recipeTitle}`;
+        else if (action === 'update') {
+            msg = `🔄 <b>Обновлена карта:</b> ${recipeTitle}`;
+            if (changes && changes.length > 0) msg += `\n\n<u>Изменения:</u>\n- ${changes.join('\n- ')}`;
+        }
+
+        for (const u of usersToNotify) {
+            try {
+                await bot.sendMessage(u.id, msg, { parse_mode: 'HTML' });
+            } catch (err) { /* ignore blocked bots */ }
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
 app.get('/api/proxy', async (req, res) => {
     try {
         const url = req.query.url;
