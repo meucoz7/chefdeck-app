@@ -76,7 +76,15 @@ const inventoryCycleSchema = new mongoose.Schema({
     createdBy: String
 });
 
-// New Settings Schema for Global Bot Config
+// Master Database for Inventory Items
+const globalInventoryItemSchema = new mongoose.Schema({
+    botId: { type: String, required: true, index: true },
+    code: { type: String, required: true },
+    name: { type: String, required: true },
+    unit: { type: String, required: true }
+});
+globalInventoryItemSchema.index({ botId: 1, code: 1, name: 1 }, { unique: true });
+
 const settingsSchema = new mongoose.Schema({
     botId: { type: String, required: true, unique: true },
     showInventory: { type: Boolean, default: true },
@@ -92,6 +100,7 @@ const Schedule = mongoose.model('Schedule', scheduleSchema);
 const Wastage = mongoose.model('Wastage', wastageSchema);
 const InventoryCycle = mongoose.model('InventoryCycle', inventoryCycleSchema);
 const AppSettingsModel = mongoose.model('AppSettings', settingsSchema);
+const GlobalInventoryItem = mongoose.model('GlobalInventoryItem', globalInventoryItemSchema);
 
 // --- DB CONNECTION ---
 if (MONGODB_URI) {
@@ -179,7 +188,6 @@ app.get('/api/settings', resolveTenant, async (req, res) => {
 app.post('/api/settings', resolveTenant, async (req, res) => {
     try {
         const data = req.body;
-        // Strip out MongoDB internal fields if any
         const { _id, __v, botId, ...cleanData } = data;
         await AppSettingsModel.findOneAndUpdate({ botId: req.tenant.botId }, cleanData, { upsert: true });
         res.json({ success: true });
@@ -189,7 +197,11 @@ app.post('/api/settings', resolveTenant, async (req, res) => {
 // --- INVENTORY API ---
 app.get('/api/inventory', resolveTenant, async (req, res) => {
     try {
-        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 }).limit(10);
+        // --- 3 MONTH TTL CLEANUP ---
+        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+        await InventoryCycle.deleteMany({ botId: req.tenant.botId, date: { $lt: threeMonthsAgo } });
+
+        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
         res.json(cycles);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -199,6 +211,30 @@ app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
         const cycle = req.body;
         cycle.botId = req.tenant.botId;
         await InventoryCycle.findOneAndUpdate({ id: cycle.id, botId: req.tenant.botId }, cycle, { upsert: true });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Master Summary API
+app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
+    try {
+        const items = await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 });
+        res.json(items);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) => {
+    try {
+        const { items } = req.body;
+        if (!Array.isArray(items)) return res.status(400).send("Invalid items array");
+        
+        for (const item of items) {
+            await GlobalInventoryItem.findOneAndUpdate(
+                { botId: req.tenant.botId, code: item.code, name: item.name },
+                { ...item, botId: req.tenant.botId },
+                { upsert: true }
+            );
+        }
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -255,7 +291,7 @@ app.post('/admin/register-bot', async (req, res) => {
         
         const newBot = new BotConfig({ botId, token, name, ownerId });
         await newBot.save();
-        getBotInstance(token); // Initialize immediately
+        getBotInstance(token); 
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
