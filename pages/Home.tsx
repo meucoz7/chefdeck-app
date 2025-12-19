@@ -31,6 +31,8 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
 
   const selectedCategory = searchParams.get('category');
   const activeRecipes = recipes.filter(r => r.isArchived === false);
+  
+  // Logic for what to display (Favorites vs Search vs Active)
   const displayRecipes = favoritesOnly 
       ? activeRecipes.filter(r => r.isFavorite) 
       : (includeArchive && search ? recipes : activeRecipes);
@@ -164,11 +166,13 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       </div>
 
       <div className="px-5 pt-2">
-        {!isLoading && (
+        {isLoading ? (
+            <div className="flex justify-center py-20"><div className="animate-spin text-sky-500">⏳</div></div>
+        ) : (
             <>
+                {/* Management Buttons Grid */}
                 {!search && !favoritesOnly && !selectedCategory && !isReordering && visibleButtons.length > 0 && (
-                    <div className={`grid grid-cols-${visibleButtons.length} gap-2.5 mb-6`}>
-                        {/* 1. Inventory */}
+                    <div className={`grid grid-cols-${Math.min(visibleButtons.length, 4)} gap-2.5 mb-6`}>
                         {settings.showInventory && (
                             <div onClick={() => navigate('/inventory')} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-1.5 h-24 cursor-pointer active:scale-[0.98] transition-transform group">
                                 <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
@@ -177,8 +181,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                 <h3 className="font-bold text-[9px] leading-tight text-center uppercase tracking-tighter">Остатки</h3>
                             </div>
                         )}
-
-                        {/* 2. Schedule */}
                         {settings.showSchedule && (
                             <div onClick={() => navigate('/schedule')} className="col-span-1 bg-indigo-100 dark:bg-indigo-500/20 rounded-2xl p-2 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center gap-1.5 h-24 cursor-pointer active:scale-[0.98] transition-transform group">
                                 <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
@@ -187,8 +189,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                 <h3 className="font-bold text-[9px] leading-tight text-center uppercase tracking-tighter">График</h3>
                             </div>
                         )}
-
-                        {/* 3. Wastage */}
                         {settings.showWastage && (
                             <div onClick={() => navigate('/wastage')} className="col-span-1 bg-red-100 dark:bg-red-500/20 rounded-2xl p-2 text-red-600 dark:text-red-400 flex flex-col items-center justify-center gap-1.5 h-24 cursor-pointer active:scale-[0.98] transition-transform group">
                                 <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
@@ -197,8 +197,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                 <h3 className="font-bold text-[9px] leading-tight text-center uppercase tracking-tighter">Списания</h3>
                             </div>
                         )}
-
-                        {/* 4. Archive */}
                         {settings.showArchive && (
                             <div onClick={() => navigate('/archive')} className="col-span-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-2 text-slate-600 dark:text-slate-400 flex flex-col items-center justify-center gap-1.5 h-24 cursor-pointer active:scale-[0.98] transition-transform group">
                                 <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
@@ -210,6 +208,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     </div>
                 )}
 
+                {/* Categories Grid */}
                 {showCategoriesView && (
                     <div className="animate-slide-up">
                         <div className="grid grid-cols-2 gap-3">
@@ -242,6 +241,65 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                 );
                             })}
                         </div>
+                    </div>
+                )}
+
+                {/* Recipes List (When category selected or searching) */}
+                {!showCategoriesView && (
+                    <div className="animate-slide-up space-y-4">
+                        {/* Selected Category Header */}
+                        {selectedCategory && (
+                            <div className="flex items-center gap-2 mb-2">
+                                <button onClick={() => setSearchParams({})} className="text-sky-500 font-bold text-xs uppercase flex items-center gap-1 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 px-3 py-1.5 rounded-full transition active:scale-95 shadow-sm">
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                                    Все категории
+                                </button>
+                                <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest bg-gray-50 dark:bg-black/20 px-3 py-1.5 rounded-full border border-gray-100 dark:border-white/5">{selectedCategory}</span>
+                            </div>
+                        )}
+
+                        {filteredRecipes.length === 0 ? (
+                            <div className="text-center py-20 opacity-50 flex flex-col items-center">
+                                <span className="text-4xl mb-3">🔍</span>
+                                <p className="font-bold dark:text-white">Ничего не найдено</p>
+                                <p className="text-xs text-gray-400 mt-1">Попробуйте изменить запрос</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-3">
+                                {filteredRecipes.map(recipe => (
+                                    <Link 
+                                        key={recipe.id} 
+                                        to={`/recipe/${recipe.id}`} 
+                                        className="bg-white dark:bg-[#1e1e24] rounded-[1.8rem] overflow-hidden shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition group flex gap-4 p-3.5"
+                                    >
+                                        <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-black/40 border border-gray-100 dark:border-white/5">
+                                            <img 
+                                                src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}`} 
+                                                className="w-full h-full object-cover transition duration-500 group-hover:scale-110" 
+                                                loading="lazy"
+                                            />
+                                        </div>
+                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                            <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight mb-1 truncate group-hover:text-sky-500 transition-colors">
+                                                {recipe.title}
+                                            </h3>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter bg-gray-50 dark:bg-white/5 px-2 py-0.5 rounded border border-gray-100 dark:border-white/5">
+                                                    {recipe.category}
+                                                </span>
+                                                {recipe.isFavorite && <span className="text-xs">❤️</span>}
+                                                {recipe.outputWeight && (
+                                                    <span className="text-[9px] font-bold text-sky-500/70 uppercase">{recipe.outputWeight}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center text-gray-300 group-hover:text-sky-500 transition-colors">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </>
