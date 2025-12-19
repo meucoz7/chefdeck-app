@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -571,6 +570,7 @@ export default function Editor() {
           else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
 
       } catch (e: unknown) {
+          // Use String() to ensure e is treated as string to avoid 'unknown' type issues in addToast
           console.error(e);
           const msg = e instanceof Error ? e.message : String(e);
           addToast(`Ошибка парсинга: ${msg}`, "error");
