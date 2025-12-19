@@ -29,14 +29,22 @@ export interface InventoryItem {
     id: string;
     name: string;
     unit: string;
-    expected?: number; // From accounting system
-    actual?: number;   // Counted by staff
+    code?: string; // Product Code (Column B)
+    expected?: number; 
+    actual?: number;   
     comment?: string;
+}
+
+export interface GlobalInventoryItem {
+    botId: string;
+    code: string;
+    name: string;
+    unit: string;
 }
 
 export interface InventorySheet {
     id: string;
-    title: string; // Station name (e.g., "Cold Kitchen")
+    title: string; 
     items: InventoryItem[];
     status: InventoryStatus;
     updatedBy?: string;
