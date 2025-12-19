@@ -16,13 +16,54 @@ export interface TechCard {
   category: string;
   outputWeight?: string;
   isFavorite: boolean;
-  isArchived?: boolean; // New flag
+  isArchived?: boolean;
   createdAt: number;
   lastModified?: number;
   lastModifiedBy?: string;
 }
 
+// --- Inventory Types ---
+export type InventoryStatus = 'draft' | 'active' | 'submitted' | 'finalized';
+
+export interface InventoryItem {
+    id: string;
+    name: string;
+    unit: string;
+    expected?: number; // From accounting system
+    actual?: number;   // Counted by staff
+    comment?: string;
+}
+
+export interface InventorySheet {
+    id: string;
+    title: string; // Station name (e.g., "Cold Kitchen")
+    items: InventoryItem[];
+    status: InventoryStatus;
+    updatedBy?: string;
+    updatedAt?: number;
+    lockedBy?: {
+        id: number;
+        name: string;
+    };
+}
+
+export interface InventoryCycle {
+    id: string;
+    date: number;
+    sheets: InventorySheet[];
+    isFinalized: boolean;
+    createdBy: string;
+}
+
 export type Theme = 'light' | 'dark';
+
+// --- Home Settings ---
+export interface HomeSettings {
+    showInventory: boolean;
+    showSchedule: boolean;
+    showWastage: boolean;
+    showArchive: boolean;
+}
 
 export interface TelegramUser {
     id: number;
@@ -95,7 +136,6 @@ export interface WebApp {
     setHeaderColor: (color: string) => void;
     setBackgroundColor: (color: string) => void;
     isVersionAtLeast: (version: string) => boolean;
-    // New Mini App 7.6+ methods
     requestFullscreen?: () => void;
     isFullscreen?: boolean;
     disableVerticalSwipes?: () => void;
@@ -174,7 +214,7 @@ export interface WastageItem {
 
 export interface WastageLog {
     id: string;
-    date: number; // timestamp
+    date: number;
     items: WastageItem[];
     createdBy?: string;
 }
