@@ -1,6 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { useRecipes } from '../context/RecipeContext';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
@@ -27,6 +28,9 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   
   const [isReordering, setIsReordering] = useState(false);
   const [selectedSwap, setSelectedSwap] = useState<string | null>(null);
+  const [renamingCategory, setRenamingCategory] = useState<{ oldName: string, newName: string } | null>(null);
+  const [isProcessingRename, setIsProcessingRename] = useState(false);
+  
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedCategory = searchParams.get('category');
@@ -85,28 +89,36 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       }
   };
 
-  const renameCategory = async (oldName: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      const newName = prompt(`Переименовать категорию "${oldName}" в:`, oldName);
-      if (!newName || newName.trim() === oldName || newName.trim() === "") return;
+  const handleRenameSubmit = async () => {
+      if (!renamingCategory || renamingCategory.newName.trim() === "" || renamingCategory.newName.trim() === renamingCategory.oldName) {
+          setRenamingCategory(null);
+          return;
+      }
 
-      const trimmedName = newName.trim();
+      setIsProcessingRename(true);
+      const oldName = renamingCategory.oldName;
+      const newName = renamingCategory.newName.trim();
       
       try {
           const targets = recipes.filter(r => r.category === oldName);
           addToast(`Обновление ${targets.length} карт...`, "info");
           
+          // Use Promise.all for faster bulk update if API supports it, 
+          // or sequential if we want to ensure context stability
           for (const recipe of targets) {
-              await updateRecipe({ ...recipe, category: trimmedName }, false, true);
+              await updateRecipe({ ...recipe, category: newName }, false, true);
           }
 
-          const newOrder = safeOrder.map(c => c === oldName ? trimmedName : c);
+          const newOrder = safeOrder.map(c => c === oldName ? newName : c);
           setCategoryOrder(newOrder);
           scopedStorage.setJson('category_order', newOrder);
           
           addToast("Категория переименована", "success");
       } catch (err) {
           addToast("Ошибка при переименовании", "error");
+      } finally {
+          setIsProcessingRename(false);
+          setRenamingCategory(null);
       }
   };
 
@@ -274,7 +286,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                             <div className="flex flex-col items-end gap-1">
                                                 <span className="text-xs font-bold text-gray-400">{count}</span>
                                                 {isReordering && isAdmin && (
-                                                    <button onClick={(e) => renameCategory(cat, e)} className="w-7 h-7 bg-white dark:bg-[#2a2a35] border border-gray-100 dark:border-white/10 rounded-full flex items-center justify-center text-sky-500 shadow-sm active:scale-90 transition-transform">
+                                                    <button onClick={(e) => { e.stopPropagation(); setRenamingCategory({ oldName: cat, newName: cat }); }} className="w-7 h-7 bg-white dark:bg-[#2a2a35] border border-gray-100 dark:border-white/10 rounded-full flex items-center justify-center text-sky-500 shadow-sm active:scale-90 transition-transform">
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
                                                     </button>
                                                 )}
@@ -350,6 +362,50 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             </>
         )}
       </div>
+
+      {/* RENAME MODAL */}
+      {renamingCategory && createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in">
+              <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl animate-scale-in border border-gray-100 dark:border-white/10">
+                  <h2 className="text-xl font-black text-gray-900 dark:text-white mb-2">Переименовать</h2>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-6">Категория: {renamingCategory.oldName}</p>
+                  
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 mb-1 block">Новое название</label>
+                          <input 
+                              autoFocus
+                              type="text" 
+                              className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl px-4 py-3.5 font-bold dark:text-white outline-none ring-2 ring-transparent focus:ring-sky-500/30 transition-all"
+                              value={renamingCategory.newName}
+                              onChange={e => setRenamingCategory({...renamingCategory, newName: e.target.value})}
+                              onKeyDown={e => e.key === 'Enter' && handleRenameSubmit()}
+                          />
+                      </div>
+                      
+                      <div className="flex gap-3 pt-2">
+                          <button 
+                            onClick={() => setRenamingCategory(null)}
+                            disabled={isProcessingRename}
+                            className="flex-1 py-3.5 bg-gray-100 dark:bg-white/5 rounded-2xl font-bold text-gray-500 dark:text-gray-300 active:scale-95 transition disabled:opacity-50"
+                          >
+                              Отмена
+                          </button>
+                          <button 
+                            onClick={handleRenameSubmit}
+                            disabled={isProcessingRename}
+                            className="flex-1 py-3.5 bg-sky-500 text-white rounded-2xl font-black shadow-lg shadow-sky-500/20 active:scale-95 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                              {isProcessingRename ? (
+                                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                              ) : 'Сохранить'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>,
+          document.body
+      )}
     </div>
   );
 };
