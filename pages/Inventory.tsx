@@ -432,19 +432,40 @@ const Inventory: React.FC = () => {
     // --- CONSOLIDATED VIEW (ADMIN) ---
     const consolidatedData = useMemo(() => {
         if (!activeCycle) return [];
+        
+        // Normalization map to group items correctly
         const map = new Map<string, { name: string, unit: string, totalActual: number }>();
         
         activeCycle.sheets.forEach(sheet => {
             sheet.items.forEach(item => {
-                const key = `${item.name.toLowerCase().trim()}_${item.unit.toLowerCase().trim()}`;
+                // 1. Normalize name and unit for a stable key
+                // Trim trailing dots from units, e.g. "кг." -> "кг"
+                const normName = item.name.toLowerCase().trim();
+                const normUnit = item.unit.toLowerCase().trim().replace(/\.$/, '');
+                
+                const key = `${normName}_${normUnit}`;
+                const val = typeof item.actual === 'number' ? item.actual : 0;
+                
                 if (!map.has(key)) {
-                    map.set(key, { name: item.name, unit: item.unit, totalActual: 0 });
+                    map.set(key, { 
+                        name: item.name.trim(), 
+                        unit: item.unit.trim().replace(/\.$/, ''), 
+                        totalActual: 0 
+                    });
                 }
+                
                 const entry = map.get(key)!;
-                entry.totalActual += item.actual || 0;
+                
+                // 2. Safe addition to avoid JS floating point errors (e.g. 0.1 + 0.2 = 0.300000000004)
+                // We use Number().toFixed() to keep precision stable during calculation
+                entry.totalActual = Number((entry.totalActual + val).toFixed(10));
             });
         });
-        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+        
+        // 3. Return sorted array and clean up precision for display
+        return Array.from(map.values())
+            .map(d => ({ ...d, totalActual: Number(d.totalActual.toFixed(4)) }))
+            .sort((a, b) => a.name.localeCompare(b.name));
     }, [activeCycle]);
 
     const exportConsolidated = () => {
