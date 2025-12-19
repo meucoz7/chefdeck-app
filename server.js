@@ -76,12 +76,22 @@ const inventoryCycleSchema = new mongoose.Schema({
     createdBy: String
 });
 
+// New Settings Schema for Global Bot Config
+const settingsSchema = new mongoose.Schema({
+    botId: { type: String, required: true, unique: true },
+    showInventory: { type: Boolean, default: true },
+    showSchedule: { type: Boolean, default: true },
+    showWastage: { type: Boolean, default: true },
+    showArchive: { type: Boolean, default: true }
+});
+
 const BotConfig = mongoose.model('BotConfig', botConfigSchema);
 const Recipe = mongoose.model('Recipe', recipeSchema);
 const User = mongoose.model('User', userSchema);
 const Schedule = mongoose.model('Schedule', scheduleSchema);
 const Wastage = mongoose.model('Wastage', wastageSchema);
 const InventoryCycle = mongoose.model('InventoryCycle', inventoryCycleSchema);
+const AppSettingsModel = mongoose.model('AppSettings', settingsSchema);
 
 // --- DB CONNECTION ---
 if (MONGODB_URI) {
@@ -153,6 +163,27 @@ app.use((req, res, next) => {
     res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
+});
+
+// --- SETTINGS API ---
+app.get('/api/settings', resolveTenant, async (req, res) => {
+    try {
+        let settings = await AppSettingsModel.findOne({ botId: req.tenant.botId });
+        if (!settings) {
+            settings = await AppSettingsModel.create({ botId: req.tenant.botId });
+        }
+        res.json(settings);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/settings', resolveTenant, async (req, res) => {
+    try {
+        const data = req.body;
+        // Strip out MongoDB internal fields if any
+        const { _id, __v, botId, ...cleanData } = data;
+        await AppSettingsModel.findOneAndUpdate({ botId: req.tenant.botId }, cleanData, { upsert: true });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // --- INVENTORY API ---
