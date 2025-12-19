@@ -23,6 +23,7 @@ import Tools from './pages/Tools';
 import ShoppingList from './pages/ShoppingList';
 import Wastage from './pages/Wastage';
 import Inventory from './pages/Inventory';
+import InventoryArchive from './pages/InventoryArchive';
 
 const App: React.FC = () => {
   return (
@@ -52,6 +53,7 @@ const App: React.FC = () => {
                         <Route path="/shopping" element={<ShoppingList />} />
                         <Route path="/wastage" element={<Wastage />} />
                         <Route path="/inventory" element={<Inventory />} />
+                        <Route path="/inventory/archive" element={<InventoryArchive />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </Layout>
