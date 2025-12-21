@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRecipes } from '../context/RecipeContext';
@@ -12,16 +11,13 @@ interface HomeProps {
     favoritesOnly?: boolean;
 }
 
-/**
- * Changed to named function with default export to ensure visibility to the bundler/parser
- * and resolve the "no default export" error in App.tsx.
- */
-export default function Home({ favoritesOnly = false }: HomeProps) {
+const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const { recipes, isLoading, archiveRecipesBulk, updateRecipe } = useRecipes();
   const { user, isAdmin } = useTelegram();
   const { settings, isLoadingSettings } = useSettings();
   const { addToast } = useToast();
   const [search, setSearch] = useState('');
+  const [includeArchive, setIncludeArchive] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -31,29 +27,35 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
   
   const [isReordering, setIsReordering] = useState(false);
   const [selectedSwap, setSelectedSwap] = useState<string | null>(null);
-  const [renamingCategory, setRenamingCategory] = useState<{ oldName: string, newName: string } | null>(null);
-  const [isProcessingRename, setIsProcessingRename] = useState(false);
-  
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // States for the rename modal
+  const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const selectedCategory = searchParams.get('category');
   const activeRecipes = recipes.filter(r => r.isArchived === false);
   
   const displayRecipes = favoritesOnly 
       ? activeRecipes.filter(r => r.isFavorite) 
-      : activeRecipes;
+      : (includeArchive && search ? recipes : activeRecipes);
 
-  const uniqueCategories = Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории');
+  const uniqueCategories = useMemo(() => {
+    return Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории');
+  }, [activeRecipes]);
+
   const safeOrder = Array.isArray(categoryOrder) ? categoryOrder : [];
   
-  const sortedCategories = uniqueCategories.sort((a: string, b: string) => {
-      const idxA = safeOrder.indexOf(a);
-      const idxB = safeOrder.indexOf(b);
-      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
-      if (idxA === -1) return 1;
-      if (idxB === -1) return -1;
-      return idxA - idxB;
-  });
+  const sortedCategories = useMemo(() => {
+    return [...uniqueCategories].sort((a: string, b: string) => {
+        const idxA = safeOrder.indexOf(a);
+        const idxB = safeOrder.indexOf(b);
+        if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
+  }, [uniqueCategories, safeOrder]);
 
   const filteredRecipes = displayRecipes.filter(r => {
     let matchesSearch = true;
@@ -92,34 +94,56 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
       }
   };
 
-  const handleRenameSubmit = async () => {
-      if (!renamingCategory || renamingCategory.newName.trim() === "" || renamingCategory.newName.trim() === renamingCategory.oldName) {
+  const openRenameModal = (oldName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setRenamingCategory(oldName);
+      setNewCategoryName(oldName);
+  };
+
+  const handleRenameConfirm = async () => {
+      if (!renamingCategory || !newCategoryName.trim() || newCategoryName.trim() === renamingCategory) {
           setRenamingCategory(null);
           return;
       }
 
-      setIsProcessingRename(true);
-      const oldName = renamingCategory.oldName;
-      const newName = renamingCategory.newName.trim();
+      const trimmedName = newCategoryName.trim();
       
+      // Check for duplicate category name (case-insensitive)
+      const isDuplicate = uniqueCategories.some(c => c.toLowerCase() === trimmedName.toLowerCase() && c !== renamingCategory);
+      if (isDuplicate) {
+          addToast("Категория с таким именем уже существует", "error");
+          return;
+      }
+
+      const oldName = renamingCategory;
+      setRenamingCategory(null);
+
       try {
           const targets = recipes.filter(r => r.category === oldName);
           addToast(`Обновление ${targets.length} карт...`, "info");
           
           for (const recipe of targets) {
-              await updateRecipe({ ...recipe, category: newName }, false, true);
+              await updateRecipe({ ...recipe, category: trimmedName }, false, true);
           }
 
-          const newOrder = safeOrder.map(c => c === oldName ? newName : c);
+          const newOrder = safeOrder.map(c => c === oldName ? trimmedName : c);
           setCategoryOrder(newOrder);
           scopedStorage.setJson('category_order', newOrder);
           
           addToast("Категория переименована", "success");
       } catch (err) {
           addToast("Ошибка при переименовании", "error");
-      } finally {
-          setIsProcessingRename(false);
-          setRenamingCategory(null);
+      }
+  };
+
+  const archiveCategoryGroup = async (catName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const targets = activeRecipes.filter(r => r.category === catName);
+      if (targets.length === 0) return;
+      if (confirm(`Архивировать категорию "${catName}"?`)) {
+          const ids = targets.map(r => r.id);
+          await archiveRecipesBulk(ids);
+          addToast(`Архивировано карт: ${ids.length}`, "success");
       }
   };
 
@@ -166,7 +190,7 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
   }
 
   return (
-    <div className="pb-28 animate-fade-in min-h-screen flex flex-col">
+    <div className="pb-28 animate-fade-in min-h-screen flex flex-col relative">
       <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md sticky top-0 z-30 transition-all duration-300">
           <div className="flex items-center justify-between pt-4 mb-3">
              <div className="flex items-center gap-3 w-full">
@@ -211,7 +235,7 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
           </div>
       </div>
 
-      <div className="px-5 pt-2">
+      <div className="px-5 pt-2 flex-1">
         {isLoading ? (
             <div className="flex justify-center py-20"><div className="animate-spin text-sky-500">⏳</div></div>
         ) : (
@@ -276,7 +300,7 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
                                             <div className="flex flex-col items-end gap-1">
                                                 <span className="text-xs font-bold text-gray-400">{count}</span>
                                                 {isReordering && isAdmin && (
-                                                    <button onClick={(e) => { e.stopPropagation(); setRenamingCategory({ oldName: cat, newName: cat }); }} className="w-7 h-7 bg-white dark:bg-[#2a2a35] border border-gray-100 dark:border-white/10 rounded-full flex items-center justify-center text-sky-500 shadow-sm active:scale-90 transition-transform">
+                                                    <button onClick={(e) => openRenameModal(cat, e)} className="w-7 h-7 bg-white dark:bg-[#2a2a35] border border-gray-100 dark:border-white/10 rounded-full flex items-center justify-center text-sky-500 shadow-sm active:scale-90 transition-transform">
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
                                                     </button>
                                                 )}
@@ -284,6 +308,9 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
                                         </div>
                                         <div className="flex items-end justify-between gap-2 mt-auto">
                                             <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors line-clamp-2">{cat}</h3>
+                                            {isAdmin && !isReordering && (
+                                                <button onClick={(e) => archiveCategoryGroup(cat, e)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg></button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -292,7 +319,7 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
                     </div>
                 )}
 
-                {(!showCategoriesView) && (
+                {!showCategoriesView && (
                     <div className="grid grid-cols-2 gap-4 animate-fade-in pb-10">
                         {filteredRecipes.map((recipe) => (
                             <Link
@@ -300,6 +327,9 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
                                 key={recipe.id}
                                 className={`group relative bg-white dark:bg-[#1e1e24] rounded-[1.8rem] p-2.5 shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all duration-300 flex flex-col hover:shadow-lg ${recipe.isArchived ? 'opacity-60 grayscale-[0.8]' : ''}`}
                             >
+                                {recipe.isArchived && (
+                                    <div className="absolute top-3 left-3 z-10 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-md">АРХИВ</div>
+                                )}
                                 <div className="aspect-square w-full relative overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 mb-3">
                                     <img
                                         src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}&background=random`}
@@ -307,7 +337,17 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
                                         className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                                         loading="lazy"
                                     />
+                                    <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                                        {recipe.isFavorite && (
+                                            <div className="bg-white/90 dark:bg-black/60 backdrop-blur-md p-1.5 rounded-full shadow-sm">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-red-500">
+                                                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.433 2.322 5.433 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                                                </svg>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+                                
                                 <div className="flex-1 flex flex-col px-1 pb-1">
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight mb-2 line-clamp-2 min-h-[2.5rem]">
                                         {recipe.title}
@@ -316,52 +356,52 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
                                         <span className="text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded-lg">
                                             {recipe.ingredients.length} ингр
                                         </span>
+                                        {recipe.outputWeight && (
+                                            <span className="text-[10px] font-bold text-sky-600 bg-sky-50 dark:bg-sky-500/10 px-2 py-1 rounded-lg">
+                                                {recipe.outputWeight}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </Link>
                         ))}
                     </div>
                 )}
-            </div>
+            
+                {!showCategoriesView && filteredRecipes.length === 0 && (
+                    <div className="flex flex-col items-center justify-center mt-20 text-center opacity-70">
+                        <p className="text-lg font-bold dark:text-white">Ничего не найдено</p>
+                    </div>
+                )}
+            </>
+        )}
+      </div>
 
       {/* RENAME MODAL */}
       {renamingCategory && createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in">
-              <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl animate-scale-in border border-gray-100 dark:border-white/10">
-                  <h2 className="text-xl font-black text-gray-900 dark:text-white mb-2">Переименовать</h2>
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-6">Категория: {renamingCategory.oldName}</p>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in" onClick={() => setRenamingCategory(null)}>
+              <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-xl font-black dark:text-white mb-2">Переименовать</h3>
+                  <p className="text-xs text-gray-400 font-bold uppercase mb-4 tracking-wider">Категория: {renamingCategory}</p>
                   
-                  <div className="space-y-4">
-                      <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 mb-1 block">Новое название</label>
-                          <input 
-                              autoFocus
-                              type="text" 
-                              className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl px-4 py-3.5 font-bold dark:text-white outline-none ring-2 ring-transparent focus:ring-sky-500/30 transition-all"
-                              value={renamingCategory.newName}
-                              onChange={e => setRenamingCategory({...renamingCategory, newName: e.target.value})}
-                              onKeyDown={e => e.key === 'Enter' && handleRenameSubmit()}
-                          />
-                      </div>
-                      
-                      <div className="flex gap-3 pt-2">
-                          <button 
-                            onClick={() => setRenamingCategory(null)}
-                            disabled={isProcessingRename}
-                            className="flex-1 py-3.5 bg-gray-100 dark:bg-white/5 rounded-2xl font-bold text-gray-500 dark:text-gray-300 active:scale-95 transition disabled:opacity-50"
-                          >
-                              Отмена
-                          </button>
-                          <button 
-                            onClick={handleRenameSubmit}
-                            disabled={isProcessingRename}
-                            className="flex-1 py-3.5 bg-sky-500 text-white rounded-2xl font-black shadow-lg shadow-sky-500/20 active:scale-95 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                          >
-                              {isProcessingRename ? (
-                                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                              ) : 'Сохранить'}
-                          </button>
-                      </div>
+                  <input 
+                      autoFocus
+                      type="text" 
+                      className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-sky-500 mb-6"
+                      value={newCategoryName}
+                      onChange={e => setNewCategoryName(e.target.value)}
+                      placeholder="Новое название..."
+                      onKeyDown={e => e.key === 'Enter' && handleRenameConfirm()}
+                  />
+
+                  <div className="flex gap-3">
+                      <button onClick={() => setRenamingCategory(null)} className="flex-1 py-3 bg-gray-100 dark:bg-white/5 rounded-xl font-bold text-gray-500 text-sm">Отмена</button>
+                      <button 
+                          onClick={handleRenameConfirm}
+                          className="flex-1 py-3 bg-sky-500 text-white rounded-xl font-bold shadow-lg shadow-sky-500/30 text-sm"
+                      >
+                          Сохранить
+                      </button>
                   </div>
               </div>
           </div>,
@@ -369,4 +409,6 @@ export default function Home({ favoritesOnly = false }: HomeProps) {
       )}
     </div>
   );
-}
+};
+
+export default Home;
