@@ -9,6 +9,7 @@ import { useToast } from '../context/ToastContext';
 import { useRecipes } from '../context/RecipeContext';
 import { apiFetch } from '../services/api';
 import { useTelegram } from '../context/TelegramContext';
+import { uploadImage } from '../services/uploadService';
 
 // Updated Reasons
 const REASONS: { key: WastageReason; label: string; icon: string; color: string }[] = [
@@ -31,6 +32,7 @@ const Wastage: React.FC = () => {
     const [isCreateMode, setIsCreateMode] = useState(false);
     const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     
     // --- CREATE ACT STATE ---
     const [actDate, setActDate] = useState(new Date().toISOString().split('T')[0]);
@@ -49,10 +51,8 @@ const Wastage: React.FC = () => {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
-    // Refs for amount inputs to handle auto-focus
     const amountInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-    // --- DATA LOADING ---
     useEffect(() => {
         loadData();
     }, []);
@@ -71,7 +71,6 @@ const Wastage: React.FC = () => {
             });
     };
 
-    // --- HELPERS ---
     const selectedLog = useMemo(() => logs.find(l => l.id === selectedLogId), [logs, selectedLogId]);
 
     const ingredientNames = useMemo(() => {
@@ -99,8 +98,6 @@ const Wastage: React.FC = () => {
     };
 
     const selectSuggestion = (index: number, name: string, e: React.MouseEvent) => {
-        // Critical: Prevent the input blur event from firing immediately on click.
-        // This keeps the keyboard context active while we switch focus.
         e.preventDefault();
 
         const newItems = [...actItems];
@@ -112,7 +109,6 @@ const Wastage: React.FC = () => {
         setSuggestions([]);
         setActiveRowIndex(null);
 
-        // Use requestAnimationFrame for smoother focus transfer on mobile devices
         requestAnimationFrame(() => {
             const input = amountInputRefs.current[index];
             if (input) {
@@ -121,7 +117,6 @@ const Wastage: React.FC = () => {
         });
     };
 
-    // --- ACTIONS ---
     const addRow = () => {
         setActItems([...actItems, { id: uuidv4(), ingredientName: '', amount: '', unit: '' }]);
     };
@@ -138,12 +133,19 @@ const Wastage: React.FC = () => {
         setActItems(newItems);
     };
 
-    const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => setActPhoto(ev.target?.result as string);
-            reader.readAsDataURL(file);
+            setIsUploadingPhoto(true);
+            try {
+                const url = await uploadImage(file);
+                setActPhoto(url);
+                addToast("Фото прикреплено", "success");
+            } catch (e) {
+                addToast("Ошибка при загрузке фото", "error");
+            } finally {
+                setIsUploadingPhoto(false);
+            }
         }
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -183,7 +185,6 @@ const Wastage: React.FC = () => {
             });
             setLogs(prev => [newLog, ...prev]);
             
-            // Reset Form
             setIsCreateMode(false);
             setActItems([{ id: uuidv4(), ingredientName: '', amount: '', unit: '' }]);
             setActReason('spoilage');
@@ -217,7 +218,6 @@ const Wastage: React.FC = () => {
         else navigate('/');
     };
 
-    // --- HISTORY GROUPING ---
     const groupedLogs = useMemo(() => {
         const groups: Record<string, WastageLog[]> = {};
         logs.forEach(log => {
@@ -225,12 +225,9 @@ const Wastage: React.FC = () => {
             if (!groups[d]) groups[d] = [];
             groups[d].push(log);
         });
-        
-        // Sort by date desc
         return Object.entries(groups).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime());
     }, [logs]);
 
-    // --- EXPORT LOGIC ---
     const handleExport = () => {
         let filteredLogs = logs;
         let filename = 'Wastage_Report';
@@ -298,20 +295,18 @@ const Wastage: React.FC = () => {
         <div className="pb-safe-bottom animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115] relative">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
 
-            {/* SAVING OVERLAY */}
-            {isSaving && createPortal(
+            {(isSaving || isUploadingPhoto) && createPortal(
                 <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center animate-fade-in">
                     <div className="bg-white dark:bg-[#1e1e24] p-8 rounded-3xl shadow-2xl flex flex-col items-center">
                         <div className="animate-spin text-sky-500 mb-4">
                             <svg className="w-10 h-10" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                         </div>
-                        <p className="font-bold text-gray-900 dark:text-white">Сохранение...</p>
+                        <p className="font-bold text-gray-900 dark:text-white">{isUploadingPhoto ? 'Загрузка фото...' : 'Сохранение...'}</p>
                     </div>
                 </div>,
                 document.body
             )}
 
-            {/* Header */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-40 bg-[#f2f4f7]/90 dark:bg-[#0f1115]/90 backdrop-blur-md">
                 <div className="flex items-center justify-between pt-4 mb-2">
                     <div className="flex items-center gap-3">
@@ -396,7 +391,6 @@ const Wastage: React.FC = () => {
                                             className="w-20 bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-3 text-sm font-bold text-center dark:text-white outline-none focus:ring-2 focus:ring-sky-500/20"
                                             value={item.amount}
                                             onChange={e => {
-                                                // Replace comma with dot and validate number format
                                                 const val = e.target.value.replace(',', '.');
                                                 if (/^\d*\.?\d*$/.test(val)) {
                                                     updateRow(idx, 'amount', val);
@@ -455,7 +449,7 @@ const Wastage: React.FC = () => {
                             </div>
                         </div>
 
-                        <button onClick={handleSaveAct} disabled={isSaving} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl shadow-xl active:scale-95 transition text-lg disabled:opacity-50 disabled:scale-100">
+                        <button onClick={handleSaveAct} disabled={isSaving || isUploadingPhoto} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl shadow-xl active:scale-95 transition text-lg disabled:opacity-50 disabled:scale-100">
                             {isSaving ? 'Сохранение...' : 'Сохранить акт'}
                         </button>
                     </div>
@@ -534,7 +528,6 @@ const Wastage: React.FC = () => {
 
                                         <div className="space-y-3">
                                             {logsInGroup.map(log => {
-                                                // Determine main reason from first item
                                                 const mainReasonKey = log.items[0]?.reason || 'other';
                                                 const reasonConfig = REASONS.find(r => r.key === mainReasonKey) || REASONS[REASONS.length - 1];
                                                 const totalItems = log.items.length;
@@ -626,4 +619,3 @@ const Wastage: React.FC = () => {
 };
 
 export default Wastage;
-
