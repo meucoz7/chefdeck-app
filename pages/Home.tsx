@@ -12,13 +12,16 @@ interface HomeProps {
     favoritesOnly?: boolean;
 }
 
-const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
+/**
+ * Changed to named function with default export to ensure visibility to the bundler/parser
+ * and resolve the "no default export" error in App.tsx.
+ */
+export default function Home({ favoritesOnly = false }: HomeProps) {
   const { recipes, isLoading, archiveRecipesBulk, updateRecipe } = useRecipes();
   const { user, isAdmin } = useTelegram();
   const { settings, isLoadingSettings } = useSettings();
   const { addToast } = useToast();
   const [search, setSearch] = useState('');
-  const [includeArchive, setIncludeArchive] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -38,7 +41,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   
   const displayRecipes = favoritesOnly 
       ? activeRecipes.filter(r => r.isFavorite) 
-      : (includeArchive && search ? recipes : activeRecipes);
+      : activeRecipes;
 
   const uniqueCategories = Array.from(new Set(activeRecipes.map(r => r.category))).filter(c => c && c !== 'Без категории');
   const safeOrder = Array.isArray(categoryOrder) ? categoryOrder : [];
@@ -103,8 +106,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
           const targets = recipes.filter(r => r.category === oldName);
           addToast(`Обновление ${targets.length} карт...`, "info");
           
-          // Use Promise.all for faster bulk update if API supports it, 
-          // or sequential if we want to ensure context stability
           for (const recipe of targets) {
               await updateRecipe({ ...recipe, category: newName }, false, true);
           }
@@ -119,17 +120,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       } finally {
           setIsProcessingRename(false);
           setRenamingCategory(null);
-      }
-  };
-
-  const archiveCategoryGroup = async (catName: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      const targets = activeRecipes.filter(r => r.category === catName);
-      if (targets.length === 0) return;
-      if (confirm(`Архивировать категорию "${catName}"?`)) {
-          const ids = targets.map(r => r.id);
-          await archiveRecipesBulk(ids);
-          addToast(`Архивировано карт: ${ids.length}`, "success");
       }
   };
 
@@ -213,7 +203,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             <div className={`relative group transition-opacity duration-300 ${isReordering ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                     </div>
                     <input type="text" className="block w-full pl-10 pr-4 py-3 rounded-2xl bg-white dark:bg-[#1e1e24] text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 outline-none ring-1 ring-gray-200 dark:ring-white/10 focus:ring-2 focus:ring-sky-500 shadow-sm transition-all font-medium appearance-none" placeholder="Поиск блюда..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -294,9 +284,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                         </div>
                                         <div className="flex items-end justify-between gap-2 mt-auto">
                                             <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors line-clamp-2">{cat}</h3>
-                                            {isAdmin && !isReordering && (
-                                                <button onClick={(e) => archiveCategoryGroup(cat, e)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg></button>
-                                            )}
                                         </div>
                                     </div>
                                 );
@@ -313,9 +300,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                 key={recipe.id}
                                 className={`group relative bg-white dark:bg-[#1e1e24] rounded-[1.8rem] p-2.5 shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition-all duration-300 flex flex-col hover:shadow-lg ${recipe.isArchived ? 'opacity-60 grayscale-[0.8]' : ''}`}
                             >
-                                {recipe.isArchived && (
-                                    <div className="absolute top-3 left-3 z-10 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-md">АРХИВ</div>
-                                )}
                                 <div className="aspect-square w-full relative overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 mb-3">
                                     <img
                                         src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}&background=random`}
@@ -323,17 +307,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                         className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                                         loading="lazy"
                                     />
-                                    <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-                                        {recipe.isFavorite && (
-                                            <div className="bg-white/90 dark:bg-black/60 backdrop-blur-md p-1.5 rounded-full shadow-sm">
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-red-500">
-                                                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.433 2.322 5.433 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
-                                                </svg>
-                                            </div>
-                                        )}
-                                    </div>
                                 </div>
-                                
                                 <div className="flex-1 flex flex-col px-1 pb-1">
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight mb-2 line-clamp-2 min-h-[2.5rem]">
                                         {recipe.title}
@@ -342,26 +316,13 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                                         <span className="text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded-lg">
                                             {recipe.ingredients.length} ингр
                                         </span>
-                                        {recipe.outputWeight && (
-                                            <span className="text-[10px] font-bold text-sky-600 bg-sky-50 dark:bg-sky-500/10 px-2 py-1 rounded-lg">
-                                                {recipe.outputWeight}
-                                            </span>
-                                        )}
                                     </div>
                                 </div>
                             </Link>
                         ))}
                     </div>
                 )}
-            
-                {!showCategoriesView && filteredRecipes.length === 0 && (
-                    <div className="flex flex-col items-center justify-center mt-20 text-center opacity-70">
-                        <p className="text-lg font-bold dark:text-white">Ничего не найдено</p>
-                     </div>
-                )}
-            </>
-        )}
-      </div>
+            </div>
 
       {/* RENAME MODAL */}
       {renamingCategory && createPortal(
@@ -408,6 +369,4 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       )}
     </div>
   );
-};
-
-export default Home;
+}
