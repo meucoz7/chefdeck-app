@@ -31,7 +31,6 @@ interface ImageMatch {
     selected: boolean;
 }
 
-// Вспомогательный компонент для выбора категории
 const CategorySelector: React.FC<{
     value: string;
     onChange: (val: string) => void;
@@ -44,7 +43,10 @@ const CategorySelector: React.FC<{
 
     const filtered = useMemo(() => {
         const query = inputValue.toLowerCase().trim();
-        return existingCategories.filter(c => c.toLowerCase().includes(query) && c !== value);
+        return existingCategories.filter(c => 
+            c.toLowerCase().includes(query) && 
+            c.toLowerCase() !== value.toLowerCase()
+        );
     }, [inputValue, existingCategories, value]);
 
     useEffect(() => {
@@ -67,7 +69,7 @@ const CategorySelector: React.FC<{
         const trimmed = inputValue.trim();
         if (!trimmed) return;
         
-        // Проверка на существование (case-insensitive)
+        // Поиск существующей категории без учета регистра
         const existing = existingCategories.find(c => c.toLowerCase() === trimmed.toLowerCase());
         onChange(existing || trimmed);
         setInputValue('');
@@ -77,19 +79,24 @@ const CategorySelector: React.FC<{
     return (
         <div className="relative w-full" ref={containerRef}>
             <div 
-                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-2 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all flex flex-wrap gap-2 items-center min-h-[54px]"
+                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-2 border-2 border-transparent focus-within:border-sky-500/50 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all flex flex-wrap gap-2 items-center min-h-[58px] cursor-text"
                 onClick={() => setIsOpen(true)}
             >
                 {value ? (
-                    <div className="bg-sky-500 text-white px-3 py-1 rounded-lg text-sm font-bold flex items-center gap-2 animate-scale-in">
-                        {value}
-                        <button onClick={(e) => { e.stopPropagation(); onChange(''); }} className="hover:text-red-200">✕</button>
+                    <div className="bg-sky-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 animate-scale-in shadow-sm">
+                        <span>{value}</span>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onChange(''); }} 
+                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-black/20 transition-colors"
+                        >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
                     </div>
                 ) : null}
                 
                 <input 
                     type="text"
-                    className="flex-1 bg-transparent outline-none text-sm dark:text-white min-w-[120px]"
+                    className="flex-1 bg-transparent outline-none text-base dark:text-white min-w-[120px]"
                     placeholder={value ? "" : (placeholder || "Выберите категорию...")}
                     value={inputValue}
                     onChange={(e) => { setInputValue(e.target.value); setIsOpen(true); }}
@@ -104,21 +111,21 @@ const CategorySelector: React.FC<{
             </div>
 
             {isOpen && (filtered.length > 0 || (inputValue.trim() && !existingCategories.some(c => c.toLowerCase() === inputValue.trim().toLowerCase()))) && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e1e24] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 z-[60] overflow-hidden max-h-60 overflow-y-auto no-scrollbar animate-fade-in">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e1e24] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 z-[60] overflow-hidden max-h-64 overflow-y-auto no-scrollbar animate-fade-in ring-4 ring-black/5">
                     {inputValue.trim() && !existingCategories.some(c => c.toLowerCase() === inputValue.trim().toLowerCase()) && (
                         <div 
                             onClick={handleManualSubmit}
-                            className="px-4 py-3 hover:bg-sky-50 dark:hover:bg-white/5 cursor-pointer border-b border-gray-50 dark:border-white/5 group"
+                            className="px-5 py-4 hover:bg-sky-50 dark:hover:bg-white/5 cursor-pointer border-b border-gray-50 dark:border-white/5 group transition-colors"
                         >
-                            <span className="text-[10px] font-bold text-gray-400 block uppercase mb-1">Создать новую:</span>
-                            <span className="text-sm font-bold text-sky-600 dark:text-sky-400">{inputValue.trim()}</span>
+                            <span className="text-[10px] font-black text-gray-400 block uppercase mb-1 tracking-widest">Создать новую категорию:</span>
+                            <span className="text-base font-bold text-sky-600 dark:text-sky-400">{inputValue.trim()}</span>
                         </div>
                     )}
                     {filtered.map(cat => (
                         <div 
                             key={cat}
                             onClick={() => handleSelect(cat)}
-                            className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer text-sm font-medium dark:text-white transition-colors"
+                            className="px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer text-base font-bold dark:text-white transition-colors border-b border-gray-50 dark:border-white/5 last:border-0"
                         >
                             {cat}
                         </div>
@@ -168,9 +175,9 @@ export default function Editor() {
 
   const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
   
-  // Все уникальные категории для автодополнения
   const existingCategories = useMemo(() => {
-      return Array.from(new Set(recipes.map(r => r.category))).filter(Boolean).sort();
+      const cats = Array.from(new Set(recipes.map(r => r.category))).filter(Boolean).sort();
+      return cats.length > 0 ? cats : ['Горячее', 'Салаты', 'Десерты', 'Напитки', 'Заготовки'];
   }, [recipes]);
 
   const ingredientDatabase = useMemo(() => {
@@ -261,10 +268,12 @@ export default function Editor() {
     if (file && file.type.startsWith('image/')) {
         setIsUploading(true);
         try {
-            const url = await uploadImage(file);
+            // Загружаем именно в папку recipes
+            const url = await uploadImage(file, 'recipes');
             setter(url);
             addToast("Фото загружено", "success");
         } catch (e) {
+            console.error(e);
             addToast("Ошибка загрузки фото", "error");
         } finally {
             setIsUploading(false);
@@ -288,7 +297,7 @@ export default function Editor() {
     if (!title) { addToast("Укажите название", "error"); return; }
     
     setIsSaving(true);
-    await new Promise(r => requestAnimationFrame(r));
+    // Даем UI отрисовать лоадер
     await new Promise(r => setTimeout(r, 100));
 
     try {
@@ -296,7 +305,7 @@ export default function Editor() {
             id: id || uuidv4(),
             title: title.trim(),
             description: description || 'Нет описания',
-            imageUrl,
+            imageUrl: imageUrl, // Используем актуальный URL из стейта
             videoUrl,
             category: category.trim() || 'Без категории',
             outputWeight: outputWeight || '',
@@ -316,6 +325,7 @@ export default function Editor() {
             navigate('/', { replace: true });
         }
     } catch (e: unknown) {
+        console.error(e);
         addToast("Ошибка сохранения", "error");
     } finally {
         setIsSaving(false);
@@ -728,8 +738,8 @@ export default function Editor() {
                     >
                          {imageUrl ? (
                             <>
-                                <img src={imageUrl} className="w-full h-full object-cover" />
-                                <button onClick={(e) => { e.stopPropagation(); setImageUrl(''); }} className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full hover:bg-red-500 transition backdrop-blur-sm"><svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
+                                <img src={imageUrl} className="w-full h-full object-cover" key={imageUrl} />
+                                <button onClick={(e) => { e.stopPropagation(); setImageUrl(''); }} className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full hover:bg-red-500 transition backdrop-blur-sm shadow-lg"><svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
                             </>
                          ) : showUrlInput ? (
                              <div className="w-full px-6" onClick={e => e.stopPropagation()}>
@@ -757,12 +767,12 @@ export default function Editor() {
                              <input type="text" className="w-full bg-transparent font-bold text-lg dark:text-white outline-none placeholder-gray-300" value={title} onChange={e => setTitle(e.target.value)} placeholder="Напр. Паста Карбонара" />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-gray-400 ml-4">Категория</label>
+                            <label className="text-[10px] uppercase font-bold text-gray-400 ml-4 mb-1 block">Категория</label>
                             <CategorySelector 
                                 value={category} 
                                 onChange={setCategory} 
                                 existingCategories={existingCategories}
-                                placeholder="Горячее, Салаты..."
+                                placeholder="Выберите или создайте..."
                             />
                         </div>
                         <div className="flex gap-3">
@@ -772,7 +782,7 @@ export default function Editor() {
                             </div>
                             <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-red-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
                              <label className="text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1">Видео</label>
-                             <input type="text" className="w-full bg-transparent text-sm dark:text-white outline-none placeholder-gray-300" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="YouTube или ссылка..." />
+                             <input type="text" className="w-full bg-transparent text-sm dark:text-white outline-none placeholder-gray-300" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="YouTube..." />
                             </div>
                         </div>
                     </div>
