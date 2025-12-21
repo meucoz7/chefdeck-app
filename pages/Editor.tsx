@@ -31,6 +31,104 @@ interface ImageMatch {
     selected: boolean;
 }
 
+// Вспомогательный компонент для выбора категории
+const CategorySelector: React.FC<{
+    value: string;
+    onChange: (val: string) => void;
+    existingCategories: string[];
+    placeholder?: string;
+}> = ({ value, onChange, existingCategories, placeholder }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [inputValue, setInputValue] = useState('');
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const filtered = useMemo(() => {
+        const query = inputValue.toLowerCase().trim();
+        return existingCategories.filter(c => c.toLowerCase().includes(query) && c !== value);
+    }, [inputValue, existingCategories, value]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleSelect = (cat: string) => {
+        onChange(cat);
+        setInputValue('');
+        setIsOpen(false);
+    };
+
+    const handleManualSubmit = () => {
+        const trimmed = inputValue.trim();
+        if (!trimmed) return;
+        
+        // Проверка на существование (case-insensitive)
+        const existing = existingCategories.find(c => c.toLowerCase() === trimmed.toLowerCase());
+        onChange(existing || trimmed);
+        setInputValue('');
+        setIsOpen(false);
+    };
+
+    return (
+        <div className="relative w-full" ref={containerRef}>
+            <div 
+                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-2 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all flex flex-wrap gap-2 items-center min-h-[54px]"
+                onClick={() => setIsOpen(true)}
+            >
+                {value ? (
+                    <div className="bg-sky-500 text-white px-3 py-1 rounded-lg text-sm font-bold flex items-center gap-2 animate-scale-in">
+                        {value}
+                        <button onClick={(e) => { e.stopPropagation(); onChange(''); }} className="hover:text-red-200">✕</button>
+                    </div>
+                ) : null}
+                
+                <input 
+                    type="text"
+                    className="flex-1 bg-transparent outline-none text-sm dark:text-white min-w-[120px]"
+                    placeholder={value ? "" : (placeholder || "Выберите категорию...")}
+                    value={inputValue}
+                    onChange={(e) => { setInputValue(e.target.value); setIsOpen(true); }}
+                    onFocus={() => setIsOpen(true)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleManualSubmit();
+                        }
+                    }}
+                />
+            </div>
+
+            {isOpen && (filtered.length > 0 || (inputValue.trim() && !existingCategories.some(c => c.toLowerCase() === inputValue.trim().toLowerCase()))) && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e1e24] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 z-[60] overflow-hidden max-h-60 overflow-y-auto no-scrollbar animate-fade-in">
+                    {inputValue.trim() && !existingCategories.some(c => c.toLowerCase() === inputValue.trim().toLowerCase()) && (
+                        <div 
+                            onClick={handleManualSubmit}
+                            className="px-4 py-3 hover:bg-sky-50 dark:hover:bg-white/5 cursor-pointer border-b border-gray-50 dark:border-white/5 group"
+                        >
+                            <span className="text-[10px] font-bold text-gray-400 block uppercase mb-1">Создать новую:</span>
+                            <span className="text-sm font-bold text-sky-600 dark:text-sky-400">{inputValue.trim()}</span>
+                        </div>
+                    )}
+                    {filtered.map(cat => (
+                        <div 
+                            key={cat}
+                            onClick={() => handleSelect(cat)}
+                            className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer text-sm font-medium dark:text-white transition-colors"
+                        >
+                            {cat}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export default function Editor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>(); 
@@ -70,6 +168,11 @@ export default function Editor() {
 
   const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
   
+  // Все уникальные категории для автодополнения
+  const existingCategories = useMemo(() => {
+      return Array.from(new Set(recipes.map(r => r.category))).filter(Boolean).sort();
+  }, [recipes]);
+
   const ingredientDatabase = useMemo(() => {
       const map = new Map<string, string>();
       recipes.forEach(r => {
@@ -527,7 +630,6 @@ export default function Editor() {
 
       } catch (e: unknown) {
           console.error(e);
-          // Fix: Properly handle unknown error by checking instance of Error or converting to string
           const msg = e instanceof Error ? e.message : String(e);
           addToast(`Ошибка парсинга: ${msg}`, "error");
       } finally {
@@ -654,19 +756,24 @@ export default function Editor() {
                              <label className="text-[10px] uppercase font-bold text-gray-400">Название</label>
                              <input type="text" className="w-full bg-transparent font-bold text-lg dark:text-white outline-none placeholder-gray-300" value={title} onChange={e => setTitle(e.target.value)} placeholder="Напр. Паста Карбонара" />
                         </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold text-gray-400 ml-4">Категория</label>
+                            <CategorySelector 
+                                value={category} 
+                                onChange={setCategory} 
+                                existingCategories={existingCategories}
+                                placeholder="Горячее, Салаты..."
+                            />
+                        </div>
                         <div className="flex gap-3">
                             <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                                <label className="text-[10px] uppercase font-bold text-gray-400">Категория</label>
-                                <input type="text" className="w-full bg-transparent font-medium text-base dark:text-white outline-none placeholder-gray-300" value={category} onChange={e => setCategory(e.target.value)} placeholder="Горячее" />
-                            </div>
-                            <div className="w-28 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
                                 <label className="text-[10px] uppercase font-bold text-gray-400">Выход</label>
                                 <input type="text" className="w-full bg-transparent font-medium text-base dark:text-white outline-none placeholder-gray-300" value={outputWeight} onChange={e => setOutputWeight(e.target.value)} placeholder="350 г" />
                             </div>
-                        </div>
-                         <div className="bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-red-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
+                            <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-red-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
                              <label className="text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1">Видео</label>
                              <input type="text" className="w-full bg-transparent text-sm dark:text-white outline-none placeholder-gray-300" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="YouTube или ссылка..." />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -863,9 +970,13 @@ export default function Editor() {
                  <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 space-y-3">
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Массовые действия</h3>
                      <div className="flex gap-3 items-center">
-                         <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-sky-500/30 transition-all">
-                             <label className="text-[10px] uppercase font-bold text-gray-400">Категория для всех</label>
-                             <input type="text" className="w-full bg-transparent font-medium text-base dark:text-white outline-none placeholder-gray-300" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} placeholder="Напр. Меню Осень" />
+                         <div className="flex-1">
+                             <CategorySelector 
+                                value={bulkCategory} 
+                                onChange={setBulkCategory} 
+                                existingCategories={existingCategories}
+                                placeholder="Категория для всех..."
+                             />
                         </div>
                         <div className="flex items-center justify-between bg-gray-50 dark:bg-black/20 p-3 rounded-xl cursor-pointer border border-transparent" onClick={() => setImportNotify(!importNotify)}>
                              <div className={`w-10 h-6 rounded-full transition-colors relative ${importNotify ? 'bg-blue-500' : 'bg-gray-300 dark:bg-white/10'}`}>
@@ -890,9 +1001,23 @@ export default function Editor() {
                          </div>
                          {!recipe.collapsed && (
                              <div className="p-5 space-y-6 animate-fade-in bg-white dark:bg-[#1e1e24]">
-                                  <div className="space-y-3">
-                                      <input type="text" className="w-full bg-transparent text-base font-bold dark:text-white outline-none border-b border-gray-100 dark:border-white/10" value={recipe.title} onChange={e => updateStagedRecipe(recipe.id, 'title', e.target.value)} />
+                                  <div className="space-y-4">
+                                      <div>
+                                          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-2">Название</label>
+                                          <input type="text" className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 text-sm font-bold dark:text-white outline-none" value={recipe.title} onChange={e => updateStagedRecipe(recipe.id, 'title', e.target.value)} />
+                                      </div>
+                                      
+                                      <div>
+                                          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-2">Категория</label>
+                                          <CategorySelector 
+                                            value={recipe.category} 
+                                            onChange={(val) => updateStagedRecipe(recipe.id, 'category', val)} 
+                                            existingCategories={existingCategories}
+                                          />
+                                      </div>
+
                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-1">Ингредиенты</label>
                                             {recipe.ingredients.map((ing, i) => (
                                                 <div key={i} className="grid grid-cols-[1fr_3rem] gap-2">
                                                     <span className="text-sm dark:text-gray-300 truncate">{ing.name}</span>
@@ -900,16 +1025,17 @@ export default function Editor() {
                                                 </div>
                                             ))}
                                        </div>
-                                       <textarea 
-                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
-                                            rows={3} 
-                                            value={recipe.steps.join('\n')} 
-                                            onChange={(e) => updateStagedRecipe(recipe.id, 'steps', e.target.value.split('\n'))} 
-                                            placeholder="Шаги приготовления..."
-                                        />
-                                        <div className="flex justify-between items-center text-xs text-gray-400">
-                                            <button onClick={() => updateStagedRecipe(recipe.id, 'steps', [...recipe.steps, ''])} className="text-orange-500 font-bold">+ Шаг</button>
-                                        </div>
+                                       
+                                       <div>
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-2">Шаги приготовления</label>
+                                            <textarea 
+                                                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
+                                                rows={3} 
+                                                value={recipe.steps.join('\n')} 
+                                                onChange={(e) => updateStagedRecipe(recipe.id, 'steps', e.target.value.split('\n'))} 
+                                                placeholder="Шаги приготовления..."
+                                            />
+                                       </div>
                                   </div>
                              </div>
                          )}
