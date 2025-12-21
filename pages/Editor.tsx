@@ -8,6 +8,7 @@ import { TechCard, Ingredient } from '../types';
 import { parsePdfFile, ParsedPdfData } from '../services/pdfService';
 import { useTelegram } from '../context/TelegramContext';
 import { apiFetch } from '../services/api';
+import { uploadImage } from '../services/uploadService';
 
 type EditorMode = 'create' | 'import-upload' | 'import-staging' | 'import-images';
 
@@ -50,6 +51,7 @@ export default function Editor() {
   const [steps, setSteps] = useState<string[]>(['']);
   const [isFavorite, setIsFavorite] = useState(false);
   
+  const [isUploading, setIsUploading] = useState(false);
   const [shouldNotify, setShouldNotify] = useState(true); 
   const [showUrlInput, setShowUrlInput] = useState(false);
 
@@ -145,7 +147,6 @@ export default function Editor() {
           setMode('create');
       } else {
           if (id) {
-              // Using replace: true to break the back navigation loop
               navigate(`/recipe/${id}`, { replace: true });
           } else {
               navigate('/', { replace: true });
@@ -153,11 +154,18 @@ export default function Editor() {
       }
   };
 
-  const handleImageInput = (file: File | undefined, setter: (url: string) => void) => {
+  const handleImageInput = async (file: File | undefined, setter: (url: string) => void) => {
     if (file && file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (ev) => { if (ev.target?.result) setter(ev.target.result as string); };
-        reader.readAsDataURL(file);
+        setIsUploading(true);
+        try {
+            const url = await uploadImage(file);
+            setter(url);
+            addToast("Фото загружено", "success");
+        } catch (e) {
+            addToast("Ошибка загрузки фото", "error");
+        } finally {
+            setIsUploading(false);
+        }
     }
   };
   
@@ -204,7 +212,7 @@ export default function Editor() {
             addToast("Сохранено", "success");
             navigate('/', { replace: true });
         }
-    } catch (e: any) {
+    } catch (e: unknown) {
         addToast("Ошибка сохранения", "error");
     } finally {
         setIsSaving(false);
@@ -254,7 +262,7 @@ export default function Editor() {
         });
         setStagedRecipes(staged);
         setMode('import-staging');
-    } catch (err: any) {
+    } catch (err: unknown) {
         let errorMessage = "Ошибка PDF";
         if (err instanceof Error) {
             errorMessage = err.message;
@@ -296,7 +304,7 @@ export default function Editor() {
           await addRecipesBulk(finalRecipes, importNotify);
           addToast(`Импортировано: ${selected.length}`, "success");
           navigate('/', { replace: true });
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
           addToast("Ошибка при сохранении", "error");
       } finally {
@@ -517,9 +525,10 @@ export default function Editor() {
           if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
           else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
 
-      } catch (e: any) {
+      } catch (e: unknown) {
           console.error(e);
-          const msg = e?.message || String(e);
+          // Fix: Properly handle unknown error by checking instance of Error or converting to string
+          const msg = e instanceof Error ? e.message : String(e);
           addToast(`Ошибка парсинга: ${msg}`, "error");
       } finally {
           setIsParsing(false);
@@ -540,7 +549,7 @@ export default function Editor() {
           }
           addToast("Изображения обновлены", "success");
           navigate('/', { replace: true });
-      } catch (e) {
+      } catch (e: unknown) {
           addToast("Ошибка обновления", "error");
       } finally {
           setIsImporting(false);
@@ -551,11 +560,11 @@ export default function Editor() {
 
   return (
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
-       {(isImporting || isSaving) && (
+       {(isImporting || isSaving || isUploading) && (
            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
                 <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
                     <h3 className="font-bold text-xl mb-6 dark:text-white">
-                        {isImporting ? 'Обработка...' : 'Сохранение...'}
+                        {isUploading ? 'Загрузка фото...' : (isImporting ? 'Обработка...' : 'Сохранение...')}
                     </h3>
                     <div className="flex justify-center mb-4">
                             <svg className="animate-spin h-10 w-10 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -566,7 +575,7 @@ export default function Editor() {
        )}
 
        <div className="px-5 pt-safe-top flex justify-between items-center mb-2">
-          <button onClick={handleBack} disabled={isImporting || isSaving} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
+          <button onClick={handleBack} disabled={isImporting || isSaving || isUploading} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition group py-2">
                 <div className="w-9 h-9 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm border border-gray-100 dark:border-white/5 group-active:scale-95 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
