@@ -8,7 +8,7 @@ import { scopedStorage } from '../services/storage';
 
 interface RecipeContextType {
   recipes: TechCard[];
-  addRecipe: (recipe: TechCard, notifyAll?: boolean, silent?: boolean) => Promise<void>;
+  addRecipe: (recipe: TechCard, notifyAll?: boolean) => Promise<void>;
   addRecipesBulk: (recipes: TechCard[], notifyAll?: boolean) => Promise<void>;
   updateRecipe: (recipe: TechCard, notifyAll?: boolean, silent?: boolean) => Promise<void>;
   archiveRecipe: (id: string) => Promise<void>;
@@ -34,154 +34,76 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const res = await apiFetch('/api/recipes');
           if (!res.ok) throw new Error('Failed to fetch');
           const data = await res.json();
-          
-          // Важная проверка: не обновляем стейт, если пришел пустой некорректный ответ
           if (Array.isArray(data)) {
-              const safeData = data.map((r: TechCard) => ({ ...r, isArchived: !!r.isArchived }));
+              const safeData = data.map((r: TechCard) => ({ 
+                ...r, 
+                isArchived: !!r.isArchived,
+                isFavorite: !!r.isFavorite
+              }));
               setRecipes(safeData);
               scopedStorage.setJson('recipes_cache', safeData);
           }
       } catch (e) {
-          console.warn("API unavailable, switching to offline mode.");
           const parsed = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-              setRecipes(parsed.map((r: any) => ({ ...r, isArchived: !!r.isArchived })));
-          }
+          if (Array.isArray(parsed)) setRecipes(parsed);
       } finally {
           setIsLoading(false);
       }
   };
 
-  useEffect(() => {
-    fetchRecipes();
-  }, []);
+  useEffect(() => { fetchRecipes(); }, []);
 
-  const sendNotification = async (recipe: TechCard, action: 'create' | 'update' | 'delete', notifyAll: boolean = false, changes: string[] = [], silent: boolean = false) => {
+  const sendNotification = async (recipe: TechCard, action: 'create' | 'update' | 'delete', notifyAll: boolean = false, changes: string[] = []) => {
       if (!user) return;
       try {
           await apiFetch('/api/notify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  action,
-                  recipeId: recipe.id,
-                  recipeTitle: recipe.title,
-                  targetChatId: user.id,
-                  notifyAll,
-                  changes,
-                  silent
-              })
+              body: JSON.stringify({ action, recipeId: recipe.id, recipeTitle: recipe.title, targetChatId: user.id, notifyAll, changes })
           });
-      } catch (e) {
-          console.error("Notify failed", e);
-      }
+      } catch (e) {}
   };
 
-  const escapeHtml = (unsafe: string | undefined | null) => {
-    if (!unsafe) return "";
-    return String(unsafe)
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
-  };
-
-  const calculateChanges = (oldR: TechCard, newR: TechCard): string[] => {
-      const changes: string[] = [];
-      const clean = (s: string) => (s || '').trim();
-      
-      if (clean(oldR.title) !== clean(newR.title)) {
-          changes.push(`Название: ${escapeHtml(oldR.title)} -> <b>${escapeHtml(newR.title)}</b>`);
-      }
-      if (clean(oldR.outputWeight) !== clean(newR.outputWeight)) {
-          changes.push(`Выход: ${escapeHtml(oldR.outputWeight || '-')} -> <b>${escapeHtml(newR.outputWeight)}</b>`);
-      }
-      
-      const oldMap = new Map(oldR.ingredients.map(i => [clean(i.name), i]));
-      
-      newR.ingredients.forEach(newI => {
-          const name = clean(newI.name);
-          const oldI = oldMap.get(name);
-          
-          if (!oldI) {
-               changes.push(`Добавлен: <b>${escapeHtml(newI.name)}</b> (${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)})`);
-          } else {
-               const oldAmount = clean(oldI.amount);
-               const newAmount = clean(newI.amount);
-               const oldUnit = clean(oldI.unit);
-               const newUnit = clean(newI.unit);
-
-               if (oldAmount !== newAmount || oldUnit !== newUnit) {
-                   changes.push(`${escapeHtml(newI.name)}: ${escapeHtml(oldI.amount)} ${escapeHtml(oldI.unit)} -> <b>${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)}</b>`);
-               }
-               oldMap.delete(name);
-          }
-      });
-      
-      oldMap.forEach(oldI => {
-          changes.push(`Удален: ${escapeHtml(oldI.name)}`);
-      });
-      
-      return changes;
-  };
-
-  const addRecipe = async (recipe: TechCard, notifyAll = false, silent = false) => {
-    const enriched = { 
-        ...recipe, 
-        isArchived: false,
-        lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown'
-    };
-    
+  const addRecipe = async (recipe: TechCard, notifyAll = false) => {
+    const enriched = { ...recipe, isArchived: false, lastModified: Date.now(), lastModifiedBy: user?.first_name || 'System' };
     setRecipes(prev => {
         const newState = [enriched, ...prev];
         scopedStorage.setJson('recipes_cache', newState);
         return newState;
     });
-
     try {
-        const res = await apiFetch('/api/recipes', {
+        await apiFetch('/api/recipes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(enriched)
         });
-        if(!res.ok) throw new Error("Server error");
-        await sendNotification(enriched, 'create', notifyAll, [], silent);
-    } catch (e) {
-        console.error(e);
-    }
+        await sendNotification(enriched, 'create', notifyAll);
+    } catch (e) { console.error(e); }
   };
 
   const addRecipesBulk = async (newRecipes: TechCard[], notifyAll = false) => {
-      const enrichedRecipes = newRecipes.map(r => ({
-          ...r,
-          isArchived: false,
-          lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Import'
-      }));
-
+      const enriched = newRecipes.map(r => ({ ...r, isArchived: false, lastModified: Date.now(), lastModifiedBy: 'Import' }));
       setRecipes(prev => {
-          const newState = [...enrichedRecipes, ...prev];
+          const newState = [...enriched, ...prev];
           scopedStorage.setJson('recipes_cache', newState);
           return newState;
       });
-
       try {
           await apiFetch('/api/recipes/bulk', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(enrichedRecipes)
+              body: JSON.stringify(enriched)
           });
-      } catch (e) {
-          console.error(e);
-      }
+      } catch (e) { console.error(e); }
   };
 
   const updateRecipe = async (updated: TechCard, notifyAll = false, silent = false) => {
     const oldRecipe = recipes.find(r => r.id === updated.id);
     const enriched = { 
         ...updated, 
+        isArchived: updated.isArchived ?? oldRecipe?.isArchived ?? false,
         lastModified: Date.now(),
-        lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown'
+        lastModifiedBy: user?.first_name || 'System'
     };
 
     setRecipes(prev => {
@@ -191,58 +113,23 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-        const res = await apiFetch('/api/recipes', {
+        await apiFetch('/api/recipes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(enriched)
         });
-        if(!res.ok) throw new Error("Server error");
-        
-        const changes = oldRecipe ? calculateChanges(oldRecipe, enriched) : [];
-        await sendNotification(enriched, 'update', notifyAll, changes, silent);
-    } catch (e) {
-        console.error(e);
-    }
+        if (!silent) await sendNotification(enriched, 'update', notifyAll);
+    } catch (e) { console.error(e); }
   };
 
   const archiveRecipe = async (id: string) => {
       const target = recipes.find(r => r.id === id);
-      if (!target) return;
-      const archived = { ...target, isArchived: true };
-      setRecipes(prev => {
-          const newState = prev.map(r => r.id === id ? archived : r);
-          scopedStorage.setJson('recipes_cache', newState);
-          return newState;
-      });
-      try {
-          await apiFetch('/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(archived) });
-      } catch (e) {}
-  };
-  
-  const archiveRecipesBulk = async (ids: string[]) => {
-      if (ids.length === 0) return;
-      setRecipes(prev => {
-          const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r);
-          scopedStorage.setJson('recipes_cache', newState);
-          return newState;
-      });
-      try {
-          await apiFetch('/api/recipes/archive/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
-      } catch (e) {}
+      if (target) await updateRecipe({ ...target, isArchived: true }, false, true);
   };
 
   const restoreRecipe = async (id: string) => {
       const target = recipes.find(r => r.id === id);
-      if (!target) return;
-      const restored = { ...target, isArchived: false };
-      setRecipes(prev => {
-          const newState = prev.map(r => r.id === id ? restored : r);
-          scopedStorage.setJson('recipes_cache', newState);
-          return newState;
-      });
-      try {
-          await apiFetch('/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(restored) });
-      } catch (e) {}
+      if (target) await updateRecipe({ ...target, isArchived: false }, false, true);
   };
 
   const deleteRecipe = async (id: string) => {
@@ -258,23 +145,29 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {}
   };
 
+  const archiveRecipesBulk = async (ids: string[]) => {
+      setRecipes(prev => {
+          const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r);
+          scopedStorage.setJson('recipes_cache', newState);
+          return newState;
+      });
+      try {
+          await apiFetch('/api/recipes/archive/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids })
+          });
+      } catch (e) {}
+  };
+
   const deleteAllArchived = async () => {
-    setRecipes(prev => {
-        const newState = prev.filter(r => !r.isArchived);
-        scopedStorage.setJson('recipes_cache', newState);
-        return newState;
-    });
-    try {
-        await apiFetch('/api/recipes/archive/all', { method: 'DELETE' });
-    } catch (e) {}
+    setRecipes(prev => prev.filter(r => !r.isArchived));
+    try { await apiFetch('/api/recipes/archive/all', { method: 'DELETE' }); } catch (e) {}
   };
 
   const toggleFavorite = (id: string) => {
-    setRecipes(prev => {
-        const newRecipes = prev.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r);
-        scopedStorage.setJson('recipes_cache', newRecipes); 
-        return newRecipes;
-    });
+    const target = recipes.find(r => r.id === id);
+    if (target) updateRecipe({ ...target, isFavorite: !target.isFavorite }, false, true);
   };
 
   const getRecipe = (id: string) => recipes.find(r => r.id === id);
@@ -288,8 +181,6 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useRecipes = () => {
   const context = useContext(RecipeContext);
-  if (context === undefined) {
-    throw new Error('useRecipes must be used within a RecipeProvider');
-  }
+  if (!context) throw new Error('useRecipes must be used within a RecipeProvider');
   return context;
 };
