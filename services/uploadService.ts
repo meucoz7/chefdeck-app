@@ -4,6 +4,9 @@ const API_KEY = 'cec481f50361daa41f728e47a28dda963bf5052206438d747fdcb320fe3c14d
 
 const folderCache: Record<string, number> = {};
 
+/**
+ * Получает ID папки по имени, создавая её при необходимости.
+ */
 const getFolderId = async (name: string): Promise<number | null> => {
     if (folderCache[name]) return folderCache[name];
     try {
@@ -11,6 +14,7 @@ const getFolderId = async (name: string): Promise<number | null> => {
             headers: { 'X-API-Key': API_KEY }
         });
         const result = await res.json();
+
         if (result.success && Array.isArray(result.data)) {
             const folder = result.data.find((f: any) => f.name.toLowerCase() === name.toLowerCase());
             if (folder) {
@@ -18,6 +22,7 @@ const getFolderId = async (name: string): Promise<number | null> => {
                 return folder.id;
             }
         }
+
         const createRes = await fetch(`${API_URL}/folders`, {
             method: 'POST',
             headers: { 
@@ -27,33 +32,41 @@ const getFolderId = async (name: string): Promise<number | null> => {
             body: JSON.stringify({ name })
         });
         const createResult = await createRes.json();
+        
         if (createResult.success && createResult.data) {
             folderCache[name] = createResult.data.id;
             return createResult.data.id;
         }
     } catch (e) {
-        console.error('Folder discovery error:', e);
+        console.error('Ошибка поиска папки:', e);
     }
     return null;
 };
 
+/**
+ * Загружает файл на сервер с указанием folder_id.
+ */
 export const uploadImage = async (file: File, folderName: string = 'general'): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
+
     const folderId = await getFolderId(folderName);
     if (folderId !== null) {
         formData.append('folder_id', folderId.toString());
     }
+
     try {
         const response = await fetch(`${API_URL}/upload`, {
             method: 'POST',
             headers: { 'X-API-Key': API_KEY },
             body: formData
         });
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.message || 'Ошибка загрузки');
         }
+
         const result = await response.json();
         if (result.success && result.data && result.data.url) {
             return result.data.url;
