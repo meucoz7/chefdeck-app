@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { TechCard, Ingredient } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from './ToastContext';
@@ -16,7 +15,7 @@ interface RecipeContextType {
   restoreRecipe: (id: string) => Promise<void>;
   deleteRecipe: (id: string) => Promise<void>;
   deleteAllArchived: () => Promise<void>;
-  toggleFavorite: (id: string) => void;
+  toggleFavorite: (id: string) => Promise<void>;
   getRecipe: (id: string) => TechCard | undefined;
   isLoading: boolean;
 }
@@ -251,15 +250,19 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try { await apiFetch('/api/recipes/archive/all', { method: 'DELETE' }); } catch (e) {}
   };
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = async (id: string) => {
     const target = recipes.find(r => r.id === id);
-    if (target) updateRecipe({ ...target, isFavorite: !target.isFavorite }, false, true);
+    if (target) await updateRecipe({ ...target, isFavorite: !target.isFavorite }, false, true);
   };
 
-  const getRecipe = (id: string) => recipes.find(r => r.id === id);
+  const getRecipe = useCallback((id: string) => recipes.find(r => r.id === id), [recipes]);
 
   return (
-    <RecipeContext.Provider value={{ recipes, addRecipe, addRecipesBulk, updateRecipe, archiveRecipe, archiveRecipesBulk, restoreRecipe, deleteRecipe, deleteAllArchived, toggleFavorite, getRecipe, isLoading }}>
+    <RecipeContext.Provider value={{ 
+      recipes, addRecipe, addRecipesBulk, updateRecipe, archiveRecipe, 
+      archiveRecipesBulk, restoreRecipe, deleteRecipe, deleteAllArchived, 
+      toggleFavorite, getRecipe, isLoading 
+    }}>
       {children}
     </RecipeContext.Provider>
   );
