@@ -15,7 +15,11 @@ interface ImportSheet {
     data: any[][];
     isSummary: boolean;
     isSelected: boolean;
-    mapping: { code: number; name: number; unit: number; };
+    mapping: {
+        code: number;
+        name: number;
+        unit: number;
+    };
 }
 
 // --- UI COMPONENTS ---
@@ -91,15 +95,35 @@ const CustomConfirm: React.FC<{
 
 const InventoryItemRow: React.FC<{
     item: InventoryItem;
-    inputValue: string;
+    initialValue: string;
     onDelete: (id: string) => void;
-    onChange: (id: string, val: string) => void;
+    onSync: (id: string, val: string) => void;
     readOnly?: boolean;
-}> = ({ item, inputValue, onDelete, onChange, readOnly }) => {
+}> = ({ item, initialValue, onDelete, onSync, readOnly }) => {
+    const [localValue, setLocalValue] = useState(initialValue);
     const [startX, setStartX] = useState(0);
     const [offsetX, setOffsetX] = useState(0);
     const [isSwiping, setIsSwiping] = useState(false);
     const { webApp } = useTelegram();
+    const syncTimerRef = useRef<any>(null);
+
+    useEffect(() => {
+        if (initialValue !== localValue && !syncTimerRef.current) {
+            setLocalValue(initialValue);
+        }
+    }, [initialValue]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value.replace(',', '.');
+        if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+            setLocalValue(val);
+            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = setTimeout(() => {
+                onSync(item.id, val);
+                syncTimerRef.current = null;
+            }, 500);
+        }
+    };
 
     const handleTouchStart = (e: React.TouchEvent) => {
         if (readOnly) return;
@@ -111,11 +135,7 @@ const InventoryItemRow: React.FC<{
         if (readOnly) return;
         const currentX = e.touches[0].clientX;
         const diff = currentX - startX;
-        
-        if (Math.abs(diff) > 10) {
-            setIsSwiping(true);
-        }
-
+        if (Math.abs(diff) > 10) setIsSwiping(true);
         if (diff < 0) setOffsetX(Math.max(diff, -100));
         else setOffsetX(Math.min(diff, 0));
     };
@@ -135,13 +155,11 @@ const InventoryItemRow: React.FC<{
         <div className="relative overflow-hidden rounded-[2rem] mb-2.5 group bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5">
             {!readOnly && (
                 <div 
-                    className="absolute inset-y-0 right-0 w-[90px] bg-red-500 flex items-center justify-center cursor-pointer transition-opacity z-0"
+                    className="absolute inset-y-0 right-0 w-[90px] bg-red-500 flex flex-col items-center justify-center cursor-pointer z-0 transition-opacity"
                     onClick={() => onDelete(item.id)}
                 >
-                    <div className="flex flex-col items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg>
-                        <span className="text-[7px] text-white font-black uppercase">Удалить</span>
-                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-white mb-1"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg>
+                    <span className="text-[8px] text-white font-black uppercase tracking-tighter">Удалить</span>
                 </div>
             )}
             <div 
@@ -163,14 +181,8 @@ const InventoryItemRow: React.FC<{
                         readOnly={readOnly}
                         className={`w-24 bg-gray-50 dark:bg-black/40 border-2 border-transparent focus:border-sky-500 rounded-2xl px-2 py-3 text-center font-black text-lg dark:text-white outline-none transition-all ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
                         placeholder="0" 
-                        value={inputValue} 
-                        onChange={e => {
-                            let val = e.target.value.replace(',', '.');
-                            // Allow any character that's part of a valid decimal or an intermediate typing state
-                            if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-                                onChange(item.id, val);
-                            }
-                        }}
+                        value={localValue} 
+                        onChange={handleInputChange}
                     />
                 </div>
             </div>
@@ -193,7 +205,6 @@ const Inventory: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [summarySearchTerm, setSummarySearchTerm] = useState('');
     
-    // UI Modals State
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, type?: any, title: string, message: string, onConfirm: () => void} | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isGlobalImportOpen, setIsGlobalImportOpen] = useState(false);
@@ -203,12 +214,9 @@ const Inventory: React.FC = () => {
     const [globalFiles, setGlobalFiles] = useState<{file1?: File, file2?: File}>({});
     const [isAddingSheet, setIsAddingSheet] = useState(false);
     
-    // New Position Modal
     const [newSheetTitle, setNewSheetTitle] = useState('');
     const [selectedGlobalIds, setSelectedGlobalIds] = useState<Set<string>>(new Set());
     const [initialAmount, setInitialAmount] = useState('');
-
-    // Sheet Rename State
     const [renamingSheet, setRenamingSheet] = useState<{id: string, title: string} | null>(null);
 
     useEffect(() => { 
@@ -243,7 +251,6 @@ const Inventory: React.FC = () => {
         } catch (e) {}
     };
 
-    // Импорт бланков с предпросмотром
     const handleStationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -255,7 +262,6 @@ const Inventory: React.FC = () => {
                 const sheet = wb.Sheets[name];
                 const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 
-                // Умный поиск колонок для каждого листа отдельно
                 let codeCol = -1;
                 let nameCol = 0;
                 let unitCol = 1;
@@ -268,7 +274,7 @@ const Inventory: React.FC = () => {
                         const cell = String(row[c] || '').toLowerCase();
                         if(cell.includes('наименование') || cell.includes('товар')) {
                             nameCol = c;
-                            unitCol = c + 1; // Предполагаем справа
+                            unitCol = c + 1;
                             found = true;
                             break;
                         }
@@ -374,7 +380,7 @@ const Inventory: React.FC = () => {
         } catch (e) { addToast("Ошибка", "error"); }
     };
 
-    const handleActualChange = (itemId: string, val: string) => {
+    const handleActualSync = (itemId: string, val: string) => {
         if (!activeCycle || !activeSheetId) return;
         const numeric = parseFloat(val);
         const updated = { ...activeCycle };
@@ -382,7 +388,6 @@ const Inventory: React.FC = () => {
         if (sheet) {
             sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: isNaN(numeric) ? undefined : numeric } : i);
             setActiveCycle(updated); 
-            // Мгновенное сохранение (убрана задержка)
             apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
         }
     };
@@ -465,14 +470,12 @@ const Inventory: React.FC = () => {
     const isLockedByMe = currentSheet?.lockedBy?.id === user?.id;
     const isLockedByOthers = currentSheet?.lockedBy && currentSheet.lockedBy.id !== user?.id;
 
-    // Фильтруем позиции в бланке по поиску
     const filteredSheetItems = useMemo(() => {
         if (!currentSheet || !searchTerm) return currentSheet?.items || [];
         const s = searchTerm.toLowerCase();
         return currentSheet.items.filter(i => i.name.toLowerCase().includes(s) || (i.code && i.code.toLowerCase().includes(s)));
     }, [currentSheet, searchTerm]);
 
-    // Фильтруем базу товаров для добавления в бланк (только те, которых еще нет в бланке)
     const filteredGlobalForAdding = useMemo(() => {
         const existingNames = new Set(currentSheet?.items.map(i => `${i.name}_${i.unit}`) || []);
         return globalItems
@@ -499,7 +502,6 @@ const Inventory: React.FC = () => {
                 />
             )}
 
-            {/* Header */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-50 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md border-b border-gray-100 dark:border-white/5">
                 <div className="flex items-center justify-between pt-4">
                     <div className="flex items-center gap-3 overflow-hidden flex-1">
@@ -530,7 +532,6 @@ const Inventory: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Поиск в шапке */}
                 {(viewMode === 'filling' || viewMode === 'summary') && (
                     <div className="mt-4 relative animate-slide-up">
                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
@@ -560,21 +561,21 @@ const Inventory: React.FC = () => {
                             <div className="space-y-6">
                                 {isAdmin && (
                                     <div className="grid grid-cols-4 gap-2 mb-2">
-                                        <div onClick={() => document.getElementById('xl-station')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
+                                        <div onClick={() => document.getElementById('xl-station')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 flex flex-col items-center justify-center gap-1.5 h-24 active:scale-95 transition cursor-pointer">
                                             <input type="file" id="xl-station" className="hidden" accept=".xlsx,.xls" onChange={handleStationUpload} />
-                                            <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📄</div>
+                                            <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm text-lg">📄</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Импорт Бланка</h3>
                                         </div>
-                                        <div onClick={() => { setIsGlobalImportOpen(true); setGlobalFiles({}); }} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
-                                            <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📦</div>
+                                        <div onClick={() => { setIsGlobalImportOpen(true); setGlobalFiles({}); }} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 flex flex-col items-center justify-center gap-1.5 h-24 active:scale-95 transition cursor-pointer">
+                                            <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm text-lg">📦</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">База товаров</h3>
                                         </div>
-                                        <div onClick={() => { setViewMode('summary'); setSummarySearchTerm(''); }} className="col-span-1 bg-emerald-100 dark:bg-emerald-500/20 rounded-2xl p-2 text-emerald-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
-                                            <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📊</div>
+                                        <div onClick={() => { setViewMode('summary'); setSummarySearchTerm(''); }} className="col-span-1 bg-emerald-100 dark:bg-emerald-500/20 rounded-2xl p-2 text-emerald-600 flex flex-col items-center justify-center gap-1.5 h-24 active:scale-95 transition cursor-pointer">
+                                            <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm text-lg">📊</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Сводная</h3>
                                         </div>
-                                        <div onClick={() => setViewMode('manage')} className="col-span-1 bg-purple-100 dark:bg-purple-500/20 rounded-2xl p-2 text-purple-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
-                                            <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">⚙️</div>
+                                        <div onClick={() => setViewMode('manage')} className="col-span-1 bg-purple-100 dark:bg-purple-500/20 rounded-2xl p-2 text-purple-600 flex flex-col items-center justify-center gap-1.5 h-24 active:scale-95 transition cursor-pointer">
+                                            <div className="w-9 h-9 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm text-lg">⚙️</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Управление</h3>
                                         </div>
                                     </div>
@@ -623,7 +624,6 @@ const Inventory: React.FC = () => {
                                                 </div>
                                             );
                                         })}
-                                        
                                         {isAdmin && activeCycle.sheets.every(s => s.status === 'submitted') && (
                                             <div className="pt-8 px-4 animate-slide-up">
                                                 <button onClick={finalizeCycle} className="w-full py-5 bg-gradient-to-r from-emerald-600 to-green-500 text-white font-black rounded-[2rem] shadow-2xl shadow-emerald-600/30 uppercase tracking-[0.2em] text-[10px] active:scale-95 transition">
@@ -706,19 +706,24 @@ const Inventory: React.FC = () => {
                         {viewMode === 'filling' && activeSheetId && activeCycle && (
                             <div className="space-y-1 pb-32 animate-fade-in">
                                 {filteredSheetItems.map(item => (
-                                    <InventoryItemRow key={item.id} item={item} inputValue={item.actual?.toString() || ''} onChange={handleActualChange} readOnly={!isLockedByMe} onDelete={(id) => {
-                                        const updated = {...activeCycle};
-                                        const s = updated.sheets.find(sh => sh.id === activeSheetId);
-                                        if (s) s.items = s.items.filter(i => i.id !== id);
-                                        setActiveCycle(updated);
-                                        apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                    }} />
+                                    <InventoryItemRow 
+                                        key={item.id} 
+                                        item={item} 
+                                        initialValue={item.actual?.toString() || ''} 
+                                        onSync={handleActualSync} 
+                                        readOnly={!isLockedByMe} 
+                                        onDelete={(id) => {
+                                            const updated = {...activeCycle};
+                                            const s = updated.sheets.find(sh => sh.id === activeSheetId);
+                                            if (s) s.items = s.items.filter(i => i.id !== id);
+                                            setActiveCycle(updated);
+                                            apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                        }} 
+                                    />
                                 ))}
-                                
                                 {filteredSheetItems.length === 0 && (
                                      <div className="text-center py-10 opacity-40 italic text-sm">Ничего не найдено</div>
                                 )}
-
                                 <div className="fixed bottom-6 left-4 right-4 z-[60] bg-white/80 dark:bg-[#1e1e24]/80 backdrop-blur-xl p-3 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-gray-100 dark:border-white/5">
                                     {isLockedByOthers ? (
                                         <button disabled className="w-full py-4 bg-gray-100 text-gray-400 font-black rounded-3xl uppercase text-[10px] tracking-widest opacity-50">Бланк занят ({currentSheet?.lockedBy?.name})</button>
@@ -734,7 +739,6 @@ const Inventory: React.FC = () => {
                 )}
             </div>
 
-            {/* MODAL: STATION IMPORT */}
             <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Импорт станций" subtitle="Проверьте данные перед загрузкой" maxWidth="max-w-md">
                 <div className="space-y-4">
                     {importSheets.map((s, i) => (
@@ -743,28 +747,13 @@ const Inventory: React.FC = () => {
                              className={`rounded-[2rem] border-2 transition-all overflow-hidden cursor-pointer ${s.isSelected ? 'border-sky-500 bg-sky-500/5 shadow-lg' : 'border-gray-100 dark:border-white/5 opacity-40 grayscale'}`}>
                             <div className="p-5 flex items-center gap-4">
                                 <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${s.isSelected ? 'bg-sky-500 border-sky-500 shadow-sm' : 'border-gray-200 dark:border-white/10'}`}>
-                                    {s.isSelected && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M5 13l4 4L19 7" /></svg>}
+                                    {s.isSelected && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={4}><path d="M5 13l4 4L19 7" /></svg>}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <h4 className="font-black text-xs dark:text-white uppercase tracking-tight truncate">{s.name}</h4>
                                     <p className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">{s.data.length} строк найдено</p>
                                 </div>
                             </div>
-                            {s.isSelected && (
-                                <div className="px-5 pb-5 animate-fade-in">
-                                    <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-3 border border-gray-100 dark:border-white/5">
-                                        <p className="text-[8px] font-black text-gray-400 uppercase mb-2 tracking-widest leading-none">Первые строки:</p>
-                                        <div className="space-y-1.5">
-                                            {s.data.slice(0, 3).map((row, ridx) => (
-                                                <div key={ridx} className="flex justify-between text-[9px] text-gray-600 dark:text-gray-400 font-medium">
-                                                    <span className="truncate pr-2">{String(row[s.mapping.name] || '—')}</span>
-                                                    <span className="font-black uppercase text-sky-500 whitespace-nowrap">{String(row[s.mapping.unit] || '')}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     ))}
                     {isSaving && (
@@ -782,7 +771,6 @@ const Inventory: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* MODAL: GLOBAL IMPORT (База товаров) */}
             <Modal isOpen={isGlobalImportOpen} onClose={() => setIsGlobalImportOpen(false)} title="База товаров" subtitle="Загрузка справочника">
                 <div className="space-y-5">
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed text-center font-medium">Выберите файлы Excel для обновления базы. Файлы будут объединены и обработаны автоматически.</p>
@@ -816,7 +804,6 @@ const Inventory: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* MODAL: ADD POSITION TO SHEET (Доработка окна выбора) */}
             <Modal isOpen={isAddingSheet} onClose={() => { setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set()); }} title={viewMode === 'filling' ? 'Добавить товары' : 'Новый бланк'} subtitle="Выберите из базы">
                 <div className="space-y-6">
                     {viewMode !== 'filling' && (
@@ -825,14 +812,12 @@ const Inventory: React.FC = () => {
                             <input type="text" placeholder="Напр. Холодный цех" className="w-full bg-transparent font-black text-lg dark:text-white outline-none" value={newSheetTitle} onChange={e => setNewSheetTitle(e.target.value)} />
                         </div>
                     )}
-                    
                     <div className="relative group">
                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-sky-500 transition-colors">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
                         <input type="text" placeholder="Поиск товара..." className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold dark:text-white outline-none shadow-inner border-2 border-transparent focus:border-sky-500/20 transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     </div>
-
                     {viewMode === 'filling' && (
                          <div className="bg-sky-50 dark:bg-sky-500/5 rounded-2xl p-4 border border-sky-100 dark:border-sky-500/20">
                             <label className="text-[9px] uppercase font-black tracking-widest text-sky-600 dark:text-sky-400 mb-1.5 block">Общий остаток для всех (опц.)</label>
@@ -849,7 +834,6 @@ const Inventory: React.FC = () => {
                             />
                          </div>
                     )}
-
                     <div className="space-y-1.5 max-h-[40vh] overflow-y-auto no-scrollbar pr-1">
                         {filteredGlobalForAdding.length === 0 ? (
                             <p className="text-center text-xs text-gray-400 py-4 italic">Товары не найдены или уже в списке</p>
@@ -905,7 +889,6 @@ const Inventory: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* MODAL: RENAME SHEET */}
             {renamingSheet && (
                 <Modal isOpen={true} onClose={() => setRenamingSheet(null)} title="Переименовать" subtitle="Название станции">
                     <div className="space-y-4">
