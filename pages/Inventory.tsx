@@ -18,9 +18,79 @@ interface ImportSheet {
     mapping: { code: number; name: number; unit: number; };
 }
 
-// --- UI COMPONENTS ---
+// --- REUSABLE COMPONENTS ---
+
+const Modal: React.FC<{ 
+    isOpen: boolean; 
+    onClose: () => void; 
+    title: string; 
+    subtitle?: string; 
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+    maxWidth?: string;
+}> = ({ isOpen, onClose, title, subtitle, children, footer, maxWidth = "max-w-sm" }) => {
+    if (!isOpen) return null;
+    return createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+            <div className={`bg-white dark:bg-[#1e1e24] w-full ${maxWidth} rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col relative animate-scale-in max-h-[90vh]`}>
+                <div className="p-6 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 flex-shrink-0">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h2 className="text-xl font-black dark:text-white leading-none uppercase tracking-tight">{title}</h2>
+                            {subtitle && <p className="text-[10px] text-gray-400 font-bold uppercase mt-1.5 tracking-wider">{subtitle}</p>}
+                        </div>
+                        <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-400">✕</button>
+                    </div>
+                </div>
+                <div className="flex-1 overflow-y-auto no-scrollbar p-6">
+                    {children}
+                </div>
+                {footer && (
+                    <div className="p-6 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/5 flex-shrink-0">
+                        {footer}
+                    </div>
+                )}
+            </div>
+        </div>, document.body
+    );
+};
+
+const CustomConfirm: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    confirmText?: string;
+    type?: 'danger' | 'success' | 'info';
+}> = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Подтвердить", type = 'info' }) => {
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={title}>
+            <div className="text-center py-4">
+                <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl ${
+                    type === 'danger' ? 'bg-red-100 text-red-600' : 
+                    type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'
+                }`}>
+                    {type === 'danger' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️'}
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-300 font-medium leading-relaxed">{message}</p>
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                    <button onClick={onClose} className="py-3.5 bg-gray-100 dark:bg-white/5 rounded-2xl font-bold text-gray-500 uppercase text-[10px] tracking-widest">Отмена</button>
+                    <button onClick={() => { onConfirm(); onClose(); }} className={`py-3.5 rounded-2xl font-black text-white uppercase text-[10px] tracking-widest shadow-lg ${
+                        type === 'danger' ? 'bg-red-500 shadow-red-500/20' : 
+                        type === 'success' ? 'bg-emerald-600 shadow-emerald-600/20' : 'bg-sky-500 shadow-sky-500/20'
+                    }`}>
+                        {confirmText}
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 const SkeletonItem = () => (
-    <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl border border-gray-100 dark:border-white/5 animate-pulse mb-3">
+    <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl border border-gray-100 dark:border-white/5 animate-pulse mb-3 shadow-sm">
         <div className="flex justify-between items-center">
             <div className="flex-1">
                 <div className="h-4 bg-gray-200 dark:bg-white/10 rounded w-3/4 mb-2"></div>
@@ -58,12 +128,12 @@ const InventoryItemRow: React.FC<{
     };
 
     return (
-        <div className="relative overflow-hidden rounded-2xl mb-3 group shadow-sm">
+        <div className="relative overflow-hidden rounded-3xl mb-3 group shadow-sm bg-white dark:bg-[#1e1e24]">
             {!readOnly && (
                 <div className="absolute inset-0 bg-red-500 flex justify-end items-center pr-6 cursor-pointer" onClick={() => onDelete(item.id)}>
                     <div className="flex flex-col items-center gap-1 text-white">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg>
-                        <span className="text-[8px] font-black uppercase">Удалить</span>
+                        <span className="text-[8px] font-black uppercase tracking-widest">Удалить</span>
                     </div>
                 </div>
             )}
@@ -74,15 +144,15 @@ const InventoryItemRow: React.FC<{
             >
                 <div className="flex-1 min-w-0 pr-4">
                     <h4 className="font-bold text-gray-900 dark:text-white truncate text-sm leading-tight">{item.name}</h4>
-                    <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[9px] text-gray-400 font-black uppercase">{item.unit}</span>
-                        {item.code && <span className="text-[8px] text-gray-300 font-bold bg-gray-50 dark:bg-black/20 px-1 rounded">{item.code}</span>}
+                    <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">{item.unit}</span>
+                        {item.code && <span className="text-[8px] text-sky-500 font-bold bg-sky-50 dark:bg-sky-500/10 px-1.5 py-0.5 rounded-md">{item.code}</span>}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <input 
                         type="text" inputMode="decimal" readOnly={readOnly}
-                        className={`w-24 bg-gray-50 dark:bg-black/40 border border-transparent focus:border-sky-500 rounded-xl px-2 py-3 text-center font-black text-lg dark:text-white outline-none transition-all ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`w-24 bg-gray-50 dark:bg-black/40 border-2 border-transparent focus:border-sky-500 rounded-2xl px-2 py-3 text-center font-black text-lg dark:text-white outline-none transition-all ${readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
                         placeholder="0" value={inputValue} onChange={e => onChange(item.id, e.target.value)}
                     />
                 </div>
@@ -106,16 +176,14 @@ const Inventory: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [summarySearchTerm, setSummarySearchTerm] = useState('');
     
-    // Import states
+    // UI Modals State
+    const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, type?: any, title: string, message: string, onConfirm: () => void} | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isGlobalImportOpen, setIsGlobalImportOpen] = useState(false);
     const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [importProgress, setImportProgress] = useState(0);
-    
-    // Global Import State
     const [globalFiles, setGlobalFiles] = useState<{file1?: File, file2?: File}>({});
-
     const [isAddingSheet, setIsAddingSheet] = useState(false);
     const [newSheetTitle, setNewSheetTitle] = useState('');
     const [selectedGlobalIds, setSelectedGlobalIds] = useState<Set<string>>(new Set());
@@ -152,6 +220,7 @@ const Inventory: React.FC = () => {
         } catch (e) {}
     };
 
+    // Импорт бланков с предпросмотром
     const handleStationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -175,11 +244,8 @@ const Inventory: React.FC = () => {
     const handleGlobalImportStart = async () => {
         const files = [globalFiles.file1, globalFiles.file2].filter(Boolean) as File[];
         if (files.length === 0) { addToast("Выберите хотя бы один файл", "error"); return; }
-        
         setIsSaving(true);
         setImportProgress(10);
-        addToast("Обработка базы...", "info");
-        
         try {
             const allNewItems: GlobalInventoryItem[] = [];
             for (let i = 0; i < files.length; i++) {
@@ -200,27 +266,15 @@ const Inventory: React.FC = () => {
                 });
                 setImportProgress(10 + Math.round(((i + 1) / files.length) * 40));
             }
-            
-            setImportProgress(60);
             await apiFetch('/api/inventory/global-items/upsert', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ items: allNewItems })
             });
-            
             setImportProgress(100);
-            addToast(`База обновлена: +${allNewItems.length} поз.`, "success");
+            addToast(`База обновлена!`, "success");
             fetchGlobalItems();
-            setTimeout(() => {
-                setIsGlobalImportOpen(false);
-                setIsSaving(false);
-                setImportProgress(0);
-                setGlobalFiles({});
-            }, 500);
-        } catch (e) { 
-            addToast("Ошибка импорта базы", "error"); 
-            setIsSaving(false);
-            setImportProgress(0);
-        }
+            setTimeout(() => { setIsGlobalImportOpen(false); setIsSaving(false); setImportProgress(0); setGlobalFiles({}); }, 500);
+        } catch (e) { addToast("Ошибка базы", "error"); setIsSaving(false); setImportProgress(0); }
     };
 
     const confirmStationImport = async () => {
@@ -240,23 +294,12 @@ const Inventory: React.FC = () => {
                 setImportProgress(20 + Math.round(((idx + 1) / selected.length) * 60));
                 return { id: uuidv4(), title: s.name, items, status: 'active' };
             });
-
             const newCycle: InventoryCycle = { id: uuidv4(), date: Date.now(), sheets: newSheets, isFinalized: false, createdBy: user?.first_name || 'Admin' };
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newCycle) });
-            
             setImportProgress(100);
-            setActiveCycle(newCycle); 
-            loadData(); 
-            addToast("Станции импортированы", "success");
-        } catch (e) { 
-            addToast("Ошибка импорта", "error"); 
-        } finally { 
-            setTimeout(() => {
-                setIsImportModalOpen(false); 
-                setIsSaving(false); 
-                setImportProgress(0);
-            }, 500);
-        }
+            setActiveCycle(newCycle); loadData(); addToast("Импорт завершен", "success");
+        } catch (e) { addToast("Ошибка импорта", "error"); } 
+        finally { setTimeout(() => { setIsImportModalOpen(false); setIsSaving(false); setImportProgress(0); }, 500); }
     };
 
     const handleOpenSheet = (sheetId: string) => {
@@ -273,13 +316,9 @@ const Inventory: React.FC = () => {
                 body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId, user: { id: user?.id, name: user?.first_name } })
             });
             const data = await res.json();
-            if (data.success) {
-                addToast("Инвентаризация начата!", "success");
-                loadDataSilent();
-            } else {
-                addToast(`Занято: ${data.lockedBy.name}`, "error");
-            }
-        } catch (e) { addToast("Ошибка доступа", "error"); }
+            if (data.success) { addToast("Бланк взят в работу", "success"); loadDataSilent(); } 
+            else { addToast(`Занято: ${data.lockedBy.name}`, "error"); }
+        } catch (e) { addToast("Ошибка", "error"); }
     };
 
     const handleActualChange = (itemId: string, val: string) => {
@@ -303,43 +342,47 @@ const Inventory: React.FC = () => {
 
     const submitSheet = async () => {
         if (!activeCycle || !activeSheetId) return;
-        const updated = { ...activeCycle };
-        const target = updated.sheets.find(s => s.id === activeSheetId);
-        if (target) target.status = 'submitted';
-        
-        try {
-            await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-            await apiFetch('/api/inventory/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId }) });
-            setActiveSheetId(null); setViewMode('list'); loadData();
-            addToast("Бланк сдан!", "success");
-        } catch (e) { addToast("Ошибка", "error"); }
+        setConfirmModal({
+            isOpen: true,
+            title: "Сдать бланк?",
+            message: "Вы завершили ввод данных по этой станции? Бланк будет помечен как готовый.",
+            onConfirm: async () => {
+                const updated = { ...activeCycle };
+                const target = updated.sheets.find(s => s.id === activeSheetId);
+                if (target) target.status = 'submitted';
+                try {
+                    await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                    await apiFetch('/api/inventory/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId }) });
+                    setActiveSheetId(null); setViewMode('list'); loadData();
+                    addToast("Бланк сдан!", "success");
+                } catch (e) { addToast("Ошибка", "error"); }
+            }
+        });
     };
 
     const finalizeCycle = async () => {
         if (!activeCycle) return;
-        if (!confirm("Завершить инвентаризацию? Все данные уйдут в архив, бланки обнулятся для следующего раза.")) return;
-        
-        setIsSaving(true);
-        try {
-            const archiveCopy = { ...activeCycle, id: uuidv4(), isFinalized: true, date: Date.now() };
-            await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(archiveCopy) });
-
-            const resetCycle = { 
-                ...activeCycle, 
-                sheets: activeCycle.sheets.map(s => ({
-                    ...s, 
-                    status: 'active' as const, 
-                    items: s.items.map(i => ({ ...i, actual: undefined }))
-                }))
-            };
-            await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resetCycle) });
-            
-            setActiveCycle(resetCycle);
-            setViewMode('list');
-            addToast("Инвентаризация завершена и обнулена!", "success");
-            loadData();
-        } catch (e) { addToast("Ошибка при завершении", "error"); }
-        finally { setIsSaving(false); }
+        setConfirmModal({
+            isOpen: true,
+            type: 'success',
+            title: "Финализировать?",
+            message: "Все бланки будут перенесены в архив. Значения 'Факт' в текущих бланках обнулятся для новой инвентаризации.",
+            onConfirm: async () => {
+                setIsSaving(true);
+                try {
+                    const archiveCopy = { ...activeCycle, id: uuidv4(), isFinalized: true, date: Date.now() };
+                    await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(archiveCopy) });
+                    const resetCycle = { 
+                        ...activeCycle, 
+                        sheets: activeCycle.sheets.map(s => ({ ...s, status: 'active' as const, items: s.items.map(i => ({ ...i, actual: undefined })) }))
+                    };
+                    await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resetCycle) });
+                    setActiveCycle(resetCycle); setViewMode('list'); loadData();
+                    addToast("Инвентаризация завершена!", "success");
+                } catch (e) { addToast("Ошибка завершения", "error"); }
+                finally { setIsSaving(false); }
+            }
+        });
     };
 
     const exportSummary = () => {
@@ -362,19 +405,16 @@ const Inventory: React.FC = () => {
         const selectedItems: InventoryItem[] = globalItems
             .filter(gi => selectedGlobalIds.has(`${gi.code}_${gi.name}`))
             .map(gi => ({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code }));
-        
         const newSheet: InventorySheet = { id: uuidv4(), title: newSheetTitle.trim(), items: selectedItems, status: 'active' };
         let updated = activeCycle 
             ? { ...activeCycle, sheets: [...activeCycle.sheets, newSheet] }
             : { id: uuidv4(), date: Date.now(), sheets: [newSheet], isFinalized: false, createdBy: user?.first_name || 'Admin' };
-
         await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
         setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
         addToast("Бланк создан", "success");
     };
 
     const filteredGlobal = globalItems.filter(gi => !searchTerm || gi.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    
     const currentSheet = activeCycle?.sheets.find(s => s.id === activeSheetId);
     const isLockedByMe = currentSheet?.lockedBy?.id === user?.id;
     const isLockedByOthers = currentSheet?.lockedBy && currentSheet.lockedBy.id !== user?.id;
@@ -387,10 +427,23 @@ const Inventory: React.FC = () => {
 
     return (
         <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
+            {/* Confirmation Modal */}
+            {confirmModal && (
+                <CustomConfirm 
+                    isOpen={confirmModal.isOpen} 
+                    onClose={() => setConfirmModal(null)} 
+                    onConfirm={confirmModal.onConfirm} 
+                    title={confirmModal.title} 
+                    message={confirmModal.message}
+                    type={confirmModal.type}
+                />
+            )}
+
+            {/* Header */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-50 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md border-b border-gray-100 dark:border-white/5">
                 <div className="flex items-center justify-between pt-4">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => viewMode === 'list' ? navigate('/') : setViewMode('list')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white transition">
+                        <button onClick={() => viewMode === 'list' ? navigate('/') : setViewMode('list')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center dark:text-white border border-gray-100 dark:border-white/5 active:scale-95 transition">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
                         </button>
                         <div>
@@ -399,7 +452,7 @@ const Inventory: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={() => navigate('/inventory/archive')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 transition border border-gray-100 dark:border-white/10">
+                        <button onClick={() => navigate('/inventory/archive')} className="w-10 h-10 rounded-full bg-white dark:bg-[#1e1e24] shadow-sm flex items-center justify-center text-gray-500 border border-gray-100 dark:border-white/10 active:scale-95 transition">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                         </button>
                     </div>
@@ -415,20 +468,20 @@ const Inventory: React.FC = () => {
                             <div className="space-y-6">
                                 {isAdmin && (
                                     <div className="grid grid-cols-4 gap-2 mb-2">
-                                        <div onClick={() => document.getElementById('xl-station')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition">
+                                        <div onClick={() => document.getElementById('xl-station')?.click()} className="col-span-1 bg-sky-100 dark:bg-sky-500/20 rounded-2xl p-2 text-sky-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
                                             <input type="file" id="xl-station" className="hidden" accept=".xlsx,.xls" onChange={handleStationUpload} />
                                             <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📄</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Импорт Бланка</h3>
                                         </div>
-                                        <div onClick={() => { setIsGlobalImportOpen(true); setGlobalFiles({}); }} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition">
+                                        <div onClick={() => { setIsGlobalImportOpen(true); setGlobalFiles({}); }} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
                                             <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📦</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">База товаров</h3>
                                         </div>
-                                        <div onClick={() => setViewMode('summary')} className="col-span-1 bg-emerald-100 dark:bg-emerald-500/20 rounded-2xl p-2 text-emerald-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition">
+                                        <div onClick={() => setViewMode('summary')} className="col-span-1 bg-emerald-100 dark:bg-emerald-500/20 rounded-2xl p-2 text-emerald-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
                                             <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📊</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Сводная</h3>
                                         </div>
-                                        <div onClick={() => setViewMode('manage')} className="col-span-1 bg-purple-100 dark:bg-purple-500/20 rounded-2xl p-2 text-purple-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition">
+                                        <div onClick={() => setViewMode('manage')} className="col-span-1 bg-purple-100 dark:bg-purple-500/20 rounded-2xl p-2 text-purple-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition cursor-pointer">
                                             <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">⚙️</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Управление</h3>
                                         </div>
@@ -439,33 +492,40 @@ const Inventory: React.FC = () => {
                                     <div className="text-center py-20 opacity-50 flex flex-col items-center animate-fade-in">
                                         <span className="text-6xl mb-4">📦</span>
                                         <h3 className="font-bold dark:text-white">Нет бланков инвентаризации</h3>
-                                        <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest mb-6">Создайте первый бланк вручную или импортируйте</p>
+                                        <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-widest mb-6 text-center">Создайте первый бланк вручную <br/> или импортируйте из Excel</p>
                                         {isAdmin && (
-                                            <button onClick={() => setIsAddingSheet(true)} className="px-6 py-3 bg-purple-600 text-white font-bold rounded-2xl shadow-lg shadow-purple-600/20 active:scale-95 transition-all text-xs uppercase tracking-widest">
+                                            <button onClick={() => setIsAddingSheet(true)} className="px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-3xl shadow-xl active:scale-95 transition-all text-[10px] uppercase tracking-widest">
                                                 + Создать вручную
                                             </button>
                                         )}
                                     </div>
                                 ) : (
                                     <div className="space-y-3 animate-slide-up">
-                                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Станции и бланки</h3>
+                                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Активные бланки</h3>
                                         {activeCycle.sheets.map(sheet => {
                                             const filled = sheet.items.filter(i => i.actual !== undefined).length;
                                             const total = sheet.items.length;
                                             const pct = total > 0 ? Math.round((filled/total)*100) : 0;
                                             return (
-                                                <div key={sheet.id} onClick={() => handleOpenSheet(sheet.id)} className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 active:scale-95 transition cursor-pointer flex items-center justify-between relative overflow-hidden group">
-                                                    <div className="absolute bottom-0 left-0 h-1 bg-sky-500/20 transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                                                <div key={sheet.id} onClick={() => handleOpenSheet(sheet.id)} className="bg-white dark:bg-[#1e1e24] p-4 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 active:scale-[0.98] transition cursor-pointer flex items-center justify-between relative overflow-hidden group">
+                                                    <div className="absolute bottom-0 left-0 h-1 bg-sky-500 transition-all duration-500" style={{ width: `${pct}%`, opacity: 0.3 }}></div>
                                                     <div className="flex items-center gap-4 relative z-10">
-                                                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xl ${sheet.status === 'submitted' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-100 text-sky-600'}`}>{sheet.status === 'submitted' ? '✅' : '🔪'}</div>
+                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${sheet.status === 'submitted' ? 'bg-emerald-100 text-emerald-600' : 'bg-sky-50 text-sky-500 dark:bg-sky-500/10'}`}>
+                                                            {sheet.status === 'submitted' ? '✅' : '🔪'}
+                                                        </div>
                                                         <div>
-                                                            <h4 className="font-bold text-gray-900 dark:text-white leading-tight">{sheet.title}</h4>
-                                                            <p className="text-[9px] text-gray-400 font-black uppercase mt-0.5">{filled} / {total} поз. • {pct}%</p>
+                                                            <h4 className="font-black text-gray-900 dark:text-white leading-tight uppercase text-xs tracking-tight">{sheet.title}</h4>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">{filled} / {total} поз.</p>
+                                                                <span className="w-1 h-1 rounded-full bg-gray-200"></span>
+                                                                <p className="text-[9px] text-sky-500 font-black">{pct}%</p>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     {sheet.lockedBy && (
-                                                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[8px] font-black uppercase shadow-sm ${sheet.lockedBy.id === user?.id ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                                            <span>{sheet.lockedBy.id === user?.id ? '🟢 В работе' : `🔒 ${sheet.lockedBy.name}`}</span>
+                                                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[8px] font-black uppercase shadow-sm border ${sheet.lockedBy.id === user?.id ? 'bg-green-50 text-green-600 border-green-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
+                                                            <span>{sheet.lockedBy.id === user?.id ? 'В работе' : `${sheet.lockedBy.name}`}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -474,7 +534,7 @@ const Inventory: React.FC = () => {
                                         
                                         {isAdmin && activeCycle.sheets.every(s => s.status === 'submitted') && (
                                             <div className="pt-8 px-4 animate-slide-up">
-                                                <button onClick={finalizeCycle} className="w-full py-5 bg-emerald-600 text-white font-black rounded-3xl shadow-2xl shadow-emerald-600/30 uppercase tracking-[0.2em] text-xs">
+                                                <button onClick={finalizeCycle} className="w-full py-5 bg-gradient-to-r from-emerald-600 to-green-500 text-white font-black rounded-[2rem] shadow-2xl shadow-emerald-600/30 uppercase tracking-[0.2em] text-[10px] active:scale-95 transition">
                                                     Завершить инвентаризацию
                                                 </button>
                                             </div>
@@ -485,46 +545,50 @@ const Inventory: React.FC = () => {
                         )}
 
                         {viewMode === 'summary' && activeCycle && (
-                            <div className="animate-slide-up space-y-4">
+                            <div className="animate-slide-up space-y-5">
                                 <div className="flex flex-col gap-4">
                                     <div className="flex justify-between items-center px-1">
-                                        <h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Сводная ведомость</h3>
-                                        <button onClick={exportSummary} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[9px] font-black uppercase shadow-lg shadow-emerald-600/20">Экспорт Excel</button>
+                                        <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Сводная ведомость</h3>
+                                        <button onClick={exportSummary} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase shadow-lg shadow-emerald-600/20 active:scale-95 transition">Экспорт Excel</button>
                                     </div>
-                                    <div className="relative">
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
+                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                        </div>
                                         <input 
                                             type="text" 
-                                            placeholder="Поиск по названию или коду..." 
-                                            className="w-full bg-white dark:bg-[#1e1e24] border border-gray-100 dark:border-white/5 rounded-2xl px-4 py-3 text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                            placeholder="Поиск по базе..." 
+                                            className="w-full bg-white dark:bg-[#1e1e24] border-2 border-transparent focus:border-emerald-500/20 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold dark:text-white outline-none shadow-sm transition-all"
                                             value={summarySearchTerm}
                                             onChange={e => setSummarySearchTerm(e.target.value)}
                                         />
-                                        <div className="absolute right-4 top-3 text-gray-300">🔍</div>
                                     </div>
                                 </div>
-                                <div className="bg-white dark:bg-[#1e1e24] rounded-[2rem] shadow-xl overflow-hidden border border-emerald-100 dark:border-emerald-500/10">
-                                    <table className="w-full border-collapse">
-                                        <thead className="bg-gray-50 dark:bg-black/20 text-[8px] font-black uppercase text-gray-400 border-b border-gray-100 dark:border-white/5">
-                                            <tr><th className="p-4 text-left">Товар</th><th className="p-4 text-right">Факт</th></tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                                            {filteredSummaryItems.map((gi, i) => {
-                                                const total = activeCycle.sheets.reduce((acc, s) => {
-                                                    const item = s.items.find(it => it.name === gi.name && it.unit === gi.unit);
-                                                    return acc + (item?.actual || 0);
-                                                }, 0);
-                                                return (
-                                                    <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
-                                                        <td className="p-4">
-                                                            <div className="font-bold text-xs dark:text-white leading-none">{gi.name}</div>
-                                                            <div className="text-[8px] text-gray-400 font-bold mt-1 uppercase">{gi.code} • {gi.unit}</div>
-                                                        </td>
-                                                        <td className={`p-4 text-right font-black text-sm ${total > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-300 dark:text-white/10'}`}>{total.toFixed(3).replace(/\.?0+$/, '')}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                <div className="bg-white dark:bg-[#1e1e24] rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 dark:border-white/5">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead className="bg-gray-50 dark:bg-black/20 text-[9px] font-black uppercase text-gray-400">
+                                                <tr><th className="p-5 text-left tracking-widest">Товар</th><th className="p-5 text-right tracking-widest">Итог Факт</th></tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                                                {filteredSummaryItems.map((gi, i) => {
+                                                    const total = activeCycle.sheets.reduce((acc, s) => {
+                                                        const item = s.items.find(it => it.name === gi.name && it.unit === gi.unit);
+                                                        return acc + (item?.actual || 0);
+                                                    }, 0);
+                                                    return (
+                                                        <tr key={i} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-500/5 transition-colors group">
+                                                            <td className="p-5">
+                                                                <div className="font-bold text-xs dark:text-white leading-none group-hover:text-emerald-600 transition-colors">{gi.name}</div>
+                                                                <div className="text-[9px] text-gray-400 font-black mt-1.5 uppercase tracking-tighter">{gi.code} • {gi.unit}</div>
+                                                            </td>
+                                                            <td className={`p-5 text-right font-black text-sm ${total > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-200 dark:text-white/5'}`}>{total.toFixed(3).replace(/\.?0+$/, '')}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -532,30 +596,38 @@ const Inventory: React.FC = () => {
                         {viewMode === 'manage' && (
                             <div className="animate-slide-up space-y-4">
                                 <div className="flex justify-between items-center px-1">
-                                    <h3 className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Управление бланками</h3>
-                                    <button onClick={() => setIsAddingSheet(true)} className="px-4 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-purple-500/20 transition active:scale-95">+ Создать бланк</button>
+                                    <h3 className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Управление бланками</h3>
+                                    <button onClick={() => setIsAddingSheet(true)} className="px-5 py-2.5 bg-purple-600 text-white rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-purple-500/20 transition active:scale-95">+ Создать бланк</button>
                                 </div>
                                 {activeCycle?.sheets.map(sheet => (
-                                    <div key={sheet.id} className="bg-white dark:bg-[#1e1e24] p-5 rounded-3xl border border-gray-100 dark:border-white/5 flex items-center justify-between shadow-sm">
-                                        <div className="min-w-0 flex-1"><h4 className="font-bold dark:text-white truncate">{sheet.title}</h4><p className="text-[9px] text-gray-400 font-black uppercase">{sheet.items.length} позиций</p></div>
-                                        <button onClick={() => { if(confirm("Удалить этот бланк навсегда?")) {
-                                            const updated = {...activeCycle!, sheets: activeCycle!.sheets.filter(s=>s.id!==sheet.id)};
-                                            apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                            setActiveCycle(updated); addToast("Бланк удален", "info");
-                                        }}} className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
+                                    <div key={sheet.id} className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] border border-gray-100 dark:border-white/5 flex items-center justify-between shadow-sm group">
+                                        <div className="min-w-0 flex-1">
+                                            <h4 className="font-black dark:text-white truncate uppercase text-xs tracking-tight">{sheet.title}</h4>
+                                            <p className="text-[9px] text-gray-400 font-black uppercase mt-1 tracking-tighter">{sheet.items.length} позиций в списке</p>
+                                        </div>
+                                        <button onClick={() => { 
+                                            setConfirmModal({
+                                                isOpen: true,
+                                                type: 'danger',
+                                                title: "Удалить бланк?",
+                                                message: `Вы действительно хотите безвозвратно удалить бланк "${sheet.title}"?`,
+                                                onConfirm: () => {
+                                                    const updated = {...activeCycle!, sheets: activeCycle!.sheets.filter(s=>s.id!==sheet.id)};
+                                                    apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                                    setActiveCycle(updated); addToast("Удалено", "info");
+                                                }
+                                            });
+                                        }} className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition opacity-0 group-hover:opacity-100"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
                                     </div>
                                 ))}
-                                {(!activeCycle || activeCycle.sheets.length === 0) && (
-                                    <div className="p-10 text-center text-gray-400 text-xs italic">Список бланков пуст</div>
-                                )}
                             </div>
                         )}
 
                         {viewMode === 'filling' && activeSheetId && activeCycle && (
                             <div className="space-y-1 pb-32 animate-fade-in">
                                 <div className="mb-4 px-1 flex justify-between items-center">
-                                    <div className="text-[9px] text-gray-400 font-black uppercase tracking-widest flex items-center gap-2">🔪 {currentSheet?.title}</div>
-                                    {isLockedByOthers && <div className="px-2 py-1 bg-red-100 text-red-600 rounded-lg text-[8px] font-black uppercase animate-pulse">🔒 Занято: {currentSheet?.lockedBy?.name}</div>}
+                                    <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest flex items-center gap-2">🔪 {currentSheet?.title}</div>
+                                    {isLockedByOthers && <div className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-[8px] font-black uppercase animate-pulse border border-red-100">🔒 Занято: {currentSheet?.lockedBy?.name}</div>}
                                 </div>
                                 
                                 {currentSheet?.items.map(item => (
@@ -568,16 +640,16 @@ const Inventory: React.FC = () => {
                                 ))}
                                 
                                 {isLockedByMe && (
-                                    <button onClick={() => setIsAddingSheet(true)} className="w-full py-4 mt-4 rounded-3xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:border-sky-500 transition">+ Добавить позицию из базы</button>
+                                    <button onClick={() => setIsAddingSheet(true)} className="w-full py-5 mt-6 rounded-[2rem] border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:border-sky-500 hover:text-sky-500 transition-all active:scale-95">+ Добавить позицию из базы</button>
                                 )}
 
-                                <div className="fixed bottom-6 left-4 right-4 z-[60] bg-white/80 dark:bg-black/80 backdrop-blur-md p-2 rounded-3xl shadow-2xl border border-gray-100 dark:border-white/5">
+                                <div className="fixed bottom-6 left-4 right-4 z-[60] bg-white/80 dark:bg-[#1e1e24]/80 backdrop-blur-xl p-3 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-gray-100 dark:border-white/5">
                                     {isLockedByOthers ? (
-                                        <button disabled className="w-full py-4 bg-gray-200 text-gray-400 font-black rounded-2xl uppercase text-[10px] tracking-widest opacity-50">Бланк занят ({currentSheet?.lockedBy?.name})</button>
+                                        <button disabled className="w-full py-4 bg-gray-100 text-gray-400 font-black rounded-3xl uppercase text-[10px] tracking-widest opacity-50">Бланк занят ({currentSheet?.lockedBy?.name})</button>
                                     ) : isLockedByMe ? (
-                                        <button onClick={submitSheet} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition">Завершить и сдать бланк</button>
+                                        <button onClick={submitSheet} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-3xl uppercase text-[10px] tracking-[0.2em] active:scale-95 transition shadow-xl">Сдать заполненный бланк</button>
                                     ) : (
-                                        <button onClick={startInventory} className="w-full py-4 bg-sky-500 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition shadow-lg shadow-sky-500/30">Начать инвент</button>
+                                        <button onClick={startInventory} className="w-full py-4 bg-sky-500 text-white font-black rounded-3xl uppercase text-[10px] tracking-[0.2em] active:scale-95 transition shadow-xl shadow-sky-500/30">Начать инвентаризацию</button>
                                     )}
                                 </div>
                             </div>
@@ -587,88 +659,152 @@ const Inventory: React.FC = () => {
             </div>
 
             {/* MODAL: GLOBAL IMPORT */}
-            {isGlobalImportOpen && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col p-6">
-                        <h2 className="text-xl font-black dark:text-white mb-2 uppercase tracking-tight">База товаров</h2>
-                        <p className="text-xs text-gray-400 mb-6 font-medium">Загрузите до 2-х файлов Excel для обновления справочника. Нажмите кнопку "Импорт", чтобы начать процесс.</p>
-                        
-                        <div className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Файл 1</label>
-                                <div onClick={() => document.getElementById('xl-global-1')?.click()} className={`h-16 rounded-2xl border-2 border-dashed flex items-center px-4 gap-3 cursor-pointer transition-all ${globalFiles.file1 ? 'border-green-500 bg-green-500/5' : 'border-gray-200 dark:border-white/10'}`}>
-                                    <span className="text-xl">{globalFiles.file1 ? '✅' : '📁'}</span>
-                                    <span className="text-[10px] font-black uppercase text-gray-400 truncate flex-1">{globalFiles.file1 ? globalFiles.file1.name : 'Выбрать файл'}</span>
-                                    <input type="file" id="xl-global-1" className="hidden" accept=".xlsx,.xls" onChange={e => setGlobalFiles(p => ({...p, file1: e.target.files?.[0]}))} />
+            <Modal isOpen={isGlobalImportOpen} onClose={() => setIsGlobalImportOpen(false)} title="База товаров" subtitle="Загрузка справочника">
+                <div className="space-y-5">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed text-center font-medium">Выберите файлы Excel для обновления базы. Файлы будут объединены и обработаны автоматически.</p>
+                    <div className="space-y-3">
+                        {[1, 2].map(num => {
+                            const file = num === 1 ? globalFiles.file1 : globalFiles.file2;
+                            return (
+                                <div key={num} onClick={() => document.getElementById(`xl-global-${num}`)?.click()} className={`h-20 rounded-3xl border-2 border-dashed flex items-center px-5 gap-4 cursor-pointer transition-all active:scale-[0.98] ${file ? 'border-amber-500 bg-amber-500/5 shadow-inner' : 'border-gray-100 dark:border-white/10 hover:border-amber-400'}`}>
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xl shadow-sm ${file ? 'bg-amber-500 text-white' : 'bg-gray-100 dark:bg-white/5'}`}>{file ? '✅' : '📁'}</div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Файл {num}</p>
+                                        <p className="text-xs font-bold dark:text-white truncate">{file ? file.name : 'Нажмите для выбора'}</p>
+                                    </div>
+                                    <input type="file" id={`xl-global-${num}`} className="hidden" accept=".xlsx,.xls" onChange={e => setGlobalFiles(p => ({...p, [`file${num}`]: e.target.files?.[0]}))} />
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {isSaving && (
+                        <div className="mt-6 space-y-2">
+                            <div className="h-1.5 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+                                <div className="h-full bg-amber-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
+                            </div>
+                            <p className="text-[9px] text-center text-amber-500 font-black uppercase tracking-widest animate-pulse">Синхронизация... {importProgress}%</p>
+                        </div>
+                    )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                    <button onClick={() => { setIsGlobalImportOpen(false); setGlobalFiles({}); }} className="py-3.5 bg-gray-100 dark:bg-white/5 rounded-2xl font-bold text-gray-500 uppercase text-[10px] tracking-widest">Отмена</button>
+                    <button onClick={handleGlobalImportStart} disabled={isSaving || (!globalFiles.file1 && !globalFiles.file2)} className="py-3.5 bg-amber-500 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-lg shadow-amber-500/30 disabled:opacity-30">Начать Импорт</button>
+                </div>
+            </Modal>
+
+            {/* MODAL: STATION IMPORT (WITH REDESIGNED PREVIEW) */}
+            <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Импорт станций" subtitle="Проверьте данные перед загрузкой" maxWidth="max-w-md">
+                <div className="space-y-5">
+                    {importSheets.map((s, i) => (
+                        <div key={i} className={`rounded-[2rem] border-2 transition-all overflow-hidden ${s.isSelected ? 'border-sky-500 bg-sky-500/5 shadow-lg' : 'border-gray-100 dark:border-white/5 opacity-40 grayscale'}`}>
+                            <div className="p-5 flex items-center gap-4 border-b border-sky-500/10">
+                                <input type="checkbox" checked={s.isSelected} onChange={e => { const ns = [...importSheets]; ns[i].isSelected = e.target.checked; setImportSheets(ns); }} className="w-6 h-6 rounded-lg accent-sky-500" />
+                                <div className="min-w-0 flex-1">
+                                    <h4 className="font-black text-xs dark:text-white uppercase tracking-tight truncate">{s.name}</h4>
+                                    <p className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">{s.data.length} строк найдено</p>
                                 </div>
                             </div>
                             
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Файл 2 (Опционально)</label>
-                                <div onClick={() => document.getElementById('xl-global-2')?.click()} className={`h-16 rounded-2xl border-2 border-dashed flex items-center px-4 gap-3 cursor-pointer transition-all ${globalFiles.file2 ? 'border-green-500 bg-green-500/5' : 'border-gray-200 dark:border-white/10'}`}>
-                                    <span className="text-xl">{globalFiles.file2 ? '✅' : '📁'}</span>
-                                    <span className="text-[10px] font-black uppercase text-gray-400 truncate flex-1">{globalFiles.file2 ? globalFiles.file2.name : 'Выбрать файл'}</span>
-                                    <input type="file" id="xl-global-2" className="hidden" accept=".xlsx,.xls" onChange={e => setGlobalFiles(p => ({...p, file2: e.target.files?.[0]}))} />
+                            {s.isSelected && (
+                                <div className="p-5 space-y-4">
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[7px] font-black text-gray-400 uppercase ml-1">Код (B)</label>
+                                            <input type="number" className="w-full bg-white dark:bg-black/40 rounded-xl p-2.5 text-[10px] font-black dark:text-white text-center border border-gray-100 dark:border-white/10" value={s.mapping.code} onChange={e => { const ns = [...importSheets]; ns[i].mapping.code = Number(e.target.value); setImportSheets(ns); }} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[7px] font-black text-gray-400 uppercase ml-1">Имя (C)</label>
+                                            <input type="number" className="w-full bg-white dark:bg-black/40 rounded-xl p-2.5 text-[10px] font-black dark:text-white text-center border border-gray-100 dark:border-white/10" value={s.mapping.name} onChange={e => { const ns = [...importSheets]; ns[i].mapping.name = Number(e.target.value); setImportSheets(ns); }} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[7px] font-black text-gray-400 uppercase ml-1">Ед (F)</label>
+                                            <input type="number" className="w-full bg-white dark:bg-black/40 rounded-xl p-2.5 text-[10px] font-black dark:text-white text-center border border-gray-100 dark:border-white/10" value={s.mapping.unit} onChange={e => { const ns = [...importSheets]; ns[i].mapping.unit = Number(e.target.value); setImportSheets(ns); }} />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Preview Sample */}
+                                    <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-3 border border-gray-100 dark:border-white/5">
+                                        <p className="text-[8px] font-black text-gray-400 uppercase mb-2 tracking-widest">Предпросмотр данных:</p>
+                                        <div className="space-y-1.5">
+                                            {s.data.slice(1, 4).map((row, ridx) => (
+                                                <div key={ridx} className="flex justify-between text-[10px] text-gray-600 dark:text-gray-400">
+                                                    <span className="truncate pr-2 font-medium">{String(row[s.mapping.name] || '???')}</span>
+                                                    <span className="font-black uppercase text-sky-500 whitespace-nowrap">{String(row[s.mapping.unit] || 'ед')}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
-
-                        {isSaving && (
-                            <div className="mt-6 space-y-2 animate-fade-in">
-                                <div className="h-2 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden relative">
-                                    <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
-                                </div>
-                                <p className="text-[9px] text-center text-amber-500 font-black uppercase tracking-widest">Импорт в процессе... {importProgress}%</p>
+                    ))}
+                    {isSaving && (
+                        <div className="space-y-2 px-2">
+                            <div className="h-1.5 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+                                <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
                             </div>
-                        )}
-
-                        <div className="flex gap-3 mt-8">
-                            <button onClick={() => { setIsGlobalImportOpen(false); setGlobalFiles({}); }} className="flex-1 py-3 bg-gray-100 dark:bg-white/5 text-gray-500 font-bold rounded-xl text-xs uppercase tracking-widest">Отмена</button>
-                            <button onClick={handleGlobalImportStart} disabled={isSaving || (!globalFiles.file1 && !globalFiles.file2)} className="flex-1 py-3 bg-amber-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-amber-500/30 disabled:opacity-30">Импорт</button>
+                            <p className="text-[9px] text-center text-sky-500 font-black uppercase tracking-widest animate-pulse">Генерация бланков... {importProgress}%</p>
                         </div>
-                    </div>
-                </div>, document.body
-            )}
+                    )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                    <button onClick={() => setIsImportModalOpen(false)} className="py-4 bg-gray-100 dark:bg-white/5 rounded-[1.5rem] font-bold text-gray-500 uppercase text-[10px] tracking-widest active:scale-95 transition">Отмена</button>
+                    <button onClick={confirmStationImport} disabled={isSaving} className="py-4 bg-sky-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-sky-500/20 uppercase text-[10px] tracking-widest active:scale-95 transition disabled:opacity-30">Импортировать</button>
+                </div>
+            </Modal>
 
             {/* MODAL: CREATE SHEET / ADD ITEM */}
-            {isAddingSheet && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-                        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
-                            <div><h2 className="text-xl font-black dark:text-white leading-none">{viewMode === 'filling' ? 'Добавить позицию' : 'Новый бланк'}</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Выбор из справочника</p></div>
-                            <button onClick={() => setIsAddingSheet(false)} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center">✕</button>
+            <Modal isOpen={isAddingSheet} onClose={() => setIsAddingSheet(false)} title={viewMode === 'filling' ? 'Добавить товар' : 'Новый бланк'} subtitle="Выбор из справочника базы">
+                <div className="space-y-6">
+                    {viewMode !== 'filling' && (
+                        <div className="bg-gray-50 dark:bg-black/40 rounded-2xl px-5 py-4 border-2 border-transparent focus-within:border-purple-500/20 transition-all shadow-inner">
+                            <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1.5 block">Название станции</label>
+                            <input type="text" placeholder="Напр. Холодный цех" className="w-full bg-transparent font-black text-lg dark:text-white outline-none" value={newSheetTitle} onChange={e => setNewSheetTitle(e.target.value)} />
                         </div>
-                        <div className="p-5 space-y-4 flex-1 flex flex-col min-h-0">
-                            {viewMode !== 'filling' && <input type="text" placeholder="Название (напр. Горячий цех)" className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl px-4 py-3 font-bold dark:text-white outline-none focus:ring-2 focus:ring-purple-500" value={newSheetTitle} onChange={e => setNewSheetTitle(e.target.value)} />}
-                            <div className="relative flex-1 flex flex-col min-h-0">
-                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10"><svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
-                                <input type="text" placeholder="Поиск в базе..." className="w-full bg-gray-50 dark:bg-black/40 rounded-xl px-4 py-2.5 pl-10 text-xs font-bold dark:text-white outline-none mb-3 border border-transparent focus:border-sky-500/30" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                                <div className="flex-1 overflow-y-auto space-y-1 no-scrollbar pr-1">
-                                    {filteredGlobal.map(gi => {
-                                        const key = `${gi.code}_${gi.name}`;
-                                        const selected = selectedGlobalIds.has(key);
-                                        return (
-                                            <div key={key} onClick={() => { 
-                                                if (viewMode === 'filling') {
-                                                    const updated = {...activeCycle!};
-                                                    const s = updated.sheets.find(sh => sh.id === activeSheetId);
-                                                    if (s) { s.items.push({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code }); setActiveCycle(updated); saveDebounced(updated); setIsAddingSheet(false); }
-                                                } else {
-                                                    const n = new Set(selectedGlobalIds); if(selected) n.delete(key); else n.add(key); setSelectedGlobalIds(n);
-                                                }
-                                            }} className={`p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer ${selected ? 'bg-purple-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300'}`}>
-                                                {viewMode !== 'filling' && <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${selected ? 'bg-white border-white' : 'border-gray-200 dark:border-white/10'}`}>{selected && <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}</div>}
-                                                <div className="min-w-0 flex-1"><p className="text-[11px] font-bold leading-tight truncate">{gi.name}</p><p className={`text-[8px] uppercase font-black ${selected ? 'text-white/60' : 'text-gray-400'}`}>{gi.code} • {gi.unit}</p></div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                    )}
+                    
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-sky-500 transition-colors">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
-                        {viewMode !== 'filling' && <div className="p-5 bg-gray-50 dark:bg-black/20 flex gap-3"><button onClick={() => setIsAddingSheet(false)} className="flex-1 py-3.5 font-bold text-gray-400 text-xs uppercase">Отмена</button><button onClick={handleCreateSheet} disabled={!newSheetTitle || selectedGlobalIds.size === 0} className="flex-1 py-3.5 font-black text-white bg-purple-600 rounded-2xl shadow-xl uppercase text-xs tracking-widest disabled:opacity-30 transition-all">Создать ({selectedGlobalIds.size})</button></div>}
+                        <input type="text" placeholder="Поиск товара..." className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold dark:text-white outline-none shadow-inner border-2 border-transparent focus:border-sky-500/20 transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     </div>
-                </div>, document.body
-            )}
+
+                    <div className="space-y-1.5 max-h-[30vh] overflow-y-auto no-scrollbar pr-1">
+                        {filteredGlobal.map(gi => {
+                            const key = `${gi.code}_${gi.name}`;
+                            const selected = selectedGlobalIds.has(key);
+                            return (
+                                <div key={key} onClick={() => { 
+                                    if (viewMode === 'filling') {
+                                        const updated = {...activeCycle!};
+                                        const s = updated.sheets.find(sh => sh.id === activeSheetId);
+                                        if (s) { s.items.push({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code }); setActiveCycle(updated); saveDebounced(updated); setIsAddingSheet(false); }
+                                    } else {
+                                        const n = new Set(selectedGlobalIds); if(selected) n.delete(key); else n.add(key); setSelectedGlobalIds(n);
+                                    }
+                                }} className={`p-4 rounded-2xl flex items-center gap-4 transition-all cursor-pointer border-2 ${selected ? 'bg-purple-600 border-purple-500 text-white shadow-lg' : 'bg-gray-50 dark:bg-white/5 border-transparent hover:bg-gray-100 dark:hover:bg-white/10'}`}>
+                                    {viewMode !== 'filling' && (
+                                        <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${selected ? 'bg-white border-white' : 'border-gray-200 dark:border-white/10'}`}>
+                                            {selected && <svg className="w-4 h-4 text-purple-600 font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                        </div>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-black leading-tight truncate uppercase tracking-tight">{gi.name}</p>
+                                        <p className={`text-[8px] font-black uppercase mt-1 tracking-widest ${selected ? 'text-white/60' : 'text-gray-400'}`}>{gi.code} • {gi.unit}</p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+                {viewMode !== 'filling' && (
+                    <div className="grid grid-cols-2 gap-3 mt-8">
+                        <button onClick={() => setIsAddingSheet(false)} className="py-4 bg-gray-100 dark:bg-white/5 rounded-[1.5rem] font-bold text-gray-500 uppercase text-[10px] tracking-widest">Отмена</button>
+                        <button onClick={handleCreateSheet} disabled={!newSheetTitle || selectedGlobalIds.size === 0} className="py-4 bg-purple-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-purple-600/20 uppercase text-[10px] tracking-widest active:scale-95 transition disabled:opacity-30">Создать ({selectedGlobalIds.size})</button>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 };
