@@ -42,8 +42,8 @@ const CategorySelector: React.FC<{
 
   const filtered = useMemo(() => {
     const query = inputValue.toLowerCase().trim();
-    return existingCategories.filter(c => 
-      c.toLowerCase().includes(query) && 
+    return existingCategories.filter(c =>
+      c.toLowerCase().includes(query) &&
       c.toLowerCase() !== value.toLowerCase()
     );
   }, [inputValue, existingCategories, value]);
@@ -67,7 +67,6 @@ const CategorySelector: React.FC<{
   const handleManualSubmit = () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
-    
     const existing = existingCategories.find(c => c.toLowerCase() === trimmed.toLowerCase());
     onChange(existing || trimmed);
     setInputValue('');
@@ -76,15 +75,15 @@ const CategorySelector: React.FC<{
 
   return (
     <div className="relative w-full" ref={containerRef}>
-      <div 
-        className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-2 border-2 border-transparent focus-within:border-sky-500/50 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all flex flex-wrap gap-2 items-center min-h-[58px] cursor-text"
+      <div
+        className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl px-4 py-2 border-2 border-transparent focus-within:border-sky-500/50 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all flex flex-wrap gap-2 items-center min-h-[58px] cursor-text"
         onClick={() => setIsOpen(true)}
       >
-        {value && (
+        {value ? (
           <div className="bg-sky-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 animate-scale-in shadow-sm">
             <span>{value}</span>
-            <button 
-              onClick={(e) => { e.stopPropagation(); onChange(''); }} 
+            <button
+              onClick={(e) => { e.stopPropagation(); onChange(''); }}
               className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-black/20 transition-colors"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -92,9 +91,8 @@ const CategorySelector: React.FC<{
               </svg>
             </button>
           </div>
-        )}
-        
-        <input 
+        ) : null}
+        <input
           type="text"
           className="flex-1 bg-transparent outline-none text-base dark:text-white min-w-[120px]"
           placeholder={value ? "" : (placeholder || "Выберите категорию...")}
@@ -109,11 +107,10 @@ const CategorySelector: React.FC<{
           }}
         />
       </div>
-
       {isOpen && (filtered.length > 0 || (inputValue.trim() && !existingCategories.some(c => c.toLowerCase() === inputValue.trim().toLowerCase()))) && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e1e24] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 z-[60] overflow-hidden max-h-64 overflow-y-auto no-scrollbar animate-fade-in ring-4 ring-black/5">
           {inputValue.trim() && !existingCategories.some(c => c.toLowerCase() === inputValue.trim().toLowerCase()) && (
-            <div 
+            <div
               onClick={handleManualSubmit}
               className="px-5 py-4 hover:bg-sky-50 dark:hover:bg-white/5 cursor-pointer border-b border-gray-50 dark:border-white/5 group transition-colors"
             >
@@ -122,7 +119,7 @@ const CategorySelector: React.FC<{
             </div>
           )}
           {filtered.map(cat => (
-            <div 
+            <div
               key={cat}
               onClick={() => handleSelect(cat)}
               className="px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer text-base font-bold dark:text-white transition-colors border-b border-gray-50 dark:border-white/5 last:border-0"
@@ -138,14 +135,13 @@ const CategorySelector: React.FC<{
 
 export default function Editor() {
   const navigate = useNavigate();
-  const { id } = useParams<{ id?: string }>(); 
+  const { id } = useParams<{ id?: string }>();
   const { addRecipe, addRecipesBulk, getRecipe, updateRecipe, recipes } = useRecipes();
   const { addToast } = useToast();
   const { isAdmin } = useTelegram();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<EditorMode>('create');
-  
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -156,26 +152,21 @@ export default function Editor() {
   const [steps, setSteps] = useState<string[]>(['']);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
-  
   const [isUploading, setIsUploading] = useState(false);
   const [shouldNotify, setShouldNotify] = useState(true);
   const [showUrlInput, setShowUrlInput] = useState(false);
-
   const [isParsing, setIsParsing] = useState(false);
   const [parsingProgress, setParsingProgress] = useState(0);
   const [parsingStatus, setParsingStatus] = useState('');
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [importNotify, setImportNotify] = useState(false);
-  
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [imageMatches, setImageMatches] = useState<ImageMatch[]>([]);
-  
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
   const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
-  
+
   const existingCategories = useMemo(() => {
     const cats = Array.from(new Set(recipes.map(r => r.category))).filter(Boolean).sort();
     return cats.length > 0 ? cats : ['Горячее', 'Салаты', 'Десерты', 'Напитки', 'Заготовки'];
@@ -214,10 +205,10 @@ export default function Editor() {
   const selectSuggestion = (index: number, name: string) => {
     const suggestedUnit = ingredientDatabase.get(name) || '';
     const n = [...ingredients];
-    n[index] = { 
-      ...n[index], 
+    n[index] = {
+      ...n[index],
       name: name,
-      unit: suggestedUnit || n[index].unit 
+      unit: suggestedUnit || n[index].unit
     };
     setIngredients(n);
     setActiveIngIndex(null);
@@ -266,12 +257,12 @@ export default function Editor() {
     }
   };
 
-  const handleImageInput = async (file: File | undefined, setter: (url: string) => void) => {
+  const handleImageInput = async (file: File | undefined) => {
     if (file && file.type.startsWith('image/')) {
       setIsUploading(true);
       try {
         const url = await uploadImage(file, 'recipes');
-        setter(url);
+        setImageUrl(url);
         addToast("Фото загружено", "success");
       } catch (e) {
         console.error(e);
@@ -281,7 +272,7 @@ export default function Editor() {
       }
     }
   };
-  
+
   const calculateWeightValue = (ings: Ingredient[]): string => {
     let total = 0;
     ings.forEach(ing => {
@@ -295,27 +286,25 @@ export default function Editor() {
   };
 
   const handleSave = async () => {
-    if (!title) { addToast("Укажите название", "error"); return; }
-    
+    if (!title.trim()) { addToast("Укажите название", "error"); return; }
+    if (isUploading) { addToast("Дождитесь загрузки фото", "info"); return; }
     setIsSaving(true);
     await new Promise(r => setTimeout(r, 100));
-
     try {
       const recipeData: TechCard = {
         id: id || uuidv4(),
         title: title.trim(),
         description: description || 'Нет описания',
         imageUrl: imageUrl,
-        videoUrl,
+        videoUrl: videoUrl.trim(),
         category: category.trim() || 'Без категории',
-        outputWeight: outputWeight || '',
+        outputWeight: outputWeight.trim() || '',
         isFavorite: isFavorite,
         isArchived: isArchived,
-        ingredients: ingredients.map(i => ({...i, name: i.name.trim()})).filter(i => i.name !== ''),
+        ingredients: ingredients.map(i => ({ ...i, name: i.name.trim() })).filter(i => i.name !== ''),
         steps: steps.map(s => s.trim()).filter(s => s !== ''),
         createdAt: id ? (getRecipe(id)?.createdAt || Date.now()) : Date.now()
       };
-
       if (id) {
         await updateRecipe(recipeData, shouldNotify);
         addToast("Обновлено", "success");
@@ -327,7 +316,10 @@ export default function Editor() {
       }
     } catch (e: unknown) {
       console.error(e);
-      addToast("Ошибка сохранения", "error");
+      let message = "Ошибка сохранения";
+      if (e instanceof Error) message = e.message;
+      else if (typeof e === 'string') message = e;
+      addToast(message, "error");
     } finally {
       setIsSaving(false);
     }
@@ -336,12 +328,10 @@ export default function Editor() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
     try {
       setIsParsing(true);
       setParsingProgress(0);
       setParsingStatus('Загрузка файла...');
-
       const interval = setInterval(() => {
         setParsingProgress(prev => {
           if (prev >= 90) return prev;
@@ -351,15 +341,12 @@ export default function Editor() {
 
       setParsingStatus('Анализ структуры PDF...');
       const data = await parsePdfFile(file);
-      
       clearInterval(interval);
       setParsingProgress(100);
       setParsingStatus('Готово!');
-
       await new Promise(r => setTimeout(r, 500));
 
       const existingTitles = new Set(recipes.map(r => r.title.toLowerCase().trim()));
-
       const staged: StagedRecipe[] = data.map(item => {
         const isDuplicate = existingTitles.has(item.title.toLowerCase().trim());
         return {
@@ -398,9 +385,7 @@ export default function Editor() {
   const handleSaveImport = async () => {
     const selected = stagedRecipes.filter(r => r.selected);
     if (selected.length === 0) { addToast("Ничего не выбрано", "error"); return; }
-    
     setIsImporting(true);
-    
     try {
       const finalRecipes: TechCard[] = selected.map(r => ({
         id: uuidv4(),
@@ -415,13 +400,15 @@ export default function Editor() {
         steps: r.steps.filter(s => s.trim().length > 0),
         createdAt: Date.now()
       }));
-
       await addRecipesBulk(finalRecipes, importNotify);
       addToast(`Импортировано: ${selected.length}`, "success");
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      addToast("Ошибка при сохранении", "error");
+      let message = "Ошибка при сохранении";
+      if (e instanceof Error) message = e.message;
+      else if (typeof e === 'string') message = e;
+      addToast(message, "error");
     } finally {
       setIsImporting(false);
     }
@@ -432,32 +419,26 @@ export default function Editor() {
     setIsParsing(true);
     setParsingStatus('Сканирование сайта...');
     setImageMatches([]);
-
     try {
       const encodedUrl = encodeURIComponent(scrapeUrl);
       const res = await apiFetch(`/api/proxy?url=${encodedUrl}`);
       if (!res.ok) throw new Error("Ошибка доступа к сайту");
-      
       const html = await res.text();
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
-      
+
       const matches: ImageMatch[] = [];
-      
       const getStem = (word: string) => {
         const w = word.toLowerCase();
         const endings = /(?:ами|ями|ов|ев|ей|ой|ий|ый|ая|яя|ое|ее|ые|ие|ыми|ими|им|ым|ом|ем|ах|ях|ую|юю|ы|и|а|я|о|е|у|ю)$/i;
         if (w.length > 4) return w.replace(endings, '');
         return w;
       };
-
       const stopWords = new Set(['с', 'со', 'и', 'в', 'на', 'под', 'из', 'от', 'для', 'по', 'над', 'к']);
-
       const levenshtein = (a: string, b: string): number => {
         const matrix = [];
         for (let i = 0; i <= b.length; i++) matrix[i] = [i];
         for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
         for (let i = 1; i <= b.length; i++) {
           for (let j = 1; j <= a.length; j++) {
             if (b.charAt(i - 1) === a.charAt(j - 1)) {
@@ -465,24 +446,19 @@ export default function Editor() {
             } else {
               matrix[i][j] = Math.min(
                 matrix[i - 1][j - 1] + 1,
-                Math.min(
-                  matrix[i][j - 1] + 1,
-                  matrix[i - 1][j] + 1
-                )
+                Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
               );
             }
           }
         }
         return matrix[b.length][a.length];
       };
-
       const getStringSimilarity = (s1: string, s2: string): number => {
         const longer = s1.length > s2.length ? s1 : s2;
         const shorter = s1.length > s2.length ? s2 : s1;
         if (longer.length === 0) return 1.0;
         return (longer.length - levenshtein(longer, shorter)) / longer.length;
       };
-
       const normalize = (str: string) => {
         return str
           .toLowerCase()
@@ -492,13 +468,11 @@ export default function Editor() {
           .replace(/[^\w\sа-я]/g, '')
           .trim();
       };
-
       const getTokens = (str: string) => {
         return normalize(str)
           .split(' ')
           .filter(t => t.length > 1 && !stopWords.has(t));
       };
-
       const calculateScore = (strA: string, strB: string) => {
         const tokensA = getTokens(strA);
         const tokensB = getTokens(strB);
@@ -523,7 +497,6 @@ export default function Editor() {
         });
         return totalScore / short.length;
       };
-
       const resolveUrl = (src: string) => {
         try {
           return new URL(src, scrapeUrl).href;
@@ -580,7 +553,7 @@ export default function Editor() {
       if (allSiteItems.length === 0) {
         doc.querySelectorAll('.menu-dish-list-item').forEach(card => {
           const data = extractCardData(card);
-          if(data.title && data.img) allSiteItems.push(data);
+          if (data.title && data.img) allSiteItems.push(data);
         });
       }
 
@@ -592,7 +565,6 @@ export default function Editor() {
 
       recipes.forEach(r => {
         if (r.isArchived || r.imageUrl) return;
-
         let searchPool = allSiteItems;
         if (r.category) {
           const rCat = normalize(r.category);
@@ -607,7 +579,6 @@ export default function Editor() {
           });
           if (bestSiteCatKey) searchPool = siteMap[bestSiteCatKey];
         }
-
         let bestItem = null;
         let bestItemScore = 0;
         searchPool.forEach(item => {
@@ -617,7 +588,6 @@ export default function Editor() {
             bestItem = item;
           }
         });
-
         if (bestItem) {
           matches.push({
             recipeId: r.id,
@@ -635,11 +605,9 @@ export default function Editor() {
         }
         return acc;
       }, [] as ImageMatch[]);
-
       setImageMatches(uniqueMatches);
       if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
-
     } catch (e: unknown) {
       console.error(e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -657,14 +625,17 @@ export default function Editor() {
       for (const match of selected) {
         const recipe = recipes.find(r => r.id === match.recipeId);
         if (recipe) {
-          const updated = { ...recipe, imageUrl: match.newImage };
-          await updateRecipe(updated, false, true);
+          await updateRecipe({ ...recipe, imageUrl: match.newImage }, false, true);
         }
       }
       addToast("Изображения обновлены", "success");
       navigate('/', { replace: true });
     } catch (e: unknown) {
-      addToast("Ошибка обновления", "error");
+      console.error(e);
+      let message = "Ошибка обновления";
+      if (e instanceof Error) message = e.message;
+      else if (typeof e === 'string') message = e;
+      addToast(message, "error");
     } finally {
       setIsImporting(false);
     }
@@ -676,9 +647,12 @@ export default function Editor() {
     <div className="pb-safe-bottom animate-slide-up mx-auto min-h-screen relative bg-[#f2f4f7] dark:bg-[#0f1115]">
       {(isImporting || isSaving || isUploading || isParsing) && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
-          <div className="w-full max-w-sm bg-white dark:bg-[#1e1e24] p-8 rounded-3xl text-center shadow-2xl border border-white/10">
-            <h3 className="font-bold text-xl mb-6 dark:text-white">
-              {isUploading ? 'Загрузка фото...' : (isImporting ? 'Обработка...' : (isParsing ? parsingStatus : 'Сохранение...'))}
+          <div className="w-full max-sm:max-w-xs bg-white dark:bg-[#1e1e24] p-8 rounded-[2.5rem] text-center shadow-2xl border border-white/10">
+            <h3 className="font-black text-xl mb-6 dark:text-white leading-tight">
+              {isUploading ? 'Загрузка фото на сервер...' : 
+               isImporting ? 'Обработка данных...' :
+               isParsing ? parsingStatus :
+               'Сохранение техкарты...'}
             </h3>
             {isParsing ? (
               <div className="w-full h-3 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden relative mb-4">
@@ -695,7 +669,7 @@ export default function Editor() {
                 </svg>
               </div>
             )}
-            <p className="text-xs text-gray-400 mt-2 uppercase tracking-wider">Не закрывайте приложение</p>
+            <p className="text-[10px] text-gray-400 mt-2 uppercase tracking-[0.2em] font-bold">Пожалуйста, подождите</p>
           </div>
         </div>
       )}
@@ -709,35 +683,33 @@ export default function Editor() {
           </div>
           <span className="font-bold text-sm hidden sm:block">Назад</span>
         </button>
-        
         <h1 className="text-xl font-black dark:text-white uppercase">
-          {mode === 'create' ? (id ? 'Правка' : 'Новое блюдо') : 
-           mode === 'import-upload' ? 'Импорт PDF' : 
-           mode === 'import-images' ? 'Импорт Фото' : 'Редактор'}
+          {mode === 'create' ? (id ? 'Правка карты' : 'Новая карта') :
+            mode === 'import-upload' ? 'Импорт PDF' :
+            mode === 'import-images' ? 'Импорт Фото' : 'Редактор'}
         </h1>
-        
         <div className="flex items-center gap-2">
           {mode === 'create' && !id && (
             <>
-              <button onClick={() => setMode('import-images')} className="text-xs font-bold text-indigo-600 bg-white dark:bg-indigo-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-indigo-500/20 flex items-center gap-1">
+              <button onClick={() => setMode('import-images')} className="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-white dark:bg-indigo-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-indigo-500/20 flex items-center gap-2">
                 <span>🖼️</span> Фото
               </button>
-              <button onClick={() => setMode('import-upload')} className="text-xs font-bold text-sky-600 bg-white dark:bg-sky-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-sky-500/20 flex items-center gap-1">
+              <button onClick={() => setMode('import-upload')} className="text-[10px] font-black uppercase tracking-widest text-sky-600 bg-white dark:bg-sky-500/10 px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md active:scale-95 transition border border-gray-100 dark:border-sky-500/20 flex items-center gap-2">
                 <span>📄</span> PDF
               </button>
             </>
           )}
           {mode === 'import-staging' && (
             <button onClick={handleSaveImport} className="text-xs font-bold text-white bg-gray-900 dark:bg-white dark:text-black px-4 py-2.5 rounded-xl shadow-lg active:scale-95 transition flex items-center gap-2">
-              <span>Сохранить ({stagedRecipes.filter(r=>r.selected).length})</span>
+              <span>Сохранить ({stagedRecipes.filter(r => r.selected).length})</span>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             </button>
           )}
           {mode === 'import-images' && imageMatches.length > 0 && (
-            <button onClick={handleApplyImages} className="text-xs font-bold text-white bg-green-600 px-4 py-2.5 rounded-xl shadow-lg active:scale-95 transition flex items-center gap-2">
-              <span>Применить ({imageMatches.filter(r=>r.selected).length})</span>
+            <button onClick={handleApplyImages} className="text-[10px] font-black uppercase tracking-widest text-white bg-green-600 px-4 py-2.5 rounded-xl shadow-lg active:scale-95 transition flex items-center gap-2">
+              <span>Применить ({imageMatches.filter(r => r.selected).length})</span>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
@@ -748,97 +720,108 @@ export default function Editor() {
 
       <div className="px-5 pb-10 space-y-6 max-w-lg mx-auto">
         {mode === 'create' && (
-          <div className="space-y-5">
-            <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 space-y-5">
-              <div 
-                className="relative w-full aspect-video rounded-2xl bg-gray-50 dark:bg-black/20 border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center overflow-hidden transition hover:border-sky-400 group cursor-pointer"
-                onClick={() => !imageUrl && !showUrlInput && fileInputRef.current?.click()} 
+          <div className="space-y-5 animate-slide-up">
+            <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-white/5 space-y-6">
+              <div
+                className="relative w-full aspect-video rounded-3xl bg-gray-50 dark:bg-black/20 border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center overflow-hidden transition hover:border-sky-400 group cursor-pointer"
+                onClick={() => !imageUrl && !showUrlInput && fileInputRef.current?.click()}
               >
                 {imageUrl ? (
                   <>
-                    <img src={imageUrl} className="w-full h-full object-cover" key={imageUrl} />
-                    <button onClick={(e) => { e.stopPropagation(); setImageUrl(''); }} className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-full hover:bg-red-500 transition backdrop-blur-sm shadow-lg">
-                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
+                    <img src={imageUrl} key={imageUrl} className="w-full h-full object-cover animate-fade-in" alt="Preview" />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <button onClick={(e) => { e.stopPropagation(); setImageUrl(''); }} className="bg-white/20 backdrop-blur-md text-white p-3 rounded-full hover:bg-red-500 transition shadow-xl border border-white/30">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </>
                 ) : showUrlInput ? (
                   <div className="w-full px-6" onClick={e => e.stopPropagation()}>
-                    <input autoFocus type="text" placeholder="https://..." className="w-full text-sm p-3 bg-white shadow-xl rounded-xl outline-none ring-2 ring-sky-500" onKeyDown={e => { if(e.key==='Enter') { setImageUrl(e.currentTarget.value); setShowUrlInput(false); }}} onBlur={e => { if(e.target.value) setImageUrl(e.target.value); setShowUrlInput(false); }} />
+                    <input autoFocus type="text" placeholder="Вставьте прямую ссылку..." className="w-full text-sm p-4 bg-white dark:bg-[#2a2a35] shadow-2xl rounded-2xl outline-none ring-2 ring-sky-500 dark:text-white" onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setImageUrl(e.currentTarget.value);
+                        setShowUrlInput(false);
+                      }
+                    }} onBlur={e => {
+                      if (e.target.value) setImageUrl(e.target.value);
+                      setShowUrlInput(false);
+                    }} />
                   </div>
                 ) : (
                   <>
-                    <div className="text-center pointer-events-none group-hover:scale-105 transition-transform">
-                      <div className="w-12 h-12 rounded-full bg-white dark:bg-white/10 flex items-center justify-center mx-auto mb-3 shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-400 dark:text-gray-300">
+                    <div className="text-center pointer-events-none group-hover:scale-110 transition-transform duration-500">
+                      <div className="w-16 h-16 rounded-full bg-white dark:bg-white/10 flex items-center justify-center mx-auto mb-3 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-sky-500">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                         </svg>
                       </div>
-                      <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Нажмите, чтобы загрузить фото</p>
+                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em]">Нажмите для загрузки фото</p>
                     </div>
-                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageInput(e.target.files?.[0], setImageUrl)} />
+                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageInput(e.target.files?.[0])} />
                   </>
                 )}
                 {!imageUrl && !showUrlInput && (
-                  <button onClick={(e) => { e.stopPropagation(); setShowUrlInput(true); }} className="absolute bottom-3 right-3 text-[10px] font-bold bg-white dark:bg-[#2a2a35] dark:text-white px-2 py-1 rounded-lg shadow-sm hover:scale-105 transition border border-gray-100 dark:border-white/10">🔗 URL</button>
+                  <button onClick={(e) => { e.stopPropagation(); setShowUrlInput(true); }} className="absolute bottom-4 right-4 text-[9px] font-black uppercase tracking-widest bg-white dark:bg-[#2a2a35] dark:text-white px-3 py-1.5 rounded-xl shadow-lg hover:scale-105 transition border border-gray-100 dark:border-white/10">
+                    🔗 Ссылка
+                  </button>
                 )}
               </div>
-              
-              <div className="space-y-3 pt-2">
-                <div className="bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                  <label className="text-[10px] uppercase font-bold text-gray-400">Название</label>
-                  <input type="text" className="w-full bg-transparent font-bold text-lg dark:text-white outline-none placeholder-gray-300" value={title} onChange={e => setTitle(e.target.value)} placeholder="Напр. Паста Карбонара" />
+              <div className="space-y-4">
+                <div className="bg-gray-50 dark:bg-black/20 rounded-2xl px-5 py-2 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
+                  <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Название блюда</label>
+                  <input type="text" className="w-full bg-transparent font-black text-xl dark:text-white outline-none placeholder-gray-300" value={title} onChange={e => setTitle(e.target.value)} placeholder="Напр. Паста Карбонара" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-gray-400 ml-4 mb-1 block">Категория</label>
-                  <CategorySelector 
-                    value={category} 
-                    onChange={setCategory} 
+                  <label className="text-[10px] uppercase font-black tracking-widest text-gray-400 ml-5 mb-1 block">Категория</label>
+                  <CategorySelector
+                    value={category}
+                    onChange={setCategory}
                     existingCategories={existingCategories}
-                    placeholder="Выберите или создайте..."
+                    placeholder="Мясные блюда, Десерты..."
                   />
                 </div>
-                <div className="flex gap-3">
-                  <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                    <label className="text-[10px] uppercase font-bold text-gray-400">Выход</label>
-                    <input type="text" className="w-full bg-transparent font-medium text-base dark:text-white outline-none placeholder-gray-300" value={outputWeight} onChange={e => setOutputWeight(e.target.value)} placeholder="350 г" />
+                <div className="flex gap-4">
+                  <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-2xl px-5 py-2 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
+                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">Выход</label>
+                    <input type="text" className="w-full bg-transparent font-bold text-lg dark:text-white outline-none placeholder-gray-300" value={outputWeight} onChange={e => setOutputWeight(e.target.value)} placeholder="350 г" />
                   </div>
-                  <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-1 border border-transparent focus-within:border-red-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                    <label className="text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1">Видео</label>
-                    <input type="text" className="w-full bg-transparent text-sm dark:text-white outline-none placeholder-gray-300" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="YouTube..." />
+                  <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-2xl px-5 py-2 border border-transparent focus-within:border-red-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
+                    <label className="text-[10px] uppercase font-black tracking-widest text-gray-400">YouTube URL</label>
+                    <input type="text" className="w-full bg-transparent text-sm font-medium dark:text-white outline-none placeholder-gray-300" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="https://..." />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Ингредиенты</h3>
+            <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-white/5">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-5 ml-1">Состав блюда</h3>
               <div className="space-y-3">
                 {ingredients.map((ing, i) => {
                   const suggestions = activeIngIndex === i ? getSuggestions(ing.name) : [];
                   return (
-                    <div key={i} className="grid grid-cols-[1fr_4rem_3rem_2rem] gap-2 items-center relative z-20">
+                    <div key={i} className="grid grid-cols-[1fr_4rem_3.5rem_2.5rem] gap-2 items-center relative z-20">
                       <div className="relative">
-                        <input 
-                          type="text" 
-                          placeholder="Продукт" 
-                          className="bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-3 text-sm font-medium outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" 
-                          value={ing.name} 
+                        <input
+                          type="text"
+                          placeholder="Продукт"
+                          className="bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3.5 text-sm font-bold outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full"
+                          value={ing.name}
                           onChange={(e) => handleIngredientNameChange(i, e.target.value)}
                           onFocus={() => setActiveIngIndex(i)}
                           onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
                         />
                         {suggestions.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-xl border border-gray-100 dark:border-white/10 z-50 overflow-hidden">
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-50 overflow-hidden max-h-40 overflow-y-auto no-scrollbar">
                             {suggestions.map((suggestion) => (
-                              <div 
+                              <div
                                 key={suggestion}
                                 onMouseDown={() => selectSuggestion(i, suggestion)}
-                                className="px-4 py-2.5 hover:bg-sky-50 dark:hover:bg-white/10 cursor-pointer flex justify-between items-center group"
+                                className="px-4 py-3 hover:bg-sky-50 dark:hover:bg-white/10 cursor-pointer flex justify-between items-center group border-b border-gray-50 dark:border-white/5 last:border-0"
                               >
-                                <span className="text-sm font-medium dark:text-white">{suggestion}</span>
-                                <span className="text-xs text-gray-400 font-bold bg-gray-100 dark:bg-black/40 px-1.5 py-0.5 rounded group-hover:bg-sky-100 dark:group-hover:bg-white/20 transition">
+                                <span className="text-sm font-bold dark:text-white">{suggestion}</span>
+                                <span className="text-[10px] text-sky-500 font-black uppercase">
                                   {ingredientDatabase.get(suggestion)}
                                 </span>
                               </div>
@@ -846,71 +829,75 @@ export default function Editor() {
                           </div>
                         )}
                       </div>
-                      <input type="text" placeholder="Кол-во" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], amount: e.target.value}; setIngredients(n); }} />
-                      <input type="text" placeholder="Ед." className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3 text-sm text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full min-w-0" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i] = {...n[i], unit: e.target.value}; setIngredients(n); }} />
+                      <input type="text" placeholder="0" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3.5 text-sm font-black text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full" value={ing.amount} onChange={(e) => { const n = [...ingredients]; n[i] = { ...n[i], amount: e.target.value }; setIngredients(n); }} />
+                      <input type="text" placeholder="ед" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3.5 text-xs font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] w-full uppercase" value={ing.unit} onChange={(e) => { const n = [...ingredients]; n[i] = { ...n[i], unit: e.target.value }; setIngredients(n); }} />
                       <div className="flex justify-center">
-                        {ingredients.length > 1 && (
-                          <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
+                        <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors active:scale-90">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <button onClick={() => setIngredients([...ingredients, {name:'', amount:'', unit:''}])} className="mt-4 text-xs font-bold uppercase tracking-wider text-sky-600 w-full py-3 bg-sky-50 dark:bg-sky-500/10 rounded-xl hover:bg-sky-100 transition border border-dashed border-sky-200 dark:border-sky-500/30">+ Добавить ряд</button>
+              <button onClick={() => setIngredients([...ingredients, { name: '', amount: '', unit: '' }])} className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-sky-600 w-full py-4 bg-sky-50 dark:bg-sky-500/10 rounded-2xl hover:bg-sky-100 transition border border-dashed border-sky-200 dark:border-sky-500/30">
+                + Добавить строку
+              </button>
             </div>
 
-            <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Технология</h3>
-              </div>
-              <textarea 
-                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-4 text-sm mb-4 outline-none dark:text-white focus:ring-2 focus:ring-purple-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
-                rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="Короткое описание блюда..." 
+            <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-white/5">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-5 ml-1">Технология приготовления</h3>
+              <textarea
+                className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl p-5 text-sm font-medium mb-5 outline-none dark:text-white focus:ring-2 focus:ring-purple-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none"
+                rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Краткое описание или история блюда..."
               />
               <div className="space-y-4">
                 {steps.map((step, i) => (
-                  <div key={i} className="flex gap-3 group relative pr-8">
-                    <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 font-bold text-xs flex items-center justify-center border border-orange-200 dark:border-orange-500/30 flex-shrink-0 mt-1">{i+1}</div>
-                    <textarea 
-                      className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
-                      rows={3} value={step} onChange={(e) => { const s = [...steps]; s[i] = e.target.value; setSteps(s); }} placeholder={`Шаг ${i+1}`}
+                  <div key={i} className="flex gap-4 group relative pr-10">
+                    <div className="w-9 h-9 rounded-2xl bg-orange-50 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 font-black text-sm flex items-center justify-center border border-orange-100 dark:border-orange-500/30 flex-shrink-0 mt-0.5 shadow-sm">{i + 1}</div>
+                    <textarea
+                      className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl p-4 text-sm font-medium leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none"
+                      rows={3} value={step} onChange={(e) => { const s = [...steps]; s[i] = e.target.value; setSteps(s); }} placeholder={`Шаг ${i + 1}`}
                     />
-                    <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} className="absolute right-0 top-3 p-1 text-gray-300 hover:text-red-500 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} className="absolute right-0 top-3 w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors active:scale-90">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
                   </div>
                 ))}
               </div>
-              <button onClick={() => setSteps([...steps, ''])} className="mt-6 text-xs font-bold uppercase tracking-wider text-orange-500 w-full py-3 bg-orange-50 dark:bg-orange-500/10 rounded-xl hover:bg-orange-100 transition border border-dashed border-orange-200 dark:border-orange-500/30">+ Добавить шаг</button>
+              <button onClick={() => setSteps([...steps, ''])} className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-orange-500 w-full py-4 bg-orange-50 dark:bg-orange-500/10 rounded-2xl hover:bg-orange-100 transition border border-dashed border-orange-200 dark:border-orange-500/30">
+                + Добавить шаг
+              </button>
             </div>
-            
-            <div className="flex items-center justify-between bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 cursor-pointer" onClick={() => setShouldNotify(!shouldNotify)}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+
+            <div className="flex items-center justify-between bg-white dark:bg-[#1e1e24] p-5 rounded-[2rem] shadow-sm border border-gray-100 dark:border-white/5 cursor-pointer group active:scale-95 transition-transform" onClick={() => setShouldNotify(!shouldNotify)}>
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${shouldNotify ? 'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400' : 'bg-gray-100 text-gray-400 dark:bg-white/5'}`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                   </svg>
                 </div>
                 <div>
-                  <p className="font-bold text-sm dark:text-white">Уведомить пользователей</p>
-                  <p className="text-[10px] text-gray-400">Бот разошлет сообщение в Telegram</p>
+                  <p className="font-black text-sm dark:text-white uppercase tracking-wider">Уведомление</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">Рассылка в Telegram</p>
                 </div>
               </div>
-              <div className={`w-12 h-7 rounded-full transition-colors relative ${shouldNotify ? 'bg-blue-500' : 'bg-gray-200 dark:bg-white/10'}`}>
-                <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-1 transition-transform ${shouldNotify ? 'left-6' : 'left-1'}`}></div>
+              <div className={`w-12 h-7 rounded-full transition-all duration-300 relative ${shouldNotify ? 'bg-blue-500' : 'bg-gray-200 dark:bg-white/10'}`}>
+                <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-1 transition-all ${shouldNotify ? 'left-6' : 'left-1'}`}></div>
               </div>
             </div>
 
-            <div className="pt-4 pb-24">
-              <button onClick={handleSave} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all text-lg">
-                {id ? 'Обновить карту' : 'Сохранить карту'}
+            <div className="pt-8 pb-32">
+              <button
+                onClick={handleSave}
+                disabled={isSaving || isUploading}
+                className="w-full bg-gray-900 dark:bg-white text-white dark:text-black font-black py-5 rounded-[2rem] shadow-2xl hover:shadow-sky-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-lg uppercase tracking-[0.2em] disabled:opacity-50"
+              >
+                {id ? 'Обновить техкарту' : 'Создать техкарту'}
               </button>
             </div>
           </div>
@@ -923,7 +910,7 @@ export default function Editor() {
               {isParsing ? (
                 <div className="py-6 w-full animate-fade-in">
                   <div className="w-full h-3 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden relative">
-                    <div 
+                    <div
                       className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 via-indigo-500 to-sky-400 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite] transition-all duration-300"
                       style={{ width: `${parsingProgress}%` }}
                     ></div>
@@ -934,13 +921,15 @@ export default function Editor() {
                 <>
                   <p className="text-sm text-gray-500 mb-8 max-w-xs mx-auto leading-relaxed">Система автоматически распознает блюда. Выберите файл.</p>
                   <input type="file" accept=".pdf" className="hidden" id="pdf-upload" onChange={handleFileUpload} />
-                  <label htmlFor="pdf-upload" className="block w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl cursor-pointer active:scale-95 hover:shadow-lg transition-all text-lg">Выбрать файл</label>
+                  <label htmlFor="pdf-upload" className="block w-full bg-gray-900 dark:bg-white text-white dark:text-black font-bold py-4 rounded-2xl cursor-pointer active:scale-95 hover:shadow-lg transition-all text-lg">
+                    Выбрать файл
+                  </label>
                 </>
               )}
             </div>
           </div>
         )}
-        
+
         {mode === 'import-images' && (
           <div className="space-y-6 animate-slide-up pb-28">
             <div className="bg-white dark:bg-[#1e1e24] p-6 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-white/5">
@@ -949,8 +938,8 @@ export default function Editor() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-400 uppercase">Ссылка на меню</label>
                   <div className="flex gap-2">
-                    <input 
-                      type="url" 
+                    <input
+                      type="url"
                       className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
                       placeholder="https://milimon.ru/chipolucho/"
                       value={scrapeUrl}
@@ -964,14 +953,15 @@ export default function Editor() {
                 </div>
               </div>
             </div>
+
             {imageMatches.length > 0 && (
               <div className="space-y-4">
                 <div className="flex justify-between items-center px-2">
                   <h3 className="font-bold text-sm text-gray-500 uppercase tracking-widest">Совпадения ({imageMatches.length})</h3>
                 </div>
                 {imageMatches.map((match, idx) => (
-                  <div 
-                    key={idx} 
+                  <div
+                    key={idx}
                     onClick={() => {
                       const newMatches = [...imageMatches];
                       newMatches[idx].selected = !newMatches[idx].selected;
@@ -980,14 +970,18 @@ export default function Editor() {
                     className={`bg-white dark:bg-[#1e1e24] rounded-3xl p-3 border-2 transition-all cursor-pointer flex gap-3 items-center ${match.selected ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-transparent opacity-60'}`}
                   >
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${match.selected ? 'bg-indigo-500 border-indigo-500' : 'border-gray-300'}`}>
-                      {match.selected && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+                      {match.selected && (
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm dark:text-white truncate">{match.recipeName}</h4>
                       <div className="flex gap-2 mt-2">
                         <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-xl overflow-hidden relative">
                           {match.oldImage ? (
-                            <img src={match.oldImage} className="w-full h-full object-cover opacity-50" />
+                            <img src={match.oldImage} className="w-full h-full object-cover opacity-50" alt="old" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">Нет</div>
                           )}
@@ -995,7 +989,7 @@ export default function Editor() {
                         </div>
                         <div className="flex items-center text-gray-300">➜</div>
                         <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-xl overflow-hidden relative border-2 border-indigo-500">
-                          <img src={match.newImage} className="w-full h-full object-cover" />
+                          <img src={match.newImage} className="w-full h-full object-cover" alt="new" />
                           <span className="absolute bottom-0 left-0 right-0 bg-indigo-500 text-[8px] text-white text-center py-0.5">Станет</span>
                         </div>
                       </div>
@@ -1006,16 +1000,16 @@ export default function Editor() {
             )}
           </div>
         )}
-        
+
         {mode === 'import-staging' && (
           <div className="space-y-6 animate-slide-up pb-28">
             <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 space-y-3">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Массовые действия</h3>
               <div className="flex gap-3 items-center">
                 <div className="flex-1">
-                  <CategorySelector 
-                    value={bulkCategory} 
-                    onChange={setBulkCategory} 
+                  <CategorySelector
+                    value={bulkCategory}
+                    onChange={setBulkCategory}
                     existingCategories={existingCategories}
                     placeholder="Категория для всех..."
                   />
@@ -1028,10 +1022,20 @@ export default function Editor() {
               </div>
               <p className="text-[10px] text-gray-400 text-right pr-2">Уведомить пользователей</p>
             </div>
-            {stagedRecipes.map((recipe: StagedRecipe) => (
-              <div key={recipe.id} className={`bg-white dark:bg-[#1e1e24] rounded-3xl overflow-hidden border-2 transition-all duration-300 shadow-sm ${recipe.selected ? 'border-sky-500 shadow-sky-500/10' : 'border-transparent opacity-70'}`}>
-                <div className="p-3 flex items-center gap-3 bg-gray-50/50 dark:bg-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition" onClick={() => updateStagedRecipe(recipe.id, 'collapsed', !recipe.collapsed)}>
-                  <div onClick={(e) => { e.stopPropagation(); updateStagedRecipe(recipe.id, 'selected', !recipe.selected); }} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${recipe.selected ? 'bg-sky-500 border-sky-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-white/5'}`}>
+
+            {stagedRecipes.map((recipe) => (
+              <div
+                key={recipe.id}
+                className={`bg-white dark:bg-[#1e1e24] rounded-3xl overflow-hidden border-2 transition-all duration-300 shadow-sm ${recipe.selected ? 'border-sky-500 shadow-sky-500/10' : 'border-transparent opacity-70'}`}
+              >
+                <div
+                  className="p-3 flex items-center gap-3 bg-gray-50/50 dark:bg-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                  onClick={() => updateStagedRecipe(recipe.id, 'collapsed', !recipe.collapsed)}
+                >
+                  <div
+                    onClick={(e) => { e.stopPropagation(); updateStagedRecipe(recipe.id, 'selected', !recipe.selected); }}
+                    className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${recipe.selected ? 'bg-sky-500 border-sky-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-white/5'}`}
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-3.5 h-3.5 text-white transition-all ${recipe.selected ? 'scale-100' : 'scale-0'}`}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                     </svg>
@@ -1048,18 +1052,21 @@ export default function Editor() {
                     <div className="space-y-4">
                       <div>
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-2">Название</label>
-                        <input type="text" className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 text-sm font-bold dark:text-white outline-none" value={recipe.title} onChange={e => updateStagedRecipe(recipe.id, 'title', e.target.value)} />
+                        <input
+                          type="text"
+                          className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-4 py-3 text-sm font-bold dark:text-white outline-none"
+                          value={recipe.title}
+                          onChange={e => updateStagedRecipe(recipe.id, 'title', e.target.value)}
+                        />
                       </div>
-                      
                       <div>
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-2">Категория</label>
-                        <CategorySelector 
-                          value={recipe.category} 
-                          onChange={(val) => updateStagedRecipe(recipe.id, 'category', val)} 
+                        <CategorySelector
+                          value={recipe.category}
+                          onChange={(val) => updateStagedRecipe(recipe.id, 'category', val)}
                           existingCategories={existingCategories}
                         />
                       </div>
-
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-1">Ингредиенты</label>
                         {recipe.ingredients.map((ing, i) => (
@@ -1069,14 +1076,13 @@ export default function Editor() {
                           </div>
                         ))}
                       </div>
-                      
                       <div>
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block mb-2">Шаги приготовления</label>
-                        <textarea 
-                          className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none" 
-                          rows={3} 
-                          value={recipe.steps.join('\n')} 
-                          onChange={(e) => updateStagedRecipe(recipe.id, 'steps', e.target.value.split('\n'))} 
+                        <textarea
+                          className="w-full bg-gray-50 dark:bg-black/20 rounded-xl p-3 text-sm leading-relaxed outline-none dark:text-white focus:ring-2 focus:ring-orange-500/20 transition-all border border-transparent focus:bg-white dark:focus:bg-[#2a2a35] resize-none"
+                          rows={3}
+                          value={recipe.steps.join('\n')}
+                          onChange={(e) => updateStagedRecipe(recipe.id, 'steps', e.target.value.split('\n'))}
                           placeholder="Шаги приготовления..."
                         />
                       </div>
