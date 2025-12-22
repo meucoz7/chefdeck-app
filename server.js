@@ -1,4 +1,3 @@
-
 import 'dotenv/config';
 import express from 'express';
 import TelegramBot from 'node-telegram-bot-api';
@@ -129,7 +128,7 @@ const setupBotListeners = (bot, token) => {
                 );
             }
             const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
-            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
+            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ChefDeck!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
@@ -236,6 +235,20 @@ app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/inventory/cycle/:id', resolveTenant, async (req, res) => {
+    try {
+        await InventoryCycle.deleteOne({ id: req.params.id, botId: req.tenant.botId });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/inventory/archive/all', resolveTenant, async (req, res) => {
+    try {
+        await InventoryCycle.deleteMany({ botId: req.tenant.botId, isFinalized: true });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
     try {
         const items = await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 });
@@ -264,7 +277,7 @@ app.post('/api/inventory/lock', resolveTenant, async (req, res) => {
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
         if (!cycle) return res.status(404).json({ error: "Cycle not found" });
         const sheet = cycle.sheets.find(s => s.id === sheetId);
-        if (sheet.lockedBy && sheet.lockedBy.id !== user.id) return res.json({ success: false, lockedBy: sheet.lockedBy });
+        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) return res.json({ success: false, lockedBy: sheet.lockedBy });
         cycle.sheets = cycle.sheets.map(s => {
             if (s.lockedBy && s.lockedBy.id === user.id) delete s.lockedBy;
             if (s.id === sheetId) s.lockedBy = { id: user.id, name: user.name };
@@ -286,7 +299,7 @@ app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- USERS API ---
+// --- USERS & ADMIN API ---
 app.get('/api/users', resolveTenant, async (req, res) => {
     try {
         const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
@@ -416,6 +429,7 @@ app.post('/api/notify', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
+// --- PROXY ---
 app.get('/api/proxy', async (req, res) => {
     try {
         const url = req.query.url;
