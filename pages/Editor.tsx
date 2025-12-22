@@ -155,10 +155,12 @@ export default function Editor() {
 
   // Suggestions logic
   const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
+
   const existingCategories = useMemo(() => {
     const cats = Array.from(new Set(recipes.map(r => r.category))).filter(Boolean).sort();
     return cats.length > 0 ? cats : ['Горячее', 'Салаты', 'Десерты', 'Напитки', 'Заготовки'];
   }, [recipes]);
+
   const ingredientDatabase = useMemo(() => {
     const map = new Map<string, string>();
     recipes.forEach(r => r.ingredients.forEach(i => {
@@ -269,6 +271,7 @@ export default function Editor() {
   const handleSave = async () => {
     if (!title.trim()) { addToast("Введите название", "error"); return; }
     if (isUploading) { addToast("Подождите окончания загрузки фото", "info"); return; }
+
     setIsSaving(true);
     try {
       const data: TechCard = {
@@ -285,8 +288,10 @@ export default function Editor() {
         steps: steps.filter(s => s.trim()),
         createdAt: id ? (getRecipe(id)?.createdAt || Date.now()) : Date.now()
       };
+
       if (id) await updateRecipe(data, shouldNotify);
       else await addRecipe(data, shouldNotify);
+
       addToast("Сохранено", "success");
       navigate(id ? `/recipe/${id}` : '/', { replace: true });
     } catch (e) {
@@ -299,6 +304,7 @@ export default function Editor() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
       setIsParsing(true);
       setParsingProgress(0);
@@ -309,12 +315,14 @@ export default function Editor() {
           return prev + Math.random() * 10;
         });
       }, 200);
+
       setParsingStatus('Анализ структуры PDF...');
       const data = await parsePdfFile(file);
       clearInterval(interval);
       setParsingProgress(100);
       setParsingStatus('Готово!');
       await new Promise(r => setTimeout(r, 500));
+
       const existingTitles = new Set(recipes.map(r => r.title.toLowerCase().trim()));
       const staged: StagedRecipe[] = data.map(item => {
         const isDuplicate = existingTitles.has(item.title.toLowerCase().trim());
@@ -330,6 +338,7 @@ export default function Editor() {
           isDuplicate: isDuplicate
         };
       });
+
       setStagedRecipes(staged);
       setMode('import-staging');
     } catch (err: unknown) {
@@ -355,6 +364,7 @@ export default function Editor() {
   const handleSaveImport = async () => {
     const selected = stagedRecipes.filter(r => r.selected);
     if (selected.length === 0) { addToast("Ничего не выбрано", "error"); return; }
+
     setIsImporting(true);
     try {
       const finalRecipes: TechCard[] = selected.map(r => ({
@@ -370,6 +380,7 @@ export default function Editor() {
         steps: r.steps.filter(s => s.trim().length > 0),
         createdAt: Date.now()
       }));
+
       await addRecipesBulk(finalRecipes, importNotify);
       addToast(`Импортировано: ${selected.length}`, "success");
       navigate('/', { replace: true });
@@ -386,6 +397,7 @@ export default function Editor() {
 
   const handleUrlScrape = async () => {
     if (!scrapeUrl) { addToast("Введите ссылку", "error"); return; }
+
     setIsParsing(true);
     setParsingStatus('Сканирование сайта...');
     setImageMatches([]);
@@ -393,6 +405,7 @@ export default function Editor() {
       const encodedUrl = encodeURIComponent(scrapeUrl);
       const res = await apiFetch(`/api/proxy?url=${encodedUrl}`);
       if (!res.ok) throw new Error("Ошибка доступа к сайту");
+
       const html = await res.text();
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
@@ -404,7 +417,9 @@ export default function Editor() {
         if (w.length > 4) return w.replace(endings, '');
         return w;
       };
+
       const stopWords = new Set(['с', 'со', 'и', 'в', 'на', 'под', 'из', 'от', 'для', 'по', 'над', 'к']);
+
       const levenshtein = (a: string, b: string): number => {
         const matrix = [];
         for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -423,12 +438,14 @@ export default function Editor() {
         }
         return matrix[b.length][a.length];
       };
+
       const getStringSimilarity = (s1: string, s2: string): number => {
         const longer = s1.length > s2.length ? s1 : s2;
         const shorter = s1.length > s2.length ? s2 : s1;
         if (longer.length === 0) return 1.0;
         return (longer.length - levenshtein(longer, shorter)) / longer.length;
       };
+
       const normalize = (str: string) => {
         return str
           .toLowerCase()
@@ -438,15 +455,18 @@ export default function Editor() {
           .replace(/[^\w\sа-я]/g, '')
           .trim();
       };
+
       const getTokens = (str: string) => {
         return normalize(str)
           .split(' ')
           .filter(t => t.length > 1 && !stopWords.has(t));
       };
+
       const calculateScore = (strA: string, strB: string) => {
         const tokensA = getTokens(strA);
         const tokensB = getTokens(strB);
         if (tokensA.length === 0 || tokensB.length === 0) return 0;
+
         const [short, long] = tokensA.length < tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
         let totalScore = 0;
         short.forEach(sToken => {
@@ -465,8 +485,10 @@ export default function Editor() {
           });
           totalScore += (maxTokenScore > 0.65 ? maxTokenScore : 0);
         });
+
         return totalScore / short.length;
       };
+
       const resolveUrl = (src: string) => {
         try {
           return new URL(src, scrapeUrl).href;
@@ -474,6 +496,7 @@ export default function Editor() {
           return src;
         }
       };
+
       const allSiteItems: { title: string, img: string }[] = [];
       const siteMap: Record<string, { title: string, img: string }[]> = {};
 
@@ -548,6 +571,7 @@ export default function Editor() {
           });
           if (bestSiteCatKey) searchPool = siteMap[bestSiteCatKey];
         }
+
         let bestItem = null;
         let bestItemScore = 0;
         searchPool.forEach(item => {
@@ -557,6 +581,7 @@ export default function Editor() {
             bestItem = item;
           }
         });
+
         if (bestItem) {
           matches.push({
             recipeId: r.id,
@@ -590,6 +615,7 @@ export default function Editor() {
   const handleApplyImages = async () => {
     const selected = imageMatches.filter(m => m.selected);
     if (selected.length === 0) return;
+
     setIsImporting(true);
     try {
       for (const match of selected) {
