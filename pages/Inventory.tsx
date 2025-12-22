@@ -104,16 +104,30 @@ const Inventory: React.FC = () => {
     const [viewMode, setViewMode] = useState<'list' | 'filling' | 'manage' | 'summary'>('list');
     const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [summarySearchTerm, setSummarySearchTerm] = useState('');
     
+    // Import states
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isGlobalImportOpen, setIsGlobalImportOpen] = useState(false);
     const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [importProgress, setImportProgress] = useState(0);
+    
+    // Global Import State
+    const [globalFiles, setGlobalFiles] = useState<{file1?: File, file2?: File}>({});
+
     const [isAddingSheet, setIsAddingSheet] = useState(false);
     const [newSheetTitle, setNewSheetTitle] = useState('');
     const [selectedGlobalIds, setSelectedGlobalIds] = useState<Set<string>>(new Set());
 
-    useEffect(() => { loadData(); fetchGlobalItems(); }, []);
+    useEffect(() => { 
+        loadData(); 
+        fetchGlobalItems(); 
+        
+        // Поллинг обновлений каждые 5 секунд для реалтайм статусов
+        const interval = setInterval(loadDataSilent, 5000);
+        return () => clearInterval(interval);
+    }, []);
 
     const fetchGlobalItems = async () => {
         try { const res = await apiFetch('/api/inventory/global-items'); const data = await res.json(); setGlobalItems(data); } catch (e) {}
@@ -130,7 +144,17 @@ const Inventory: React.FC = () => {
         finally { setTimeout(() => setIsLoading(false), 500); }
     };
 
-    // Импорт бланков (станций)
+    const loadDataSilent = async () => {
+        try {
+            const res = await apiFetch('/api/inventory');
+            const data = await res.json();
+            setCycles(data);
+            const currentActive = data.find((c: any) => !c.isFinalized);
+            setActiveCycle(currentActive || null);
+        } catch (e) {}
+    };
+
+    // Импорт бланков
     const handleStationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -143,7 +167,7 @@ const Inventory: React.FC = () => {
                 const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 return { 
                     name, data: rawData, isSummary: idx === 0, isSelected: true,
-                    mapping: { code: -1, name: 0, unit: 1 } // По умолчанию А - имя, B - ед.изм
+                    mapping: { code: -1, name: 0, unit: 1 }
                 };
             });
             setImportSheets(sheets); setIsImportModalOpen(true);
@@ -151,12 +175,15 @@ const Inventory: React.FC = () => {
         reader.readAsBinaryString(file);
     };
 
-    // Импорт базы товаров (две вкладки/файла, колонки B, C, F)
-    const handleGlobalUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+    // Улучшенный импорт базы товаров
+    const handleGlobalImportStart = async () => {
+        const files = [globalFiles.file1, globalFiles.file2].filter(Boolean) as File[];
+        if (files.length === 0) { addToast("Выберите хотя бы один файл", "error"); return; }
+        
         setIsSaving(true);
+        setImportProgress(10);
         addToast("Обработка базы...", "info");
+        
         try {
             const allNewItems: GlobalInventoryItem[] = [];
             for (let i = 0; i < files.length; i++) {
@@ -175,51 +202,87 @@ const Inventory: React.FC = () => {
                         }
                     });
                 });
+                setImportProgress(10 + Math.round(((i + 1) / files.length) * 40));
             }
+            
+            setImportProgress(60);
             await apiFetch('/api/inventory/global-items/upsert', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ items: allNewItems })
             });
+            
+            setImportProgress(100);
             addToast(`База обновлена: +${allNewItems.length} поз.`, "success");
             fetchGlobalItems();
-        } catch (e) { addToast("Ошибка импорта базы", "error"); }
-        finally { setIsSaving(false); setIsGlobalImportOpen(false); if (e.target) e.target.value = ''; }
+            setTimeout(() => {
+                setIsGlobalImportOpen(false);
+                setIsSaving(false);
+                setImportProgress(0);
+                setGlobalFiles({});
+            }, 500);
+        } catch (e) { 
+            addToast("Ошибка импорта базы", "error"); 
+            setIsSaving(false);
+            setImportProgress(0);
+        }
     };
 
     const confirmStationImport = async () => {
         if (importSheets.length === 0) return;
         setIsSaving(true);
+        setImportProgress(20);
         try {
-            const newSheets: InventorySheet[] = importSheets
-                .filter(s => s.isSelected && !s.isSummary)
-                .map(s => {
-                    const items: InventoryItem[] = s.data.map(row => {
-                        const name = String(row[s.mapping.name] || '').trim();
-                        const unit = String(row[s.mapping.unit] || '').trim();
-                        const code = s.mapping.code !== -1 ? String(row[s.mapping.code] || '').trim() : '';
-                        if (name && unit && name.length > 2) return { id: uuidv4(), code, name, unit };
-                        return null;
-                    }).filter(Boolean) as InventoryItem[];
-                    return { id: uuidv4(), title: s.name, items, status: 'active' };
-                });
+            const selected = importSheets.filter(s => s.isSelected && !s.isSummary);
+            const newSheets: InventorySheet[] = selected.map((s, idx) => {
+                const items: InventoryItem[] = s.data.map(row => {
+                    const name = String(row[s.mapping.name] || '').trim();
+                    const unit = String(row[s.mapping.unit] || '').trim();
+                    const code = s.mapping.code !== -1 ? String(row[s.mapping.code] || '').trim() : '';
+                    if (name && unit && name.length > 2) return { id: uuidv4(), code, name, unit };
+                    return null;
+                }).filter(Boolean) as InventoryItem[];
+                setImportProgress(20 + Math.round(((idx + 1) / selected.length) * 60));
+                return { id: uuidv4(), title: s.name, items, status: 'active' };
+            });
 
             const newCycle: InventoryCycle = { id: uuidv4(), date: Date.now(), sheets: newSheets, isFinalized: false, createdBy: user?.first_name || 'Admin' };
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newCycle) });
-            setActiveCycle(newCycle); loadData(); addToast("Станции импортированы", "success");
-        } catch (e) { addToast("Ошибка импорта", "error"); } 
-        finally { setIsImportModalOpen(false); setIsSaving(false); }
+            
+            setImportProgress(100);
+            setActiveCycle(newCycle); 
+            loadData(); 
+            addToast("Станции импортированы", "success");
+        } catch (e) { 
+            addToast("Ошибка импорта", "error"); 
+        } finally { 
+            setTimeout(() => {
+                setIsImportModalOpen(false); 
+                setIsSaving(false); 
+                setImportProgress(0);
+            }, 500);
+        }
     };
 
-    const handleOpenSheet = async (sheetId: string) => {
+    const handleOpenSheet = (sheetId: string) => {
         if (!activeCycle) return;
+        setActiveSheetId(sheetId); 
+        setViewMode('filling');
+    };
+
+    const startInventory = async () => {
+        if (!activeCycle || !activeSheetId) return;
         try {
             const res = await apiFetch('/api/inventory/lock', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cycleId: activeCycle.id, sheetId, user: { id: user?.id, name: user?.first_name } })
+                body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId, user: { id: user?.id, name: user?.first_name } })
             });
             const data = await res.json();
-            if (!data.success) { addToast(`Занято: ${data.lockedBy.name}`, "error"); return; }
-            setActiveSheetId(sheetId); setViewMode('filling');
+            if (data.success) {
+                addToast("Инвентаризация начата!", "success");
+                loadDataSilent();
+            } else {
+                addToast(`Занято: ${data.lockedBy.name}`, "error");
+            }
         } catch (e) { addToast("Ошибка доступа", "error"); }
     };
 
@@ -262,11 +325,9 @@ const Inventory: React.FC = () => {
         
         setIsSaving(true);
         try {
-            // 1. Создаем архивную копию
             const archiveCopy = { ...activeCycle, id: uuidv4(), isFinalized: true, date: Date.now() };
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(archiveCopy) });
 
-            // 2. Обнуляем активный цикл
             const resetCycle = { 
                 ...activeCycle, 
                 sheets: activeCycle.sheets.map(s => ({
@@ -307,13 +368,9 @@ const Inventory: React.FC = () => {
             .map(gi => ({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code }));
         
         const newSheet: InventorySheet = { id: uuidv4(), title: newSheetTitle.trim(), items: selectedItems, status: 'active' };
-        
-        let updated;
-        if (!activeCycle) {
-            updated = { id: uuidv4(), date: Date.now(), sheets: [newSheet], isFinalized: false, createdBy: user?.first_name || 'Admin' };
-        } else {
-            updated = { ...activeCycle, sheets: [...activeCycle.sheets, newSheet] };
-        }
+        let updated = activeCycle 
+            ? { ...activeCycle, sheets: [...activeCycle.sheets, newSheet] }
+            : { id: uuidv4(), date: Date.now(), sheets: [newSheet], isFinalized: false, createdBy: user?.first_name || 'Admin' };
 
         await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
         setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
@@ -321,6 +378,16 @@ const Inventory: React.FC = () => {
     };
 
     const filteredGlobal = globalItems.filter(gi => !searchTerm || gi.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const currentSheet = activeCycle?.sheets.find(s => s.id === activeSheetId);
+    const isLockedByMe = currentSheet?.lockedBy?.id === user?.id;
+    const isLockedByOthers = currentSheet?.lockedBy && currentSheet.lockedBy.id !== user?.id;
+
+    const filteredSummaryItems = useMemo(() => {
+        if (!summarySearchTerm) return globalItems;
+        const s = summarySearchTerm.toLowerCase();
+        return globalItems.filter(gi => gi.name.toLowerCase().includes(s) || gi.code.toLowerCase().includes(s));
+    }, [globalItems, summarySearchTerm]);
 
     return (
         <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
@@ -401,7 +468,11 @@ const Inventory: React.FC = () => {
                                                             <p className="text-[9px] text-gray-400 font-black uppercase mt-0.5">{filled} / {total} поз. • {pct}%</p>
                                                         </div>
                                                     </div>
-                                                    {sheet.lockedBy && <span className="text-[8px] bg-red-100 text-red-600 px-2 py-1 rounded-full font-black uppercase">🔒 {sheet.lockedBy.name}</span>}
+                                                    {sheet.lockedBy && (
+                                                        <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[8px] font-black uppercase shadow-sm ${sheet.lockedBy.id === user?.id ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                            <span>{sheet.lockedBy.id === user?.id ? '🟢 В работе' : `🔒 ${sheet.lockedBy.name}`}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })}
@@ -420,9 +491,21 @@ const Inventory: React.FC = () => {
 
                         {viewMode === 'summary' && activeCycle && (
                             <div className="animate-slide-up space-y-4">
-                                <div className="flex justify-between items-center px-1">
-                                    <h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Сводная ведомость (Все товары)</h3>
-                                    <button onClick={exportSummary} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[9px] font-black uppercase shadow-lg shadow-emerald-600/20">Экспорт Excel</button>
+                                <div className="flex flex-col gap-4">
+                                    <div className="flex justify-between items-center px-1">
+                                        <h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Сводная ведомость</h3>
+                                        <button onClick={exportSummary} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[9px] font-black uppercase shadow-lg shadow-emerald-600/20">Экспорт Excel</button>
+                                    </div>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Поиск по названию или коду..." 
+                                            className="w-full bg-white dark:bg-[#1e1e24] border border-gray-100 dark:border-white/5 rounded-2xl px-4 py-3 text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
+                                            value={summarySearchTerm}
+                                            onChange={e => setSummarySearchTerm(e.target.value)}
+                                        />
+                                        <div className="absolute right-4 top-3 text-gray-300">🔍</div>
+                                    </div>
                                 </div>
                                 <div className="bg-white dark:bg-[#1e1e24] rounded-[2rem] shadow-xl overflow-hidden border border-emerald-100 dark:border-emerald-500/10">
                                     <table className="w-full border-collapse">
@@ -430,7 +513,7 @@ const Inventory: React.FC = () => {
                                             <tr><th className="p-4 text-left">Товар</th><th className="p-4 text-right">Факт</th></tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                                            {globalItems.map((gi, i) => {
+                                            {filteredSummaryItems.map((gi, i) => {
                                                 const total = activeCycle.sheets.reduce((acc, s) => {
                                                     const item = s.items.find(it => it.name === gi.name && it.unit === gi.unit);
                                                     return acc + (item?.actual || 0);
@@ -464,7 +547,7 @@ const Inventory: React.FC = () => {
                                             const updated = {...activeCycle!, sheets: activeCycle!.sheets.filter(s=>s.id!==sheet.id)};
                                             apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
                                             setActiveCycle(updated); addToast("Бланк удален", "info");
-                                        }}} className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
+                                        }}} className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
                                     </div>
                                 ))}
                                 {(!activeCycle || activeCycle.sheets.length === 0) && (
@@ -475,18 +558,32 @@ const Inventory: React.FC = () => {
 
                         {viewMode === 'filling' && activeSheetId && activeCycle && (
                             <div className="space-y-1 pb-32 animate-fade-in">
-                                <div className="mb-4 px-1 text-[9px] text-gray-400 font-black uppercase tracking-widest flex items-center gap-2">🔪 {activeCycle.sheets.find(s=>s.id===activeSheetId)?.title}</div>
-                                {activeCycle.sheets.find(s=>s.id===activeSheetId)?.items.map(item => (
-                                    <InventoryItemRow key={item.id} item={item} inputValue={item.actual?.toString() || ''} onChange={handleActualChange} onDelete={(id) => {
+                                <div className="mb-4 px-1 flex justify-between items-center">
+                                    <div className="text-[9px] text-gray-400 font-black uppercase tracking-widest flex items-center gap-2">🔪 {currentSheet?.title}</div>
+                                    {isLockedByOthers && <div className="px-2 py-1 bg-red-100 text-red-600 rounded-lg text-[8px] font-black uppercase animate-pulse">🔒 Занято: {currentSheet?.lockedBy?.name}</div>}
+                                </div>
+                                
+                                {currentSheet?.items.map(item => (
+                                    <InventoryItemRow key={item.id} item={item} inputValue={item.actual?.toString() || ''} onChange={handleActualChange} readOnly={!isLockedByMe} onDelete={(id) => {
                                         const updated = {...activeCycle};
                                         const s = updated.sheets.find(sh => sh.id === activeSheetId);
                                         if (s) s.items = s.items.filter(i => i.id !== id);
                                         setActiveCycle(updated); saveDebounced(updated);
                                     }} />
                                 ))}
-                                <button onClick={() => setIsAddingSheet(true)} className="w-full py-4 mt-4 rounded-3xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:border-sky-500 transition">+ Добавить позицию из базы</button>
+                                
+                                {isLockedByMe && (
+                                    <button onClick={() => setIsAddingSheet(true)} className="w-full py-4 mt-4 rounded-3xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:border-sky-500 transition">+ Добавить позицию из базы</button>
+                                )}
+
                                 <div className="fixed bottom-6 left-4 right-4 z-[60] bg-white/80 dark:bg-black/80 backdrop-blur-md p-2 rounded-3xl shadow-2xl border border-gray-100 dark:border-white/5">
-                                     <button onClick={submitSheet} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition">Завершить и сдать бланк</button>
+                                    {isLockedByOthers ? (
+                                        <button disabled className="w-full py-4 bg-gray-200 text-gray-400 font-black rounded-2xl uppercase text-[10px] tracking-widest opacity-50">Бланк занят ({currentSheet?.lockedBy?.name})</button>
+                                    ) : isLockedByMe ? (
+                                        <button onClick={submitSheet} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition">Завершить и сдать бланк</button>
+                                    ) : (
+                                        <button onClick={startInventory} className="w-full py-4 bg-sky-500 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition shadow-lg shadow-sky-500/30">Начать инвент</button>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -499,17 +596,80 @@ const Inventory: React.FC = () => {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
                     <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col p-6">
                         <h2 className="text-xl font-black dark:text-white mb-2 uppercase tracking-tight">База товаров</h2>
-                        <p className="text-xs text-gray-400 mb-6 font-medium">Выберите 2 файла Excel для обновления справочника товаров (Колонки B, C, F).</p>
+                        <p className="text-xs text-gray-400 mb-6 font-medium">Загрузите файлы Excel для обновления справочника. Каждый файл будет обработан отдельно.</p>
                         
                         <div className="space-y-4">
-                            <div onClick={() => document.getElementById('xl-global-batch')?.click()} className="h-32 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/10 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-amber-500 hover:bg-amber-500/5 transition-all group">
-                                <span className="text-3xl group-hover:scale-110 transition-transform">📂</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Выбрать файлы (.xlsx)</span>
-                                <input type="file" id="xl-global-batch" className="hidden" accept=".xlsx,.xls" multiple onChange={handleGlobalUpload} />
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Файл 1</label>
+                                <div onClick={() => document.getElementById('xl-global-1')?.click()} className={`h-16 rounded-2xl border-2 border-dashed flex items-center px-4 gap-3 cursor-pointer transition-all ${globalFiles.file1 ? 'border-green-500 bg-green-500/5' : 'border-gray-200 dark:border-white/10'}`}>
+                                    <span className="text-xl">{globalFiles.file1 ? '✅' : '📁'}</span>
+                                    <span className="text-[10px] font-black uppercase text-gray-400 truncate flex-1">{globalFiles.file1 ? globalFiles.file1.name : 'Выбрать файл'}</span>
+                                    <input type="file" id="xl-global-1" className="hidden" accept=".xlsx,.xls" onChange={e => setGlobalFiles(p => ({...p, file1: e.target.files?.[0]}))} />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Файл 2 (Опционально)</label>
+                                <div onClick={() => document.getElementById('xl-global-2')?.click()} className={`h-16 rounded-2xl border-2 border-dashed flex items-center px-4 gap-3 cursor-pointer transition-all ${globalFiles.file2 ? 'border-green-500 bg-green-500/5' : 'border-gray-200 dark:border-white/10'}`}>
+                                    <span className="text-xl">{globalFiles.file2 ? '✅' : '📁'}</span>
+                                    <span className="text-[10px] font-black uppercase text-gray-400 truncate flex-1">{globalFiles.file2 ? globalFiles.file2.name : 'Выбрать файл'}</span>
+                                    <input type="file" id="xl-global-2" className="hidden" accept=".xlsx,.xls" onChange={e => setGlobalFiles(p => ({...p, file2: e.target.files?.[0]}))} />
+                                </div>
                             </div>
                         </div>
 
-                        <button onClick={() => setIsGlobalImportOpen(false)} className="mt-6 w-full py-3 bg-gray-100 dark:bg-white/5 text-gray-500 font-bold rounded-xl text-xs uppercase tracking-widest">Отмена</button>
+                        {isSaving && (
+                            <div className="mt-6 space-y-2 animate-fade-in">
+                                <div className="h-2 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+                                    <div className="h-full bg-amber-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
+                                </div>
+                                <p className="text-[9px] text-center text-amber-500 font-black uppercase tracking-widest">Импорт в процессе... {importProgress}%</p>
+                            </div>
+                        )}
+
+                        <div className="flex gap-3 mt-8">
+                            <button onClick={() => { setIsGlobalImportOpen(false); setGlobalFiles({}); }} className="flex-1 py-3 bg-gray-100 dark:bg-white/5 text-gray-500 font-bold rounded-xl text-xs uppercase tracking-widest">Отмена</button>
+                            <button onClick={handleGlobalImportStart} disabled={isSaving || (!globalFiles.file1 && !globalFiles.file2)} className="flex-1 py-3 bg-amber-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-amber-500/30 disabled:opacity-30">Импорт</button>
+                        </div>
+                    </div>
+                </div>, document.body
+            )}
+
+            {/* MODAL: STATION IMPORT */}
+            {isImportModalOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
+                            <div><h2 className="text-xl font-black dark:text-white leading-none">Импорт станций</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Загрузка бланков из Excel</p></div>
+                            <button onClick={() => setIsImportModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center">✕</button>
+                        </div>
+                        <div className="p-4 overflow-y-auto space-y-4 no-scrollbar">
+                            {importSheets.map((s, i) => (
+                                <div key={i} className={`p-4 rounded-3xl border-2 transition-all ${s.isSelected ? 'border-sky-500 bg-sky-500/5' : 'border-gray-100 dark:border-white/5 opacity-50'}`}>
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <input type="checkbox" checked={s.isSelected} onChange={e => { const ns = [...importSheets]; ns[i].isSelected = e.target.checked; setImportSheets(ns); }} className="w-5 h-5 rounded-lg" />
+                                        <h4 className="font-bold text-sm dark:text-white truncate">{s.name}</h4>
+                                    </div>
+                                    {s.isSelected && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1"><label className="text-[8px] font-black text-gray-400 uppercase">Кол. Название</label><input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white" value={s.mapping.name} onChange={e => { const ns = [...importSheets]; ns[i].mapping.name = Number(e.target.value); setImportSheets(ns); }} /></div>
+                                            <div className="space-y-1"><label className="text-[8px] font-black text-gray-400 uppercase">Кол. Ед.изм</label><input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white" value={s.mapping.unit} onChange={e => { const ns = [...importSheets]; ns[i].mapping.unit = Number(e.target.value); setImportSheets(ns); }} /></div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {isSaving && (
+                            <div className="px-6 py-4 space-y-2">
+                                <div className="h-2 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+                                    <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
+                                </div>
+                                <p className="text-[9px] text-center text-sky-500 font-black uppercase tracking-widest">Импорт в процессе... {importProgress}%</p>
+                            </div>
+                        )}
+
+                        <div className="p-6 bg-gray-50 dark:bg-black/20 flex gap-3"><button onClick={() => setIsImportModalOpen(false)} className="flex-1 py-3.5 font-bold text-gray-400 text-xs uppercase">Отмена</button><button onClick={confirmStationImport} disabled={isSaving} className="flex-1 py-3.5 font-black text-white bg-sky-600 rounded-2xl shadow-xl uppercase text-xs tracking-widest disabled:opacity-30">Импорт</button></div>
                     </div>
                 </div>, document.body
             )}
@@ -525,7 +685,7 @@ const Inventory: React.FC = () => {
                         <div className="p-5 space-y-4 flex-1 flex flex-col min-h-0">
                             {viewMode !== 'filling' && <input type="text" placeholder="Название (напр. Горячий цех)" className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl px-4 py-3 font-bold dark:text-white outline-none focus:ring-2 focus:ring-purple-500" value={newSheetTitle} onChange={e => setNewSheetTitle(e.target.value)} />}
                             <div className="relative flex-1 flex flex-col min-h-0">
-                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10"><svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10"><svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
                                 <input type="text" placeholder="Поиск в базе..." className="w-full bg-gray-50 dark:bg-black/40 rounded-xl px-4 py-2.5 pl-10 text-xs font-bold dark:text-white outline-none mb-3 border border-transparent focus:border-sky-500/30" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                 <div className="flex-1 overflow-y-auto space-y-1 no-scrollbar pr-1">
                                     {filteredGlobal.map(gi => {
@@ -550,35 +710,6 @@ const Inventory: React.FC = () => {
                             </div>
                         </div>
                         {viewMode !== 'filling' && <div className="p-5 bg-gray-50 dark:bg-black/20 flex gap-3"><button onClick={() => setIsAddingSheet(false)} className="flex-1 py-3.5 font-bold text-gray-400 text-xs uppercase">Отмена</button><button onClick={handleCreateSheet} disabled={!newSheetTitle || selectedGlobalIds.size === 0} className="flex-1 py-3.5 font-black text-white bg-purple-600 rounded-2xl shadow-xl uppercase text-xs tracking-widest disabled:opacity-30 transition-all">Создать ({selectedGlobalIds.size})</button></div>}
-                    </div>
-                </div>, document.body
-            )}
-
-            {/* MODAL: STATION IMPORT (SETTINGS) */}
-            {isImportModalOpen && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-                        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
-                            <div><h2 className="text-xl font-black dark:text-white leading-none">Импорт станций</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Загрузка бланков из Excel</p></div>
-                            <button onClick={() => setIsImportModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center">✕</button>
-                        </div>
-                        <div className="p-4 overflow-y-auto space-y-4 no-scrollbar">
-                            {importSheets.map((s, i) => (
-                                <div key={i} className={`p-4 rounded-3xl border-2 transition-all ${s.isSelected ? 'border-sky-500 bg-sky-500/5' : 'border-gray-100 dark:border-white/5 opacity-50'}`}>
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <input type="checkbox" checked={s.isSelected} onChange={e => { const ns = [...importSheets]; ns[i].isSelected = e.target.checked; setImportSheets(ns); }} className="w-5 h-5 rounded-lg" />
-                                        <h4 className="font-bold text-sm dark:text-white truncate">{s.name}</h4>
-                                    </div>
-                                    {s.isSelected && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1"><label className="text-[8px] font-black text-gray-400 uppercase">Кол. Название</label><input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white" value={s.mapping.name} onChange={e => { const ns = [...importSheets]; ns[i].mapping.name = Number(e.target.value); setImportSheets(ns); }} /></div>
-                                            <div className="space-y-1"><label className="text-[8px] font-black text-gray-400 uppercase">Кол. Ед.изм</label><input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white" value={s.mapping.unit} onChange={e => { const ns = [...importSheets]; ns[i].mapping.unit = Number(e.target.value); setImportSheets(ns); }} /></div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                        <div className="p-6 bg-gray-50 dark:bg-black/20 flex gap-3"><button onClick={() => setIsImportModalOpen(false)} className="flex-1 py-3.5 font-bold text-gray-400 text-xs uppercase">Отмена</button><button onClick={confirmStationImport} className="flex-1 py-3.5 font-black text-white bg-sky-600 rounded-2xl shadow-xl uppercase text-xs tracking-widest">Импорт</button></div>
                     </div>
                 </div>, document.body
             )}
