@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
-import { InventoryCycle } from '../types';
+import { InventoryCycle, InventorySheet, InventoryItem } from '../types';
 import { useTelegram } from '../context/TelegramContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../services/api';
@@ -28,6 +28,7 @@ const InventoryArchive: React.FC = () => {
     const [cycles, setCycles] = useState<InventoryCycle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCycle, setSelectedCycle] = useState<InventoryCycle | null>(null);
+    const [activeStationId, setActiveStationId] = useState<string | null>(null);
     const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
     useEffect(() => { loadArchives(); }, []);
@@ -48,6 +49,48 @@ const InventoryArchive: React.FC = () => {
         catch (e) { addToast("Ошибка", "error"); }
     };
 
+    const exportArchiveToExcel = (cycle: InventoryCycle) => {
+        const wb = XLSX.utils.book_new();
+        
+        // 1. Сводная ведомость
+        const aggregate: Record<string, { code: string; name: string; unit: string; actual: number }> = {};
+        cycle.sheets.forEach(s => {
+            s.items.forEach(it => {
+                const key = `${it.code || ''}_${it.name}_${it.unit}`;
+                if (!aggregate[key]) {
+                    aggregate[key] = { code: it.code || '', name: it.name, unit: it.unit, actual: 0 };
+                }
+                aggregate[key].actual += (it.actual || 0);
+            });
+        });
+        
+        const summaryData = Object.values(aggregate).map(d => ({
+            "Код": d.code,
+            "Товар": d.name,
+            "Ед. изм.": d.unit,
+            "Всего факт": d.actual
+        }));
+        
+        const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+        XLSX.utils.book_append_sheet(wb, summaryWs, "Сводная");
+
+        // 2. Листы по станциям
+        cycle.sheets.forEach(sheet => {
+            const sheetData = sheet.items.map(it => ({
+                "Код": it.code || '',
+                "Товар": it.name,
+                "Ед. изм.": it.unit,
+                "Факт": it.actual || 0
+            }));
+            const ws = XLSX.utils.json_to_sheet(sheetData);
+            // Лимит длины названия листа в XLSX - 31 символ
+            XLSX.utils.book_append_sheet(wb, ws, sheet.title.substring(0, 31));
+        });
+
+        XLSX.writeFile(wb, `Inventory_Report_${new Date(cycle.date).toLocaleDateString()}.xlsx`);
+        addToast("Экспорт Excel готов", "success");
+    };
+
     const groupedArchives = useMemo(() => {
         const groups: Record<string, InventoryCycle[]> = {};
         cycles.forEach(c => {
@@ -57,6 +100,17 @@ const InventoryArchive: React.FC = () => {
         });
         return Object.entries(groups).sort((a, b) => new Date(b[1][0].date).getTime() - new Date(a[1][0].date).getTime());
     }, [cycles]);
+
+    const currentReportSheet = useMemo(() => {
+        if (!selectedCycle) return null;
+        if (!activeStationId) return null;
+        return selectedCycle.sheets.find(s => s.id === activeStationId);
+    }, [selectedCycle, activeStationId]);
+
+    const handleOpenReport = (cycle: InventoryCycle) => {
+        setSelectedCycle(cycle);
+        if (cycle.sheets.length > 0) setActiveStationId(cycle.sheets[0].id);
+    };
 
     return (
         <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
@@ -96,7 +150,7 @@ const InventoryArchive: React.FC = () => {
                             {expandedMonth === month && (
                                 <div className="grid gap-2 pl-4 animate-slide-up">
                                     {monthCycles.map(c => (
-                                        <div key={c.id} onClick={() => setSelectedCycle(c)} className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-between">
+                                        <div key={c.id} onClick={() => handleOpenReport(c)} className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center text-xl">📄</div>
                                                 <div><h4 className="font-bold text-gray-900 dark:text-white text-xs">{new Date(c.date).toLocaleDateString('ru-RU')}</h4><p className="text-[8px] text-gray-400 font-black uppercase">{c.sheets.length} станций</p></div>
@@ -116,22 +170,49 @@ const InventoryArchive: React.FC = () => {
                     <div className="bg-white dark:bg-[#1e1e24] w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[85vh]">
                         <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
                             <div><h2 className="text-xl font-black dark:text-white leading-none">{new Date(selectedCycle.date).toLocaleDateString()}</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Архивный отчет</p></div>
-                            <button onClick={() => setSelectedCycle(null)} className="w-10 h-10 rounded-full bg-white dark:bg-white/5 shadow-sm flex items-center justify-center transition">✕</button>
+                            <div className="flex gap-2">
+                                <button onClick={() => exportArchiveToExcel(selectedCycle)} className="w-10 h-10 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center transition active:scale-95">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12l4.5 4.5m0 0l4.5-4.5M12 3v13.5" /></svg>
+                                </button>
+                                <button onClick={() => setSelectedCycle(null)} className="w-10 h-10 rounded-full bg-white dark:bg-white/5 shadow-sm flex items-center justify-center transition">✕</button>
+                            </div>
                         </div>
+
+                        {/* Station Tabs */}
+                        <div className="bg-gray-50 dark:bg-black/40 border-b border-gray-100 dark:border-white/5 flex overflow-x-auto no-scrollbar px-4 py-2 gap-2">
+                            {selectedCycle.sheets.map(s => (
+                                <button 
+                                    key={s.id} 
+                                    onClick={() => setActiveStationId(s.id)}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${activeStationId === s.id ? 'bg-purple-600 text-white shadow-md' : 'bg-white dark:bg-white/5 text-gray-400'}`}
+                                >
+                                    {s.title}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Items List */}
                         <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
-                             {selectedCycle.sheets.map(s => (
-                                 <div key={s.id} className="mb-6">
-                                     <h4 className="text-xs font-black dark:text-white uppercase mb-2 text-purple-500">{s.title}</h4>
+                             {currentReportSheet ? (
+                                 <div className="animate-fade-in">
                                      <div className="space-y-1">
-                                         {s.items.map(it => (
-                                             <div key={it.id} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-black/20 rounded-lg text-xs font-bold">
-                                                 <span className="dark:text-white">{it.name}</span>
-                                                 <span className="text-purple-500">{it.actual || 0} {it.unit}</span>
+                                         {currentReportSheet.items.map(it => (
+                                             <div key={it.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-black/20 rounded-xl border border-transparent hover:border-purple-500/20 transition-colors">
+                                                 <div className="min-w-0 pr-4">
+                                                     <p className="dark:text-white text-xs font-bold truncate leading-tight">{it.name}</p>
+                                                     {it.code && <p className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">{it.code}</p>}
+                                                 </div>
+                                                 <div className="flex-shrink-0 text-right">
+                                                     <span className="text-purple-500 font-black text-sm">{it.actual || 0}</span>
+                                                     <span className="text-[9px] text-gray-400 font-bold uppercase ml-1">{it.unit}</span>
+                                                 </div>
                                              </div>
                                          ))}
                                      </div>
                                  </div>
-                             ))}
+                             ) : (
+                                 <div className="text-center py-20 opacity-40 italic text-sm">Выберите станцию выше</div>
+                             )}
                         </div>
                     </div>
                 </div>, document.body
