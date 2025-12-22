@@ -123,8 +123,6 @@ const Inventory: React.FC = () => {
     useEffect(() => { 
         loadData(); 
         fetchGlobalItems(); 
-        
-        // Поллинг обновлений каждые 5 секунд для реалтайм статусов
         const interval = setInterval(loadDataSilent, 5000);
         return () => clearInterval(interval);
     }, []);
@@ -154,7 +152,6 @@ const Inventory: React.FC = () => {
         } catch (e) {}
     };
 
-    // Импорт бланков
     const handleStationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -175,7 +172,6 @@ const Inventory: React.FC = () => {
         reader.readAsBinaryString(file);
     };
 
-    // Улучшенный импорт базы товаров
     const handleGlobalImportStart = async () => {
         const files = [globalFiles.file1, globalFiles.file2].filter(Boolean) as File[];
         if (files.length === 0) { addToast("Выберите хотя бы один файл", "error"); return; }
@@ -194,9 +190,9 @@ const Inventory: React.FC = () => {
                     const sheet = wb.Sheets[name];
                     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                     rows.forEach(row => {
-                        const code = String(row[1] || '').trim(); // B
-                        const name = String(row[2] || '').trim(); // C
-                        const unit = String(row[5] || '').trim(); // F
+                        const code = String(row[1] || '').trim();
+                        const name = String(row[2] || '').trim();
+                        const unit = String(row[5] || '').trim();
                         if (code && name && unit && !name.toLowerCase().includes('наименование') && code.length > 1) {
                             allNewItems.push({ botId: '', code, name, unit });
                         }
@@ -391,7 +387,6 @@ const Inventory: React.FC = () => {
 
     return (
         <div className="pb-24 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
-            {/* Header */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-50 bg-[#f2f4f7]/95 dark:bg-[#0f1115]/95 backdrop-blur-md border-b border-gray-100 dark:border-white/5">
                 <div className="flex items-center justify-between pt-4">
                     <div className="flex items-center gap-3">
@@ -425,7 +420,7 @@ const Inventory: React.FC = () => {
                                             <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📄</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">Импорт Бланка</h3>
                                         </div>
-                                        <div onClick={() => setIsGlobalImportOpen(true)} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition">
+                                        <div onClick={() => { setIsGlobalImportOpen(true); setGlobalFiles({}); }} className="col-span-1 bg-amber-100 dark:bg-amber-500/20 rounded-2xl p-2 text-amber-600 flex flex-col items-center justify-center gap-1 h-20 active:scale-95 transition">
                                             <div className="w-8 h-8 rounded-full bg-white dark:bg-black/20 flex items-center justify-center shadow-sm">📦</div>
                                             <h3 className="font-bold text-[8px] uppercase tracking-tighter text-center">База товаров</h3>
                                         </div>
@@ -596,7 +591,7 @@ const Inventory: React.FC = () => {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
                     <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col p-6">
                         <h2 className="text-xl font-black dark:text-white mb-2 uppercase tracking-tight">База товаров</h2>
-                        <p className="text-xs text-gray-400 mb-6 font-medium">Загрузите файлы Excel для обновления справочника. Каждый файл будет обработан отдельно.</p>
+                        <p className="text-xs text-gray-400 mb-6 font-medium">Загрузите до 2-х файлов Excel для обновления справочника. Нажмите кнопку "Импорт", чтобы начать процесс.</p>
                         
                         <div className="space-y-4">
                             <div className="space-y-1">
@@ -620,8 +615,8 @@ const Inventory: React.FC = () => {
 
                         {isSaving && (
                             <div className="mt-6 space-y-2 animate-fade-in">
-                                <div className="h-2 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
-                                    <div className="h-full bg-amber-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
+                                <div className="h-2 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden relative">
+                                    <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
                                 </div>
                                 <p className="text-[9px] text-center text-amber-500 font-black uppercase tracking-widest">Импорт в процессе... {importProgress}%</p>
                             </div>
@@ -631,45 +626,6 @@ const Inventory: React.FC = () => {
                             <button onClick={() => { setIsGlobalImportOpen(false); setGlobalFiles({}); }} className="flex-1 py-3 bg-gray-100 dark:bg-white/5 text-gray-500 font-bold rounded-xl text-xs uppercase tracking-widest">Отмена</button>
                             <button onClick={handleGlobalImportStart} disabled={isSaving || (!globalFiles.file1 && !globalFiles.file2)} className="flex-1 py-3 bg-amber-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-amber-500/30 disabled:opacity-30">Импорт</button>
                         </div>
-                    </div>
-                </div>, document.body
-            )}
-
-            {/* MODAL: STATION IMPORT */}
-            {isImportModalOpen && createPortal(
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-[#1e1e24] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-                        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
-                            <div><h2 className="text-xl font-black dark:text-white leading-none">Импорт станций</h2><p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Загрузка бланков из Excel</p></div>
-                            <button onClick={() => setIsImportModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center">✕</button>
-                        </div>
-                        <div className="p-4 overflow-y-auto space-y-4 no-scrollbar">
-                            {importSheets.map((s, i) => (
-                                <div key={i} className={`p-4 rounded-3xl border-2 transition-all ${s.isSelected ? 'border-sky-500 bg-sky-500/5' : 'border-gray-100 dark:border-white/5 opacity-50'}`}>
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <input type="checkbox" checked={s.isSelected} onChange={e => { const ns = [...importSheets]; ns[i].isSelected = e.target.checked; setImportSheets(ns); }} className="w-5 h-5 rounded-lg" />
-                                        <h4 className="font-bold text-sm dark:text-white truncate">{s.name}</h4>
-                                    </div>
-                                    {s.isSelected && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1"><label className="text-[8px] font-black text-gray-400 uppercase">Кол. Название</label><input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white" value={s.mapping.name} onChange={e => { const ns = [...importSheets]; ns[i].mapping.name = Number(e.target.value); setImportSheets(ns); }} /></div>
-                                            <div className="space-y-1"><label className="text-[8px] font-black text-gray-400 uppercase">Кол. Ед.изм</label><input type="number" className="w-full bg-white dark:bg-black/40 rounded-lg p-2 text-xs font-bold dark:text-white" value={s.mapping.unit} onChange={e => { const ns = [...importSheets]; ns[i].mapping.unit = Number(e.target.value); setImportSheets(ns); }} /></div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                        
-                        {isSaving && (
-                            <div className="px-6 py-4 space-y-2">
-                                <div className="h-2 w-full bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
-                                    <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
-                                </div>
-                                <p className="text-[9px] text-center text-sky-500 font-black uppercase tracking-widest">Импорт в процессе... {importProgress}%</p>
-                            </div>
-                        )}
-
-                        <div className="p-6 bg-gray-50 dark:bg-black/20 flex gap-3"><button onClick={() => setIsImportModalOpen(false)} className="flex-1 py-3.5 font-bold text-gray-400 text-xs uppercase">Отмена</button><button onClick={confirmStationImport} disabled={isSaving} className="flex-1 py-3.5 font-black text-white bg-sky-600 rounded-2xl shadow-xl uppercase text-xs tracking-widest disabled:opacity-30">Импорт</button></div>
                     </div>
                 </div>, document.body
             )}
@@ -685,7 +641,7 @@ const Inventory: React.FC = () => {
                         <div className="p-5 space-y-4 flex-1 flex flex-col min-h-0">
                             {viewMode !== 'filling' && <input type="text" placeholder="Название (напр. Горячий цех)" className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl px-4 py-3 font-bold dark:text-white outline-none focus:ring-2 focus:ring-purple-500" value={newSheetTitle} onChange={e => setNewSheetTitle(e.target.value)} />}
                             <div className="relative flex-1 flex flex-col min-h-0">
-                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10"><svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10"><svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
                                 <input type="text" placeholder="Поиск в базе..." className="w-full bg-gray-50 dark:bg-black/40 rounded-xl px-4 py-2.5 pl-10 text-xs font-bold dark:text-white outline-none mb-3 border border-transparent focus:border-sky-500/30" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                 <div className="flex-1 overflow-y-auto space-y-1 no-scrollbar pr-1">
                                     {filteredGlobal.map(gi => {
