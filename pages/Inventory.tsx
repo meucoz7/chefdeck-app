@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -93,35 +93,61 @@ const CustomConfirm: React.FC<{
     );
 };
 
-const InventoryItemRow: React.FC<{
+// --- ROW COMPONENT (MEMOIZED FOR SPEED) ---
+
+const InventoryItemRow = React.memo<{
     item: InventoryItem;
-    initialValue: string;
+    cycleId: string;
+    sheetId: string;
     onDelete: (id: string) => void;
     onSync: (id: string, val: string) => void;
     readOnly?: boolean;
-}> = ({ item, initialValue, onDelete, onSync, readOnly }) => {
-    const [localValue, setLocalValue] = useState(initialValue);
+}>(({ item, cycleId, sheetId, onDelete, onSync, readOnly }) => {
+    // Unique key for local persistence
+    const draftKey = `inv_draft_${cycleId}_${sheetId}_${item.id}`;
+    
+    // Local input state for 0ms response time
+    const [localValue, setLocalValue] = useState(() => {
+        const saved = localStorage.getItem(draftKey);
+        return saved !== null ? saved : (item.actual?.toString() || '');
+    });
+
     const [startX, setStartX] = useState(0);
     const [offsetX, setOffsetX] = useState(0);
     const [isSwiping, setIsSwiping] = useState(false);
     const { webApp } = useTelegram();
     const syncTimerRef = useRef<any>(null);
 
+    // Sync local state if parent value changes (e.g. from server poll),
+    // but only if we are NOT currently typing to prevent jumping cursors
     useEffect(() => {
-        if (initialValue !== localValue && !syncTimerRef.current) {
-            setLocalValue(initialValue);
+        if (!syncTimerRef.current) {
+            const parentVal = item.actual?.toString() || '';
+            if (parentVal !== localValue) {
+                setLocalValue(parentVal);
+                // If it came from parent (server), we don't need the local draft anymore
+                localStorage.removeItem(draftKey);
+            }
         }
-    }, [initialValue]);
+    }, [item.actual]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let val = e.target.value.replace(',', '.');
+        
+        // Regex allows numbers, a single dot, and empty string
         if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+            // 1. Instant UI update
             setLocalValue(val);
+            
+            // 2. Instant safety save to disk
+            localStorage.setItem(draftKey, val);
+            
+            // 3. Debounced sync with global state and server
             if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
             syncTimerRef.current = setTimeout(() => {
                 onSync(item.id, val);
                 syncTimerRef.current = null;
-            }, 500);
+            }, 800); // 800ms debounce
         }
     };
 
@@ -188,7 +214,7 @@ const InventoryItemRow: React.FC<{
             </div>
         </div>
     );
-};
+});
 
 // --- MAIN COMPONENT ---
 const Inventory: React.FC = () => {
@@ -222,7 +248,7 @@ const Inventory: React.FC = () => {
     useEffect(() => { 
         loadData(); 
         fetchGlobalItems(); 
-        const interval = setInterval(loadDataSilent, 5000);
+        const interval = setInterval(loadDataSilent, 7000);
         return () => clearInterval(interval);
     }, []);
 
@@ -267,7 +293,7 @@ const Inventory: React.FC = () => {
                 let unitCol = 1;
                 let found = false;
                 
-                for(let r=0; r < Math.min(rawData.length, 10); r++) {
+                for(let r=0; r < Math.min(rawData.length, 15); r++) {
                     const row = rawData[r];
                     if(!row) continue;
                     for(let c=0; c < row.length; c++) {
@@ -290,6 +316,7 @@ const Inventory: React.FC = () => {
             setImportSheets(sheets); setIsImportModalOpen(true);
         };
         reader.readAsBinaryString(file);
+        if (e.target) e.target.value = '';
     };
 
     const handleGlobalImportStart = async () => {
@@ -306,10 +333,17 @@ const Inventory: React.FC = () => {
                 wb.SheetNames.forEach(name => {
                     const sheet = wb.Sheets[name];
                     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-                    rows.forEach(row => {
-                        const code = String(row[1] || '').trim();
-                        const name = String(row[2] || '').trim();
-                        const unit = String(row[5] || '').trim();
+                    let cIdx = 1, nIdx = 2, uIdx = 5;
+                    rows.forEach((row, ridx) => {
+                        if (ridx < 5) {
+                           const rowStr = row.join(' ').toLowerCase();
+                           if (rowStr.includes('код')) cIdx = row.findIndex(c => String(c).toLowerCase().includes('код'));
+                           if (rowStr.includes('наименование')) nIdx = row.findIndex(c => String(c).toLowerCase().includes('наименование'));
+                           if (rowStr.includes('ед')) uIdx = row.findIndex(c => String(c).toLowerCase().includes('ед'));
+                        }
+                        const code = String(row[cIdx] || '').trim();
+                        const name = String(row[nIdx] || '').trim();
+                        const unit = String(row[uIdx] || '').trim();
                         if (code && name && unit && !name.toLowerCase().includes('наименование') && code.length > 1) {
                             allNewItems.push({ botId: '', code, name, unit });
                         }
@@ -355,7 +389,7 @@ const Inventory: React.FC = () => {
 
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
             setImportProgress(100);
-            setActiveCycle(updated); loadData(); addToast("Бланки импортированы", "success");
+            setActiveCycle(updated); loadData(); addToast("Бланки добавлены", "success");
         } catch (e) { addToast("Ошибка импорта", "error"); } 
         finally { setTimeout(() => { setIsImportModalOpen(false); setIsSaving(false); setImportProgress(0); }, 500); }
     };
@@ -380,17 +414,39 @@ const Inventory: React.FC = () => {
         } catch (e) { addToast("Ошибка", "error"); }
     };
 
-    const handleActualSync = (itemId: string, val: string) => {
+    // Use Callback to maintain reference stability for memoized rows
+    const handleActualSync = useCallback((itemId: string, val: string) => {
+        setActiveCycle(prev => {
+            if (!prev || !activeSheetId) return prev;
+            const numeric = parseFloat(val);
+            const updated = { ...prev };
+            const sheet = updated.sheets.find(s => s.id === activeSheetId);
+            if (sheet) {
+                sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: isNaN(numeric) ? undefined : numeric } : i);
+                // Background server push
+                apiFetch('/api/inventory/cycle', { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(updated) 
+                }).then(() => {
+                    localStorage.removeItem(`inv_draft_${prev.id}_${activeSheetId}_${itemId}`);
+                });
+                return updated;
+            }
+            return prev;
+        });
+    }, [activeSheetId]);
+
+    const handleItemDelete = useCallback((id: string) => {
         if (!activeCycle || !activeSheetId) return;
-        const numeric = parseFloat(val);
-        const updated = { ...activeCycle };
-        const sheet = updated.sheets.find(s => s.id === activeSheetId);
-        if (sheet) {
-            sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: isNaN(numeric) ? undefined : numeric } : i);
-            setActiveCycle(updated); 
+        const updated = {...activeCycle};
+        const s = updated.sheets.find(sh => sh.id === activeSheetId);
+        if (s) {
+            s.items = s.items.filter(i => i.id !== id);
+            setActiveCycle(updated);
             apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
         }
-    };
+    }, [activeCycle, activeSheetId]);
 
     const submitSheet = async () => {
         if (!activeCycle || !activeSheetId) return;
@@ -709,16 +765,11 @@ const Inventory: React.FC = () => {
                                     <InventoryItemRow 
                                         key={item.id} 
                                         item={item} 
-                                        initialValue={item.actual?.toString() || ''} 
+                                        cycleId={activeCycle.id}
+                                        sheetId={activeSheetId}
                                         onSync={handleActualSync} 
+                                        onDelete={handleItemDelete}
                                         readOnly={!isLockedByMe} 
-                                        onDelete={(id) => {
-                                            const updated = {...activeCycle};
-                                            const s = updated.sheets.find(sh => sh.id === activeSheetId);
-                                            if (s) s.items = s.items.filter(i => i.id !== id);
-                                            setActiveCycle(updated);
-                                            apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                        }} 
                                     />
                                 ))}
                                 {filteredSheetItems.length === 0 && (
@@ -754,6 +805,21 @@ const Inventory: React.FC = () => {
                                     <p className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">{s.data.length} строк найдено</p>
                                 </div>
                             </div>
+                            {s.isSelected && (
+                                <div className="px-5 pb-5 animate-fade-in">
+                                    <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-3 border border-gray-100 dark:border-white/5">
+                                        <p className="text-[8px] font-black text-gray-400 uppercase mb-2 tracking-widest leading-none">Первые строки:</p>
+                                        <div className="space-y-1.5">
+                                            {s.data.slice(0, 3).map((row, ridx) => (
+                                                <div key={ridx} className="flex justify-between text-[9px] text-gray-600 dark:text-gray-400 font-medium">
+                                                    <span className="truncate pr-2">{String(row[s.mapping.name] || '—')}</span>
+                                                    <span className="font-black uppercase text-sky-500 whitespace-nowrap">{String(row[s.mapping.unit] || '')}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                     {isSaving && (
@@ -848,7 +914,7 @@ const Inventory: React.FC = () => {
                                     setSelectedGlobalIds(n);
                                 }} className={`p-4 rounded-2xl flex items-center gap-4 transition-all cursor-pointer border-2 ${selected ? 'bg-sky-600 border-sky-500 text-white shadow-lg' : 'bg-gray-50 dark:bg-white/5 border-transparent hover:bg-gray-100 dark:hover:bg-white/10'}`}>
                                     <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${selected ? 'bg-white border-white' : 'border-gray-200 dark:border-white/10'}`}>
-                                        {selected && <svg className="w-4 h-4 text-sky-600 font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                        {selected && <svg className="w-4 h-4 text-sky-600 font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M5 13l4 4L19 7" /></svg>}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <p className="text-[11px] font-black leading-tight truncate uppercase tracking-tight">{gi.name}</p>
