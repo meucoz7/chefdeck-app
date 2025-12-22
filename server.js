@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import TelegramBot from 'node-telegram-bot-api';
@@ -139,44 +140,20 @@ const setupBotListeners = (bot, token) => {
 const getBotInstance = (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
     try {
-        const useWebhooks = !!WEBHOOK_URL;
-        const bot = new TelegramBot(token, { polling: !useWebhooks });
-        
-        if (useWebhooks) {
-            const webhookPath = `${WEBHOOK_URL}/webhook/${token}`;
-            bot.setWebHook(webhookPath)
-                .then(() => console.log(`🔗 Webhook set for bot: ${webhookPath}`))
-                .catch(e => console.error(`❌ Webhook failed for ${token}:`, e));
-        }
-
+        const bot = new TelegramBot(token, { polling: !WEBHOOK_URL });
+        if (WEBHOOK_URL) bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) { 
-        console.error("❌ Bot creation error:", e);
-        return null; 
-    }
+    } catch (e) { return null; }
 };
 
 const initializeDefaultBot = async () => {
     const bots = await BotConfig.find({});
-    console.log(`🤖 Initializing ${bots.length} bot(s)...`);
     bots.forEach(b => getBotInstance(b.token));
 };
 
-// --- API MIDDLEWARES ---
 app.use(express.json({ limit: '50mb' }));
-
-// --- TELEGRAM WEBHOOK ENDPOINT ---
-app.post('/webhook/:token', (req, res) => {
-    const { token } = req.params;
-    const bot = botInstances.get(token);
-    if (bot) {
-        bot.processUpdate(req.body);
-    }
-    res.sendStatus(200);
-});
-
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
@@ -200,9 +177,7 @@ const resolveTenant = async (req, res, next) => {
 app.get('/api/settings', resolveTenant, async (req, res) => {
     try {
         let settings = await AppSettingsModel.findOne({ botId: req.tenant.botId });
-        if (!settings) {
-            settings = await AppSettingsModel.create({ botId: req.tenant.botId });
-        }
+        if (!settings) { settings = await AppSettingsModel.create({ botId: req.tenant.botId }); }
         res.json(settings);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -219,8 +194,6 @@ app.post('/api/settings', resolveTenant, async (req, res) => {
 // --- INVENTORY API ---
 app.get('/api/inventory', resolveTenant, async (req, res) => {
     try {
-        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
-        await InventoryCycle.deleteMany({ botId: req.tenant.botId, date: { $lt: threeMonthsAgo } });
         const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
         res.json(cycles);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -259,7 +232,6 @@ app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
 app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) => {
     try {
         const { items } = req.body;
-        if (!Array.isArray(items)) return res.status(400).send("Invalid items array");
         for (const item of items) {
             await GlobalInventoryItem.findOneAndUpdate(
                 { botId: req.tenant.botId, code: item.code, name: item.name },
@@ -341,13 +313,6 @@ app.post('/api/recipes', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
-app.delete('/api/recipes/:id', resolveTenant, async (req, res) => {
-    try {
-        await Recipe.deleteOne({ id: req.params.id, botId: req.tenant.botId });
-        res.json({ success: true });
-    } catch (e) { res.status(500).send(e.message); }
-});
-
 app.post('/api/sync-user', resolveTenant, async (req, res) => {
     try {
         const user = await User.findOneAndUpdate(
@@ -362,18 +327,14 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
 // --- SCHEDULE API ---
 app.get('/api/schedule', resolveTenant, async (req, res) => {
     try {
-        const sched = await Schedule.findOne({ botId: req.tenant.botId });
-        res.json(sched ? sched.staff : []);
+        const s = await Schedule.findOne({ botId: req.tenant.botId });
+        res.json(s ? s.staff : []);
     } catch (e) { res.status(500).send(e.message); }
 });
 
 app.post('/api/schedule', resolveTenant, async (req, res) => {
     try {
-        await Schedule.findOneAndUpdate(
-            { botId: req.tenant.botId },
-            { botId: req.tenant.botId, staff: req.body },
-            { upsert: true }
-        );
+        await Schedule.findOneAndUpdate({ botId: req.tenant.botId }, { staff: req.body }, { upsert: true });
         res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
 });
@@ -388,43 +349,9 @@ app.get('/api/wastage', resolveTenant, async (req, res) => {
 
 app.post('/api/wastage', resolveTenant, async (req, res) => {
     try {
-        const data = req.body;
-        data.botId = req.tenant.botId;
-        await Wastage.create(data);
-        res.json({ success: true });
-    } catch (e) { res.status(500).send(e.message); }
-});
-
-app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
-    try {
-        await Wastage.deleteOne({ id: req.params.id, botId: req.tenant.botId });
-        res.json({ success: true });
-    } catch (e) { res.status(500).send(e.message); }
-});
-
-// --- NOTIFY API ---
-app.post('/api/notify', resolveTenant, async (req, res) => {
-    try {
-        const { action, recipeTitle, changes, notifyAll } = req.body;
-        const usersToNotify = notifyAll 
-            ? await User.find({ botId: req.tenant.botId }) 
-            : await User.find({ botId: req.tenant.botId, isAdmin: true });
-
-        const bot = req.botInstance;
-        if (!bot) return res.sendStatus(500);
-
-        let msg = "";
-        if (action === 'create') msg = `🆕 <b>Добавлена карта:</b> ${recipeTitle}`;
-        else if (action === 'update') {
-            msg = `🔄 <b>Обновлена карта:</b> ${recipeTitle}`;
-            if (changes && changes.length > 0) msg += `\n\n<u>Изменения:</u>\n- ${changes.join('\n- ')}`;
-        }
-
-        for (const u of usersToNotify) {
-            try {
-                await bot.sendMessage(u.id, msg, { parse_mode: 'HTML' });
-            } catch (err) { /* ignore blocked bots */ }
-        }
+        const log = req.body;
+        log.botId = req.tenant.botId;
+        await Wastage.create(log);
         res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
 });
