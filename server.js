@@ -140,12 +140,21 @@ const setupBotListeners = (bot, token) => {
 const getBotInstance = (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
     try {
-        const bot = new TelegramBot(token, { polling: !WEBHOOK_URL });
-        if (WEBHOOK_URL) bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
+        const isWebhook = !!WEBHOOK_URL;
+        const bot = new TelegramBot(token, { polling: !isWebhook });
+        
+        if (isWebhook) {
+            bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
+            console.log(`📡 Webhook set for bot with token ending in ...${token.slice(-5)}`);
+        }
+        
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) { return null; }
+    } catch (e) { 
+        console.error("❌ Failed to create bot instance:", e);
+        return null; 
+    }
 };
 
 const initializeDefaultBot = async () => {
@@ -160,6 +169,18 @@ app.use((req, res, next) => {
     res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
+});
+
+// --- TELEGRAM WEBHOOK ENDPOINT ---
+app.post('/webhook/:token', (req, res) => {
+    const { token } = req.params;
+    const bot = botInstances.get(token);
+    if (bot) {
+        bot.processUpdate(req.body);
+        res.sendStatus(200);
+    } else {
+        res.sendStatus(404);
+    }
 });
 
 const resolveTenant = async (req, res, next) => {
