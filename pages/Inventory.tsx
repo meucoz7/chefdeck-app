@@ -13,7 +13,6 @@ import { apiFetch } from '../services/api';
 
 /**
  * Рекурсивно удаляет технические поля MongoDB (_id, __v) из объекта или массива.
- * Это необходимо для создания чистых копий документов в БД без конфликтов ключей.
  */
 const cleanMongoFields = (obj: any): any => {
     if (Array.isArray(obj)) {
@@ -29,19 +28,6 @@ const cleanMongoFields = (obj: any): any => {
     }
     return obj;
 };
-
-// --- TYPES ---
-interface ImportSheet {
-    name: string;
-    data: any[][];
-    isSummary: boolean;
-    isSelected: boolean;
-    mapping: {
-        code: number;
-        name: number;
-        unit: number;
-    };
-}
 
 // --- UI COMPONENTS ---
 
@@ -113,6 +99,19 @@ const CustomConfirm: React.FC<{
         </Modal>
     );
 };
+
+/* Added missing ImportSheet interface to fix compilation errors */
+interface ImportSheet {
+    name: string;
+    data: any[][];
+    isSummary: boolean;
+    isSelected: boolean;
+    mapping: {
+        code: number;
+        name: number;
+        unit: number;
+    };
+}
 
 // --- ROW COMPONENT (MEMOIZED FOR SPEED) ---
 
@@ -254,6 +253,14 @@ const Inventory: React.FC = () => {
     const [initialAmount, setInitialAmount] = useState('');
     const [renamingSheet, setRenamingSheet] = useState<{id: string, title: string} | null>(null);
 
+    // Ref to block sync during user actions (prevents data "rollback" UI glitch)
+    const syncLockRef = useRef<boolean>(false);
+
+    const lockSyncTemporarily = () => {
+        syncLockRef.current = true;
+        setTimeout(() => { syncLockRef.current = false; }, 3000);
+    };
+
     useEffect(() => { 
         loadData(); 
         fetchGlobalItems(); 
@@ -277,6 +284,8 @@ const Inventory: React.FC = () => {
     };
 
     const loadDataSilent = async () => {
+        // Skip if saving, adding something, or if we recently did a write action
+        if (isSaving || isAddingSheet || syncLockRef.current) return;
         try {
             const res = await apiFetch('/api/inventory');
             const data = await res.json();
@@ -424,6 +433,7 @@ const Inventory: React.FC = () => {
     };
 
     const handleActualSync = useCallback((itemId: string, val: string) => {
+        lockSyncTemporarily(); // Block polling
         setActiveCycle(prev => {
             if (!prev || !activeSheetId) return prev;
             const numeric = parseFloat(val);
@@ -446,6 +456,7 @@ const Inventory: React.FC = () => {
 
     const handleItemDelete = useCallback((id: string) => {
         if (!activeCycle || !activeSheetId) return;
+        lockSyncTemporarily(); // Block polling
         const updated = {...activeCycle};
         const s = updated.sheets.find(sh => sh.id === activeSheetId);
         if (s) {
@@ -485,13 +496,11 @@ const Inventory: React.FC = () => {
             onConfirm: async () => {
                 setIsSaving(true);
                 try {
-                    // Рекурсивно очищаем весь объект активного цикла от полей Mongo
                     const cleanedActive = cleanMongoFields(activeCycle);
 
-                    // 1. СОЗДАЕМ АРХИВНУЮ КОПИЮ
                     const archiveCycle = { 
                         ...cleanedActive, 
-                        id: uuidv4(), // Обязательно новый UUID
+                        id: uuidv4(), 
                         isFinalized: true, 
                         date: Date.now(),
                         sheets: cleanedActive.sheets.map((s: any) => ({
@@ -500,7 +509,6 @@ const Inventory: React.FC = () => {
                         })).filter((s: any) => s.items.length > 0)
                     };
 
-                    // Отправляем архив в БД
                     const archiveRes = await apiFetch('/api/inventory/cycle', { 
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
@@ -509,7 +517,6 @@ const Inventory: React.FC = () => {
 
                     if (!archiveRes.ok) throw new Error("Failed to save archive");
 
-                    // 2. СБРАСЫВАЕМ ТЕКУЩИЙ ЦИКЛ (Оставляем структуру бланков, но обнуляем ввод)
                     const resetCycle = { 
                         ...cleanedActive, 
                         sheets: cleanedActive.sheets.map((s: any) => ({ 
@@ -556,6 +563,7 @@ const Inventory: React.FC = () => {
 
     const handleCreateSheet = async () => {
         if (!newSheetTitle.trim()) return;
+        setIsSaving(true);
         const selectedItems: InventoryItem[] = globalItems
             .filter(gi => selectedGlobalIds.has(`${gi.code}_${gi.name}`))
             .map(gi => ({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code }));
@@ -563,9 +571,14 @@ const Inventory: React.FC = () => {
         let updated = activeCycle 
             ? { ...activeCycle, sheets: [...activeCycle.sheets, newSheet] }
             : { id: uuidv4(), date: Date.now(), sheets: [newSheet], isFinalized: false, createdBy: user?.first_name || 'Admin' };
-        await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-        setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
-        addToast("Бланк создан", "success");
+        
+        try {
+            await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+            setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
+            addToast("Бланк создан", "success");
+            lockSyncTemporarily();
+        } catch (e) { addToast("Ошибка создания", "error"); }
+        finally { setIsSaving(false); }
     };
 
     const currentSheet = activeCycle?.sheets.find(s => s.id === activeSheetId);
@@ -808,6 +821,7 @@ const Inventory: React.FC = () => {
                                                         const updated = {...activeCycle!, sheets: activeCycle!.sheets.filter(s=>s.id!==sheet.id)};
                                                         apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
                                                         setActiveCycle(updated); addToast("Удалено", "info");
+                                                        lockSyncTemporarily();
                                                     }
                                                 });
                                             }} className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
@@ -986,29 +1000,34 @@ const Inventory: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 mt-8">
                     <button onClick={() => { setIsAddingSheet(false); setSelectedGlobalIds(new Set()); setInitialAmount(''); }} className="py-4 bg-gray-100 dark:bg-white/5 rounded-[1.5rem] font-bold text-gray-500 uppercase text-[10px] tracking-widest">Отмена</button>
                     <button 
-                        onClick={() => {
+                        onClick={async () => {
                             if (viewMode === 'filling') {
                                 const updated = {...activeCycle!};
                                 const s = updated.sheets.find(sh => sh.id === activeSheetId);
                                 if (s) { 
+                                    setIsSaving(true);
                                     const num = parseFloat(initialAmount);
                                     const selectedItemsFromGlobal = globalItems.filter(gi => selectedGlobalIds.has(`${gi.code}_${gi.name}`));
                                     selectedItemsFromGlobal.forEach(gi => {
                                         s.items.push({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code, actual: isNaN(num) ? undefined : num });
                                     });
-                                    setActiveCycle(updated); 
-                                    apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                    setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set());
-                                    addToast(`Добавлено позиций: ${selectedGlobalIds.size}`, "success");
+                                    try {
+                                        await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                        setActiveCycle(updated); 
+                                        setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set());
+                                        addToast(`Добавлено позиций: ${selectedGlobalIds.size}`, "success");
+                                        lockSyncTemporarily();
+                                    } catch (e) { addToast("Ошибка добавления", "error"); }
+                                    finally { setIsSaving(false); }
                                 }
                             } else {
                                 handleCreateSheet();
                             }
                         }} 
-                        disabled={(viewMode === 'filling' && selectedGlobalIds.size === 0) || (viewMode !== 'filling' && !newSheetTitle)}
+                        disabled={isSaving || (viewMode === 'filling' && selectedGlobalIds.size === 0) || (viewMode !== 'filling' && !newSheetTitle)}
                         className="py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-[1.5rem] shadow-xl uppercase text-[10px] tracking-widest active:scale-95 transition disabled:opacity-30"
                     >
-                        {viewMode === 'filling' ? `Добавить (${selectedGlobalIds.size})` : 'Создать'}
+                        {isSaving ? '...' : (viewMode === 'filling' ? `Добавить (${selectedGlobalIds.size})` : 'Создать')}
                     </button>
                 </div>
             </Modal>
@@ -1024,18 +1043,24 @@ const Inventory: React.FC = () => {
                             onChange={e => setRenamingSheet({...renamingSheet, title: e.target.value})}
                         />
                         <button 
-                            onClick={() => {
+                            onClick={async () => {
                                 const updated = {...activeCycle!};
                                 const s = updated.sheets.find(sh => sh.id === renamingSheet.id);
                                 if(s) s.title = renamingSheet.title;
-                                setActiveCycle(updated);
-                                apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                setRenamingSheet(null);
-                                addToast("Название обновлено", "success");
+                                setIsSaving(true);
+                                try {
+                                    await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                    setActiveCycle(updated);
+                                    setRenamingSheet(null);
+                                    addToast("Название обновлено", "success");
+                                    lockSyncTemporarily();
+                                } catch (e) { addToast("Ошибка", "error"); }
+                                finally { setIsSaving(false); }
                             }}
-                            className="w-full py-4 bg-sky-500 text-white font-black rounded-2xl shadow-lg shadow-sky-500/30 active:scale-95 transition-all text-xs tracking-widest uppercase"
+                            disabled={isSaving}
+                            className="w-full py-4 bg-sky-500 text-white font-black rounded-2xl shadow-lg shadow-sky-500/30 active:scale-95 transition-all text-xs tracking-widest uppercase disabled:opacity-50"
                         >
-                            Сохранить
+                            {isSaving ? '...' : 'Сохранить'}
                         </button>
                     </div>
                 </Modal>
