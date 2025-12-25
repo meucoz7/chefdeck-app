@@ -342,13 +342,8 @@ export default function Editor() {
       setStagedRecipes(staged);
       setMode('import-staging');
     } catch (err: unknown) {
-      // Fix: Proper type narrowing to handle the unknown error type before calling addToast
-      let errorMessage = "Ошибка PDF";
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
+      // Fix: Use String conversion to ensure a string is passed to addToast
+      const errorMessage = err instanceof Error ? err.message : String(err);
       addToast(errorMessage, "error");
     } finally {
       setIsParsing(false);
@@ -386,9 +381,8 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      let message = "Ошибка при сохранении";
-      if (e instanceof Error) message = e.message;
-      else if (typeof e === 'string') message = e;
+      // Fix: Narrow unknown type correctly for toast notification
+      const message = e instanceof Error ? e.message : String(e);
       addToast(message, "error");
     } finally {
       setIsImporting(false);
@@ -605,6 +599,7 @@ export default function Editor() {
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
     } catch (e: unknown) {
       console.error(e);
+      // Fix: Ensure the error is narrowed to string for toast display
       const msg = e instanceof Error ? e.message : String(e);
       addToast(`Ошибка парсинга: ${msg}`, "error");
     } finally {
@@ -628,9 +623,8 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      let message = "Ошибка обновления";
-      if (e instanceof Error) message = e.message;
-      else if (typeof e === 'string') message = e;
+      // Fix: Handle unknown catch error for toast notification
+      const message = e instanceof Error ? e.message : String(e);
       addToast(message, "error");
     } finally {
       setIsImporting(false);
