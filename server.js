@@ -72,7 +72,7 @@ const inventoryCycleSchema = new mongoose.Schema({
     id: { type: String, required: true },
     date: { type: Number, required: true },
     sheets: Array,
-    isFinalized: { type: Boolean, default: false },
+    isFinalized: { type: Boolean, default: false, index: true },
     createdBy: String
 });
 
@@ -212,11 +212,28 @@ app.post('/api/settings', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- INVENTORY API ---
-app.get('/api/inventory', resolveTenant, async (req, res) => {
+// --- INVENTORY API OPTIMIZED ---
+app.get('/api/inventory/active', resolveTenant, async (req, res) => {
     try {
-        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
-        res.json(cycles);
+        const cycle = await InventoryCycle.findOne({ botId: req.tenant.botId, isFinalized: false });
+        res.json(cycle || null);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/inventory/archive', resolveTenant, async (req, res) => {
+    try {
+        // Return only IDs and Dates for the list, not full sheets data to save traffic
+        const archives = await InventoryCycle.find({ botId: req.tenant.botId, isFinalized: true })
+            .select('id date createdBy')
+            .sort({ date: -1 });
+        res.json(archives);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/inventory/archive/:id', resolveTenant, async (req, res) => {
+    try {
+        const cycle = await InventoryCycle.findOne({ botId: req.tenant.botId, id: req.params.id });
+        res.json(cycle);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
