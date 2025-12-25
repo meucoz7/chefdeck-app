@@ -1,7 +1,8 @@
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { TechCard, Ingredient } from '../types';
 import { useTelegram } from '../context/TelegramContext';
-import { useToast } from './ToastContext';
+import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../services/api';
 import { scopedStorage } from '../services/storage';
 
@@ -23,8 +24,12 @@ interface RecipeContextType {
 const RecipeContext = createContext<RecipeContextType | undefined>(undefined);
 
 export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [recipes, setRecipes] = useState<TechCard[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Мгновенная инициализация из кэша
+  const [recipes, setRecipes] = useState<TechCard[]>(() => {
+      const cached = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
+      return Array.isArray(cached) ? cached : [];
+  });
+  const [isLoading, setIsLoading] = useState(recipes.length === 0);
   const { user } = useTelegram();
   const { addToast } = useToast();
 
@@ -42,12 +47,6 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       scopedStorage.setJson('recipes_cache', safeData);
     } catch (e) {
       console.warn("API unavailable, switching to offline mode.");
-      const parsed = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
-      setRecipes(Array.isArray(parsed) ? parsed.map((r: any) => ({ 
-        ...r, 
-        isArchived: r.isArchived === true,
-        isFavorite: r.isFavorite === true
-      })) : []);
     } finally {
       setIsLoading(false);
     }
@@ -100,11 +99,9 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     
     const oldMap = new Map(oldR.ingredients.map(i => [clean(i.name), i]));
-    
     newR.ingredients.forEach(newI => {
       const name = clean(newI.name);
       const oldI = oldMap.get(name);
-      
       if (!oldI) {
         changes.push(`Добавлен: <b>${escapeHtml(newI.name)}</b> (${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)})`);
       } else {
@@ -114,11 +111,9 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         oldMap.delete(name);
       }
     });
-    
     oldMap.forEach(oldI => {
       changes.push(`Удален: ${escapeHtml(oldI.name)}`);
     });
-    
     return changes;
   };
 
@@ -145,7 +140,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if(!res.ok) throw new Error();
       await sendNotification(enriched, 'create', notifyAll, [], silent);
     } catch (e) {
-      addToast("Сохранено локально", "info");
+      addToast("Сохранено в кэш", "info");
     }
   };
 
@@ -174,8 +169,6 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updateRecipe = async (updated: TechCard, notifyAll = false, silent = false) => {
     const oldRecipe = recipes.find(r => r.id === updated.id);
-    
-    // ВАЖНО: Всегда сохраняем флаг архивации и актуальный URL
     const enriched = { 
       ...updated, 
       isArchived: updated.isArchived ?? oldRecipe?.isArchived ?? false,
@@ -197,13 +190,12 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         body: JSON.stringify(enriched)
       });
       if(!res.ok) throw new Error();
-      
       if (!silent) {
         const changes = oldRecipe ? calculateChanges(oldRecipe, enriched) : [];
         await sendNotification(enriched, 'update', notifyAll, changes, silent);
       }
     } catch (e) {
-      addToast("Обновлено локально", "info");
+      addToast("Обновлено в кэше", "info");
     }
   };
 
