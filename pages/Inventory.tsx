@@ -8,6 +8,7 @@ import { InventoryCycle, InventorySheet, InventoryItem, GlobalInventoryItem } fr
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
 import { apiFetch } from '../services/api';
+import { scopedStorage } from '../services/storage';
 
 // --- TYPES ---
 interface ImportSheet {
@@ -103,10 +104,8 @@ const InventoryItemRow = React.memo<{
     onSync: (id: string, val: string) => void;
     readOnly?: boolean;
 }>(({ item, cycleId, sheetId, onDelete, onSync, readOnly }) => {
-    // Unique key for local persistence
     const draftKey = `inv_draft_${cycleId}_${sheetId}_${item.id}`;
     
-    // Local input state for 0ms response time
     const [localValue, setLocalValue] = useState(() => {
         const saved = localStorage.getItem(draftKey);
         return saved !== null ? saved : (item.actual?.toString() || '');
@@ -118,14 +117,11 @@ const InventoryItemRow = React.memo<{
     const { webApp } = useTelegram();
     const syncTimerRef = useRef<any>(null);
 
-    // Sync local state if parent value changes (e.g. from server poll),
-    // but only if we are NOT currently typing to prevent jumping cursors
     useEffect(() => {
         if (!syncTimerRef.current) {
             const parentVal = item.actual?.toString() || '';
             if (parentVal !== localValue) {
                 setLocalValue(parentVal);
-                // If it came from parent (server), we don't need the local draft anymore
                 localStorage.removeItem(draftKey);
             }
         }
@@ -133,21 +129,14 @@ const InventoryItemRow = React.memo<{
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let val = e.target.value.replace(',', '.');
-        
-        // Regex allows numbers, a single dot, and empty string
         if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-            // 1. Instant UI update
             setLocalValue(val);
-            
-            // 2. Instant safety save to disk
             localStorage.setItem(draftKey, val);
-            
-            // 3. Debounced sync with global state and server
             if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
             syncTimerRef.current = setTimeout(() => {
                 onSync(item.id, val);
                 syncTimerRef.current = null;
-            }, 800); // 800ms debounce
+            }, 800);
         }
     };
 
@@ -181,7 +170,7 @@ const InventoryItemRow = React.memo<{
         <div className="relative overflow-hidden rounded-[2rem] mb-2.5 group bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5">
             {!readOnly && (
                 <div 
-                    className="absolute inset-y-0 right-0 w-[90px] bg-red-500 flex flex-col items-center justify-center cursor-pointer z-0 transition-opacity"
+                    className="absolute inset-y-0 right-0 w-[90px] bg-red-500 flex flex-col items-center justify-center cursor-pointer z-0"
                     onClick={() => onDelete(item.id)}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-white mb-1"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg>
@@ -222,10 +211,15 @@ const Inventory: React.FC = () => {
     const { isAdmin, user } = useTelegram();
     const { addToast } = useToast();
 
-    const [cycles, setCycles] = useState<InventoryCycle[]>([]);
-    const [globalItems, setGlobalItems] = useState<GlobalInventoryItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [activeCycle, setActiveCycle] = useState<InventoryCycle | null>(null);
+    // Instant local cache load
+    const [activeCycle, setActiveCycle] = useState<InventoryCycle | null>(() => {
+        return scopedStorage.getJson<InventoryCycle | null>('active_inventory_cache', null);
+    });
+    const [globalItems, setGlobalItems] = useState<GlobalInventoryItem[]>(() => {
+        return scopedStorage.getJson<GlobalInventoryItem[]>('global_items_cache', []);
+    });
+    
+    const [isLoading, setIsLoading] = useState(!activeCycle);
     const [viewMode, setViewMode] = useState<'list' | 'filling' | 'manage' | 'summary'>('list');
     const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -245,35 +239,50 @@ const Inventory: React.FC = () => {
     const [initialAmount, setInitialAmount] = useState('');
     const [renamingSheet, setRenamingSheet] = useState<{id: string, title: string} | null>(null);
 
+    // SMARTER POLLING: Only when focused and less frequent
     useEffect(() => { 
-        loadData(); 
-        fetchGlobalItems(); 
-        const interval = setInterval(loadDataSilent, 7000);
+        loadActiveCycle(); 
+        loadGlobalItems();
+        
+        const poll = () => {
+            if (document.visibilityState === 'visible') {
+                loadActiveCycleSilent();
+            }
+        };
+
+        const interval = setInterval(poll, 10000);
         return () => clearInterval(interval);
     }, []);
 
-    const fetchGlobalItems = async () => {
-        try { const res = await apiFetch('/api/inventory/global-items'); const data = await res.json(); setGlobalItems(data); } catch (e) {}
+    const loadGlobalItems = async () => {
+        try { 
+            const res = await apiFetch('/api/inventory/global-items'); 
+            const data = await res.json(); 
+            setGlobalItems(data);
+            scopedStorage.setJson('global_items_cache', data);
+        } catch (e) {}
     };
 
-    const loadData = async () => {
-        setIsLoading(true);
+    const loadActiveCycle = async () => {
+        if (!activeCycle) setIsLoading(true);
         try {
-            const res = await apiFetch('/api/inventory');
+            const res = await apiFetch('/api/inventory/active');
             const data = await res.json();
-            setCycles(data);
-            setActiveCycle(data.find((c: any) => !c.isFinalized) || null);
-        } catch (e) { addToast("Ошибка загрузки", "error"); }
-        finally { setTimeout(() => setIsLoading(false), 500); }
+            setActiveCycle(data);
+            if (data) scopedStorage.setJson('active_inventory_cache', data);
+        } catch (e) { 
+            addToast("Ошибка соединения", "error"); 
+        } finally { 
+            setIsLoading(false); 
+        }
     };
 
-    const loadDataSilent = async () => {
+    const loadActiveCycleSilent = async () => {
         try {
-            const res = await apiFetch('/api/inventory');
+            const res = await apiFetch('/api/inventory/active');
             const data = await res.json();
-            setCycles(data);
-            const currentActive = data.find((c: any) => !c.isFinalized);
-            setActiveCycle(currentActive || null);
+            setActiveCycle(data);
+            if (data) scopedStorage.setJson('active_inventory_cache', data);
         } catch (e) {}
     };
 
@@ -288,7 +297,6 @@ const Inventory: React.FC = () => {
                 const sheet = wb.Sheets[name];
                 const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 
-                let codeCol = -1;
                 let nameCol = 0;
                 let unitCol = 1;
                 let found = false;
@@ -310,7 +318,7 @@ const Inventory: React.FC = () => {
 
                 return { 
                     name, data: rawData, isSummary: idx === 0, isSelected: true,
-                    mapping: { code: codeCol, name: nameCol, unit: unitCol }
+                    mapping: { code: -1, name: nameCol, unit: unitCol }
                 };
             });
             setImportSheets(sheets); setIsImportModalOpen(true);
@@ -357,7 +365,7 @@ const Inventory: React.FC = () => {
             });
             setImportProgress(100);
             addToast(`База обновлена!`, "success");
-            fetchGlobalItems();
+            loadGlobalItems();
             setTimeout(() => { setIsGlobalImportOpen(false); setIsSaving(false); setImportProgress(0); setGlobalFiles({}); }, 500);
         } catch (e) { addToast("Ошибка базы", "error"); setIsSaving(false); setImportProgress(0); }
     };
@@ -389,13 +397,14 @@ const Inventory: React.FC = () => {
 
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
             setImportProgress(100);
-            setActiveCycle(updated); loadData(); addToast("Бланки добавлены", "success");
+            setActiveCycle(updated);
+            scopedStorage.setJson('active_inventory_cache', updated);
+            addToast("Бланки добавлены", "success");
         } catch (e) { addToast("Ошибка импорта", "error"); } 
         finally { setTimeout(() => { setIsImportModalOpen(false); setIsSaving(false); setImportProgress(0); }, 500); }
     };
 
     const handleOpenSheet = (sheetId: string) => {
-        if (!activeCycle) return;
         setActiveSheetId(sheetId); 
         setViewMode('filling');
         setSearchTerm('');
@@ -409,12 +418,11 @@ const Inventory: React.FC = () => {
                 body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId, user: { id: user?.id, name: user?.first_name } })
             });
             const data = await res.json();
-            if (data.success) { addToast("Бланк взят в работу", "success"); loadDataSilent(); } 
+            if (data.success) { addToast("Бланк взят в работу", "success"); loadActiveCycleSilent(); } 
             else { addToast(`Занято: ${data.lockedBy.name}`, "error"); }
         } catch (e) { addToast("Ошибка", "error"); }
     };
 
-    // Use Callback to maintain reference stability for memoized rows
     const handleActualSync = useCallback((itemId: string, val: string) => {
         setActiveCycle(prev => {
             if (!prev || !activeSheetId) return prev;
@@ -423,7 +431,8 @@ const Inventory: React.FC = () => {
             const sheet = updated.sheets.find(s => s.id === activeSheetId);
             if (sheet) {
                 sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: isNaN(numeric) ? undefined : numeric } : i);
-                // Background server push
+                
+                // Optimized server sync: Only call API when actually updated
                 apiFetch('/api/inventory/cycle', { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
@@ -438,15 +447,18 @@ const Inventory: React.FC = () => {
     }, [activeSheetId]);
 
     const handleItemDelete = useCallback((id: string) => {
-        if (!activeCycle || !activeSheetId) return;
-        const updated = {...activeCycle};
-        const s = updated.sheets.find(sh => sh.id === activeSheetId);
-        if (s) {
-            s.items = s.items.filter(i => i.id !== id);
-            setActiveCycle(updated);
-            apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-        }
-    }, [activeCycle, activeSheetId]);
+        setActiveCycle(prev => {
+            if (!prev || !activeSheetId) return prev;
+            const updated = {...prev};
+            const s = updated.sheets.find(sh => sh.id === activeSheetId);
+            if (s) {
+                s.items = s.items.filter(i => i.id !== id);
+                apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                return updated;
+            }
+            return prev;
+        });
+    }, [activeSheetId]);
 
     const submitSheet = async () => {
         if (!activeCycle || !activeSheetId) return;
@@ -461,7 +473,7 @@ const Inventory: React.FC = () => {
                 try {
                     await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
                     await apiFetch('/api/inventory/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId }) });
-                    setActiveSheetId(null); setViewMode('list'); loadData();
+                    setActiveSheetId(null); setViewMode('list'); loadActiveCycleSilent();
                     addToast("Бланк сдан!", "success");
                 } catch (e) { addToast("Ошибка", "error"); }
             }
@@ -480,12 +492,13 @@ const Inventory: React.FC = () => {
                 try {
                     const archiveCopy = { ...activeCycle, id: uuidv4(), isFinalized: true, date: Date.now() };
                     await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(archiveCopy) });
+                    
                     const resetCycle = { 
                         ...activeCycle, 
                         sheets: activeCycle.sheets.map(s => ({ ...s, status: 'active' as const, items: s.items.map(i => ({ ...i, actual: undefined })) }))
                     };
                     await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resetCycle) });
-                    setActiveCycle(resetCycle); setViewMode('list'); loadData();
+                    setActiveCycle(resetCycle); setViewMode('list'); loadActiveCycleSilent();
                     addToast("Инвентаризация завершена!", "success");
                 } catch (e) { addToast("Ошибка завершения", "error"); }
                 finally { setIsSaving(false); }
@@ -517,6 +530,7 @@ const Inventory: React.FC = () => {
         let updated = activeCycle 
             ? { ...activeCycle, sheets: [...activeCycle.sheets, newSheet] }
             : { id: uuidv4(), date: Date.now(), sheets: [newSheet], isFinalized: false, createdBy: user?.first_name || 'Admin' };
+        
         await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
         setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
         addToast("Бланк создан", "success");
@@ -930,18 +944,20 @@ const Inventory: React.FC = () => {
                     <button 
                         onClick={() => {
                             if (viewMode === 'filling') {
-                                const updated = {...activeCycle!};
-                                const s = updated.sheets.find(sh => sh.id === activeSheetId);
-                                if (s) { 
-                                    const num = parseFloat(initialAmount);
-                                    const selectedItemsFromGlobal = globalItems.filter(gi => selectedGlobalIds.has(`${gi.code}_${gi.name}`));
-                                    selectedItemsFromGlobal.forEach(gi => {
-                                        s.items.push({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code, actual: isNaN(num) ? undefined : num });
-                                    });
-                                    setActiveCycle(updated); 
-                                    apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                    setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set());
-                                    addToast(`Добавлено позиций: ${selectedGlobalIds.size}`, "success");
+                                if (activeCycle) {
+                                    const updated = {...activeCycle};
+                                    const s = updated.sheets.find(sh => sh.id === activeSheetId);
+                                    if (s) { 
+                                        const num = parseFloat(initialAmount);
+                                        const selectedItemsFromGlobal = globalItems.filter(gi => selectedGlobalIds.has(`${gi.code}_${gi.name}`));
+                                        selectedItemsFromGlobal.forEach(gi => {
+                                            s.items.push({ id: uuidv4(), name: gi.name, unit: gi.unit, code: gi.code, actual: isNaN(num) ? undefined : num });
+                                        });
+                                        setActiveCycle(updated); 
+                                        apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                        setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set());
+                                        addToast(`Добавлено позиций: ${selectedGlobalIds.size}`, "success");
+                                    }
                                 }
                             } else {
                                 handleCreateSheet();
@@ -967,13 +983,15 @@ const Inventory: React.FC = () => {
                         />
                         <button 
                             onClick={() => {
-                                const updated = {...activeCycle!};
-                                const s = updated.sheets.find(sh => sh.id === renamingSheet.id);
-                                if(s) s.title = renamingSheet.title;
-                                setActiveCycle(updated);
-                                apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                setRenamingSheet(null);
-                                addToast("Название обновлено", "success");
+                                if (activeCycle) {
+                                    const updated = {...activeCycle};
+                                    const s = updated.sheets.find(sh => sh.id === renamingSheet.id);
+                                    if(s) s.title = renamingSheet.title;
+                                    setActiveCycle(updated);
+                                    apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                    setRenamingSheet(null);
+                                    addToast("Название обновлено", "success");
+                                }
                             }}
                             className="w-full py-4 bg-sky-500 text-white font-black rounded-2xl shadow-lg shadow-sky-500/30 active:scale-95 transition-all text-xs tracking-widest uppercase"
                         >
