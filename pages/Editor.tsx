@@ -245,6 +245,8 @@ export default function Editor() {
     setIsUploading(true);
     try {
       const url = await uploadImage(file, 'recipes');
+      // ВАЖНО: Мы сразу обновляем imageUrl в стейте,
+      // это должно мгновенно отобразить превью
       setImageUrl(url);
       addToast("Фото загружено успешно", "success");
     } catch (e) {
@@ -276,7 +278,7 @@ export default function Editor() {
         id: id || uuidv4(),
         title: title.trim(),
         description: description || 'Нет описания',
-        imageUrl: imageUrl,
+        imageUrl: imageUrl, // Используем текущее значение стейта
         videoUrl: videoUrl.trim(),
         category: category.trim() || 'Без категории',
         outputWeight: outputWeight.trim() || '',
@@ -339,9 +341,14 @@ export default function Editor() {
 
       setStagedRecipes(staged);
       setMode('import-staging');
-    } catch (err: any) {
-      // Fix: Ensure a string is passed to addToast to avoid TypeScript unknown error
-      const errorMessage = err?.message || String(err);
+    } catch (err: unknown) {
+      // Fix: Proper type narrowing to handle the unknown error type before calling addToast
+      let errorMessage = "Ошибка PDF";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
       addToast(errorMessage, "error");
     } finally {
       setIsParsing(false);
@@ -377,10 +384,11 @@ export default function Editor() {
       await addRecipesBulk(finalRecipes, importNotify);
       addToast(`Импортировано: ${selected.length}`, "success");
       navigate('/', { replace: true });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      // Fix: Narrow type by using String conversion for toast notification
-      const message = e?.message || String(e);
+      let message = "Ошибка при сохранении";
+      if (e instanceof Error) message = e.message;
+      else if (typeof e === 'string') message = e;
       addToast(message, "error");
     } finally {
       setIsImporting(false);
@@ -595,10 +603,9 @@ export default function Editor() {
       setImageMatches(uniqueMatches);
       if (uniqueMatches.length === 0) addToast("Новых фото не найдено", "info");
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      // Fix: Narrow catch error to string for toast display
-      const msg = e?.message || String(e);
+      const msg = e instanceof Error ? e.message : String(e);
       addToast(`Ошибка парсинга: ${msg}`, "error");
     } finally {
       setIsParsing(false);
@@ -619,10 +626,11 @@ export default function Editor() {
       }
       addToast("Изображения обновлены", "success");
       navigate('/', { replace: true });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      // Fix: Handle potential unknown catch error for toast notification
-      const message = e?.message || String(e);
+      let message = "Ошибка обновления";
+      if (e instanceof Error) message = e.message;
+      else if (typeof e === 'string') message = e;
       addToast(message, "error");
     } finally {
       setIsImporting(false);
