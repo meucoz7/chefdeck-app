@@ -9,19 +9,6 @@ import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
 import { apiFetch } from '../services/api';
 
-// --- TYPES ---
-interface ImportSheet {
-    name: string;
-    data: any[][];
-    isSummary: boolean;
-    isSelected: boolean;
-    mapping: {
-        code: number;
-        name: number;
-        unit: number;
-    };
-}
-
 // --- UI COMPONENTS ---
 
 const Modal: React.FC<{ 
@@ -222,7 +209,7 @@ const Inventory: React.FC = () => {
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, type?: any, title: string, message: string, onConfirm: () => void} | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isGlobalImportOpen, setIsGlobalImportOpen] = useState(false);
-    const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
+    const [importSheets, setImportSheets] = useState<any[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [importProgress, setImportProgress] = useState(0);
     const [globalFiles, setGlobalFiles] = useState<{file1?: File, file2?: File}>({});
@@ -272,7 +259,7 @@ const Inventory: React.FC = () => {
         reader.onload = (evt) => {
             const bstr = evt.target?.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
-            const sheets: ImportSheet[] = wb.SheetNames.map((name, idx) => {
+            const sheets = wb.SheetNames.map((name, idx) => {
                 const sheet = wb.Sheets[name];
                 const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 
@@ -464,7 +451,7 @@ const Inventory: React.FC = () => {
             onConfirm: async () => {
                 setIsSaving(true);
                 try {
-                    // OPTIMIZATION: Filter items with actual > 0 for ARCHIVE
+                    // Создаем архивную версию (isFinalized: true, фильтруем ненулевые)
                     const archiveCycle = { 
                         ...activeCycle, 
                         id: uuidv4(), 
@@ -473,17 +460,17 @@ const Inventory: React.FC = () => {
                         sheets: activeCycle.sheets.map(s => ({
                             ...s,
                             items: s.items.filter(it => (it.actual !== undefined && it.actual > 0))
-                        })).filter(s => s.items.length > 0) // Remove totally empty sheets too
+                        })).filter(s => s.items.length > 0)
                     };
 
-                    // Send optimized archive to DB
+                    // Отправляем архив в базу
                     await apiFetch('/api/inventory/cycle', { 
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
                         body: JSON.stringify(archiveCycle) 
                     });
 
-                    // Reset ACTIVE cycle: Keep all positions but set actual to undefined
+                    // Сбрасываем ТЕКУЩИЙ цикл (очищаем actual)
                     const resetCycle = { 
                         ...activeCycle, 
                         sheets: activeCycle.sheets.map(s => ({ 
@@ -499,7 +486,9 @@ const Inventory: React.FC = () => {
                         body: JSON.stringify(resetCycle) 
                     });
 
-                    setActiveCycle(resetCycle); setViewMode('list'); loadData();
+                    setActiveCycle(resetCycle); 
+                    setViewMode('list'); 
+                    loadData();
                     addToast("Инвентаризация завершена!", "success");
                 } catch (e) { addToast("Ошибка завершения", "error"); }
                 finally { setIsSaving(false); }
@@ -589,7 +578,7 @@ const Inventory: React.FC = () => {
                     </div>
                     
                     <div className="flex gap-2 flex-shrink-0 ml-2">
-                        {viewMode === 'filling' && isLockedByMe && (
+                        {viewMode === 'filling' && (isLockedByMe || isAdmin) && (
                              <button onClick={() => { setIsAddingSheet(true); setSearchTerm(''); }} className="w-10 h-10 rounded-full bg-sky-500 text-white shadow-lg shadow-sky-500/30 flex items-center justify-center active:scale-95 transition">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                              </button>
@@ -708,6 +697,7 @@ const Inventory: React.FC = () => {
 
                         {viewMode === 'summary' && activeCycle && (
                             <div className="animate-slide-up space-y-5">
+                                <button onClick={exportSummary} className="w-full py-4 bg-emerald-600 text-white rounded-[1.5rem] text-[10px] font-black uppercase shadow-lg shadow-emerald-600/20 active:scale-95 transition">Экспорт Excel</button>
                                 <div className="bg-white dark:bg-[#1e1e24] rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 dark:border-white/5">
                                     <div className="overflow-x-auto">
                                         <table className="w-full border-collapse">
@@ -734,7 +724,6 @@ const Inventory: React.FC = () => {
                                         </table>
                                     </div>
                                 </div>
-                                <button onClick={exportSummary} className="w-full py-4 bg-emerald-600 text-white rounded-[1.5rem] text-[10px] font-black uppercase shadow-lg shadow-emerald-600/20 active:scale-95 transition">Экспорт Excel</button>
                             </div>
                         )}
 
@@ -783,16 +772,16 @@ const Inventory: React.FC = () => {
                                         sheetId={activeSheetId}
                                         onSync={handleActualSync} 
                                         onDelete={handleItemDelete}
-                                        readOnly={!isLockedByMe} 
+                                        readOnly={!isLockedByMe && !isAdmin} 
                                     />
                                 ))}
                                 {filteredSheetItems.length === 0 && (
                                      <div className="text-center py-10 opacity-40 italic text-sm">Ничего не найдено</div>
                                 )}
                                 <div className="fixed bottom-6 left-4 right-4 z-[60] bg-white/80 dark:bg-[#1e1e24]/80 backdrop-blur-xl p-3 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-gray-100 dark:border-white/5">
-                                    {isLockedByOthers ? (
+                                    {isLockedByOthers && !isAdmin ? (
                                         <button disabled className="w-full py-4 bg-gray-100 text-gray-400 font-black rounded-3xl uppercase text-[10px] tracking-widest opacity-50">Бланк занят ({currentSheet?.lockedBy?.name})</button>
-                                    ) : isLockedByMe ? (
+                                    ) : (isLockedByMe || isAdmin) ? (
                                         <button onClick={submitSheet} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-3xl uppercase text-[10px] tracking-[0.2em] active:scale-95 transition shadow-xl">Сдать заполненный бланк</button>
                                     ) : (
                                         <button onClick={startInventory} className="w-full py-4 bg-sky-500 text-white font-black rounded-3xl uppercase text-[10px] tracking-[0.2em] active:scale-95 transition shadow-xl shadow-sky-500/30">Начать инвентаризацию</button>
