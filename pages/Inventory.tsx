@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -117,24 +118,22 @@ const InventoryItemRow = React.memo<{
 
   useEffect(() => {
     const newVal = item.actual?.toString() || '';
-    // Обновляем локальное значение только если оно пришло извне и мы сейчас не печатаем
     if (newVal !== lastParentVal.current && !syncTimerRef.current) {
       setLocalValue(newVal);
-      localStorage.removeItem(draftKey); // Очищаем черновик, если синхронизировано
       lastParentVal.current = newVal;
     }
-  }, [item.actual, draftKey]);
+  }, [item.actual]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(',', '.');
     if (/^[0-9]*\.?[0-9]*$/.test(val)) {
       setLocalValue(val);
-      localStorage.setItem(draftKey, val); // Сохраняем черновик
+      localStorage.setItem(draftKey, val); 
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
       syncTimerRef.current = setTimeout(() => {
         onSync(item.id, val);
         syncTimerRef.current = null;
-      }, 500); // Уменьшенное время задержки
+      }, 500);
     }
   };
 
@@ -149,7 +148,7 @@ const InventoryItemRow = React.memo<{
     const currentX = e.touches[0].clientX;
     const diff = currentX - startX;
     if (Math.abs(diff) > 10) setIsSwiping(true);
-    if (diff < 0) setOffsetX(Math.max(diff, -90)); // Увеличена ширина свайпа
+    if (diff < 0) setOffsetX(Math.max(diff, -90));
     else setOffsetX(Math.min(diff, 0));
   };
 
@@ -166,7 +165,7 @@ const InventoryItemRow = React.memo<{
 
   return (
     <div className="relative overflow-hidden rounded-[2rem] mb-2.5 group bg-white dark:bg-[#1e1e24] shadow-sm border border-gray-100 dark:border-white/5">
-      {(!readOnly || isAdmin) && ( // Показываем кнопку удаления админу даже в readOnly
+      {!readOnly && (
         <div
           className="absolute inset-y-0 right-0 w-[90px] bg-red-500 flex flex-col items-center justify-center cursor-pointer z-0"
           onClick={() => onDelete(item.id)}
@@ -209,14 +208,15 @@ const Inventory: React.FC = () => {
   const { isAdmin, user } = useTelegram();
   const { addToast } = useToast();
 
-  // Instant local cache load
   const [activeCycle, setActiveCycle] = useState<InventoryCycle | null>(() => {
     return scopedStorage.getJson<InventoryCycle | null>('active_inventory_cache', null);
   });
   const [globalItems, setGlobalItems] = useState<GlobalInventoryItem[]>(() => {
     return scopedStorage.getJson<GlobalInventoryItem[]>('global_items_cache', []);
   });
+  
   const [isLoading, setIsLoading] = useState(!activeCycle);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'filling' | 'manage' | 'summary'>('list');
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -234,19 +234,20 @@ const Inventory: React.FC = () => {
   const [initialAmount, setInitialAmount] = useState('');
   const [renamingSheet, setRenamingSheet] = useState<{ id: string, title: string } | null>(null);
 
-  // Блокировка фонового обновления при вводе
   const lastActivityRef = useRef<number>(0);
   const markActivity = () => { lastActivityRef.current = Date.now(); };
 
   const loadData = useCallback(async (silent = false) => {
-    // Если пользователь активен последние 20 секунд, не обновляем извне, чтобы не затереть его ввод
     if (silent && Date.now() - lastActivityRef.current < 20000) return;
     if (!silent) setIsLoading(true);
+    else setIsSyncing(true);
+    
     try {
       const [resCycle, resGlobal] = await Promise.all([
         apiFetch('/api/inventory/active'),
         silent ? Promise.resolve(null) : apiFetch('/api/inventory/global-items')
       ]);
+      
       const cycleData = await resCycle.json();
       setActiveCycle(cycleData);
       if (cycleData) scopedStorage.setJson('active_inventory_cache', cycleData);
@@ -259,13 +260,14 @@ const Inventory: React.FC = () => {
     } catch (e) {
       if (!silent) addToast("Ошибка соединения", "error");
     } finally {
-      if (!silent) setIsLoading(false);
+      setIsLoading(false);
+      setIsSyncing(false);
     }
   }, [addToast]);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(true), 15000); // Уменьшенный интервал
+    const interval = setInterval(() => loadData(true), 15000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -345,7 +347,7 @@ const Inventory: React.FC = () => {
       });
       setImportProgress(100);
       addToast(`База обновлена!`, "success");
-      loadData(true); // Обновляем кэш после импорта
+      loadData(true);
       setTimeout(() => { setIsGlobalImportOpen(false); setIsSaving(false); setImportProgress(0); setGlobalFiles({}); }, 500);
     } catch (e) { addToast("Ошибка базы", "error"); setIsSaving(false); setImportProgress(0); }
   };
@@ -367,19 +369,24 @@ const Inventory: React.FC = () => {
         setImportProgress(20 + Math.round(((idx + 1) / selected.length) * 60));
         return { id: uuidv4(), title: s.name, items, status: 'active' };
       });
+      
       let updated: InventoryCycle;
       if (activeCycle) {
         updated = { ...activeCycle, sheets: [...activeCycle.sheets, ...newSheets] };
       } else {
         updated = { id: uuidv4(), date: Date.now(), sheets: newSheets, isFinalized: false, createdBy: user?.first_name || 'Admin' };
       }
-      await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-      setImportProgress(100);
+
+      // OPTIMISTIC UPDATE
       setActiveCycle(updated);
       scopedStorage.setJson('active_inventory_cache', updated);
+      setIsImportModalOpen(false);
+
+      await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+      setImportProgress(100);
       addToast("Бланки добавлены", "success");
     } catch (e) { addToast("Ошибка импорта", "error"); }
-    finally { setTimeout(() => { setIsImportModalOpen(false); setIsSaving(false); setImportProgress(0); }, 500); }
+    finally { setIsSaving(false); setImportProgress(0); }
   };
 
   const handleOpenSheet = (sheetId: string) => {
@@ -410,13 +417,10 @@ const Inventory: React.FC = () => {
       const sheet = updated.sheets.find(s => s.id === activeSheetId);
       if (sheet) {
         sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: isNaN(numeric) ? undefined : numeric } : i);
-        // Optimized server sync: Only call API when actually updated
         apiFetch('/api/inventory/cycle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updated)
-        }).then(() => {
-          localStorage.removeItem(`inv_draft_${prev.id}_${activeSheetId}_${itemId}`); // Очищаем черновик после синхронизации
         });
         return updated;
       }
@@ -449,10 +453,15 @@ const Inventory: React.FC = () => {
         const updated = { ...activeCycle };
         const target = updated.sheets.find(s => s.id === activeSheetId);
         if (target) target.status = 'submitted';
+        
+        // Optimistic UI
+        setActiveCycle(updated);
+        setActiveSheetId(null); 
+        setViewMode('list');
+
         try {
           await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
           await apiFetch('/api/inventory/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cycleId: activeCycle.id, sheetId: activeSheetId }) });
-          setActiveSheetId(null); setViewMode('list'); loadData(true);
           addToast("Бланк сдан!", "success");
         } catch (e) { addToast("Ошибка", "error"); }
       }
@@ -476,7 +485,7 @@ const Inventory: React.FC = () => {
             sheets: activeCycle.sheets.map(s => ({ ...s, status: 'active' as const, items: s.items.map(i => ({ ...i, actual: undefined })) }))
           };
           await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resetCycle) });
-          setActiveCycle(resetCycle); setViewMode('list'); loadData(true);
+          setActiveCycle(resetCycle); setViewMode('list');
           addToast("Инвентаризация завершена!", "success");
         } catch (e) { addToast("Ошибка завершения", "error"); }
         finally { setIsSaving(false); }
@@ -509,8 +518,15 @@ const Inventory: React.FC = () => {
     let updated = activeCycle
       ? { ...activeCycle, sheets: [...activeCycle.sheets, newSheet] }
       : { id: uuidv4(), date: Date.now(), sheets: [newSheet], isFinalized: false, createdBy: user?.first_name || 'Admin' };
+    
+    // OPTIMISTIC UPDATE
+    setActiveCycle(updated);
+    scopedStorage.setJson('active_inventory_cache', updated);
+    setIsAddingSheet(false);
+    setNewSheetTitle('');
+    setSelectedGlobalIds(new Set());
+
     await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-    setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
     addToast("Бланк создан", "success");
   };
 
@@ -560,9 +576,12 @@ const Inventory: React.FC = () => {
               <h1 className="text-xl font-black text-gray-900 dark:text-white leading-none truncate">
                 {viewMode === 'filling' ? currentSheet?.title : viewMode === 'summary' ? 'Сводная' : 'Инвентаризация'}
               </h1>
-              <p className="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-widest leading-none">
-                {activeCycle ? 'Активный цикл' : 'Цикл не начат'}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none">
+                    {activeCycle ? 'Активный цикл' : 'Цикл не начат'}
+                 </p>
+                 {isSyncing && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>}
+              </div>
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0 ml-2">
@@ -581,7 +600,7 @@ const Inventory: React.FC = () => {
         {(viewMode === 'filling' || viewMode === 'summary') && (
           <div className="mt-4 relative animate-slide-up">
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
             <input
               type="text"
@@ -776,7 +795,6 @@ const Inventory: React.FC = () => {
         )}
       </div>
 
-      {/* Modals */}
       <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="Импорт станций" subtitle="Проверьте данные перед загрузкой" maxWidth="max-w-md">
         <div className="space-y-4">
           {importSheets.map((s, i) => (
