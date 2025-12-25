@@ -9,6 +9,27 @@ import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
 import { apiFetch } from '../services/api';
 
+// --- UTILS ---
+
+/**
+ * Рекурсивно удаляет технические поля MongoDB (_id, __v) из объекта или массива.
+ * Это необходимо для создания чистых копий документов в БД без конфликтов ключей.
+ */
+const cleanMongoFields = (obj: any): any => {
+    if (Array.isArray(obj)) {
+        return obj.map(cleanMongoFields);
+    } else if (obj !== null && typeof obj === 'object') {
+        const newObj: any = {};
+        for (const key in obj) {
+            if (key !== '_id' && key !== '__v') {
+                newObj[key] = cleanMongoFields(obj[key]);
+            }
+        }
+        return newObj;
+    }
+    return obj;
+};
+
 // --- TYPES ---
 interface ImportSheet {
     name: string;
@@ -464,19 +485,22 @@ const Inventory: React.FC = () => {
             onConfirm: async () => {
                 setIsSaving(true);
                 try {
-                    // 1. СОЗДАЕМ АРХИВ (ОБЯЗАТЕЛЬНО НОВЫЙ ID)
+                    // Рекурсивно очищаем весь объект активного цикла от полей Mongo
+                    const cleanedActive = cleanMongoFields(activeCycle);
+
+                    // 1. СОЗДАЕМ АРХИВНУЮ КОПИЮ
                     const archiveCycle = { 
-                        ...activeCycle, 
-                        id: uuidv4(), 
+                        ...cleanedActive, 
+                        id: uuidv4(), // Обязательно новый UUID
                         isFinalized: true, 
                         date: Date.now(),
-                        sheets: activeCycle.sheets.map(s => ({
+                        sheets: cleanedActive.sheets.map((s: any) => ({
                             ...s,
-                            items: s.items.filter(it => (it.actual !== undefined && it.actual > 0))
-                        })).filter(s => s.items.length > 0)
+                            items: s.items.filter((it: any) => (it.actual !== undefined && it.actual > 0))
+                        })).filter((s: any) => s.items.length > 0)
                     };
 
-                    // Отправляем в БД архивный снимок
+                    // Отправляем архив в БД
                     const archiveRes = await apiFetch('/api/inventory/cycle', { 
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
@@ -485,13 +509,14 @@ const Inventory: React.FC = () => {
 
                     if (!archiveRes.ok) throw new Error("Failed to save archive");
 
-                    // 2. СБРАСЫВАЕМ АКТИВНЫЙ ЦИКЛ (Очищаем поля ввода, но оставляем структуру)
+                    // 2. СБРАСЫВАЕМ ТЕКУЩИЙ ЦИКЛ (Оставляем структуру бланков, но обнуляем ввод)
                     const resetCycle = { 
-                        ...activeCycle, 
-                        sheets: activeCycle.sheets.map(s => ({ 
+                        ...cleanedActive, 
+                        sheets: cleanedActive.sheets.map((s: any) => ({ 
                             ...s, 
-                            status: 'active' as const, 
-                            items: s.items.map(i => ({ ...i, actual: undefined })) 
+                            status: 'active', 
+                            lockedBy: undefined,
+                            items: s.items.map((i: any) => ({ ...i, actual: undefined })) 
                         }))
                     };
 
@@ -506,7 +531,7 @@ const Inventory: React.FC = () => {
                     loadData();
                     addToast("Инвентаризация завершена и в архиве!", "success");
                 } catch (e) { 
-                    console.error(e);
+                    console.error("Finalization error:", e);
                     addToast("Ошибка при сохранении архива", "error"); 
                 }
                 finally { setIsSaving(false); }
@@ -703,8 +728,8 @@ const Inventory: React.FC = () => {
                                         })}
                                         {isAdmin && activeCycle.sheets.every(s => s.status === 'submitted') && (
                                             <div className="pt-8 px-4 animate-slide-up">
-                                                <button onClick={finalizeCycle} className="w-full py-5 bg-gradient-to-r from-emerald-600 to-green-500 text-white font-black rounded-[2rem] shadow-2xl shadow-emerald-600/30 uppercase tracking-[0.2em] text-[10px] active:scale-95 transition">
-                                                    Завершить инвентаризацию
+                                                <button onClick={finalizeCycle} disabled={isSaving} className="w-full py-5 bg-gradient-to-r from-emerald-600 to-green-500 text-white font-black rounded-[2rem] shadow-2xl shadow-emerald-600/30 uppercase tracking-[0.2em] text-[10px] active:scale-95 transition disabled:opacity-50">
+                                                    {isSaving ? "Сохранение..." : "Завершить инвентаризацию"}
                                                 </button>
                                             </div>
                                         )}
@@ -756,25 +781,37 @@ const Inventory: React.FC = () => {
                                         <div className="min-w-0 flex-1 flex items-center gap-3">
                                             <div className="min-w-0 flex-1">
                                                 <h4 className="font-black dark:text-white truncate uppercase text-xs tracking-tight">{sheet.title}</h4>
-                                                <p className="text-[9px] text-gray-400 font-black uppercase mt-1 tracking-tighter">{sheet.items.length} позиций</p>
+                                                <p className="text-[9px] text-gray-400 font-black uppercase mt-1 tracking-tighter">
+                                                    {sheet.items.length} позиций 
+                                                    {sheet.lockedBy && <span className="text-red-500 ml-1.5">• Блок: {sheet.lockedBy.name}</span>}
+                                                </p>
                                             </div>
                                             <button onClick={() => setRenamingSheet({id: sheet.id, title: sheet.title})} className="w-8 h-8 rounded-full bg-gray-50 dark:bg-white/5 text-gray-400 hover:text-sky-500 transition-colors flex items-center justify-center">
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
                                             </button>
                                         </div>
-                                        <button onClick={() => { 
-                                            setConfirmModal({
-                                                isOpen: true,
-                                                type: 'danger',
-                                                title: "Удалить бланк?",
-                                                message: `Вы действительно хотите безвозвратно удалить бланк "${sheet.title}"?`,
-                                                onConfirm: () => {
-                                                    const updated = {...activeCycle!, sheets: activeCycle!.sheets.filter(s=>s.id!==sheet.id)};
-                                                    apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-                                                    setActiveCycle(updated); addToast("Удалено", "info");
-                                                }
-                                            });
-                                        }} className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition ml-2"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
+                                        <div className="flex gap-1 ml-2">
+                                            {sheet.lockedBy && (
+                                                <button onClick={async () => {
+                                                    await apiFetch('/api/inventory/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cycleId: activeCycle!.id, sheetId: sheet.id }) });
+                                                    loadDataSilent();
+                                                    addToast("Блокировка снята", "info");
+                                                }} className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-500/10 text-amber-500 flex items-center justify-center active:scale-90 transition" title="Разблокировать"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg></button>
+                                            )}
+                                            <button onClick={() => { 
+                                                setConfirmModal({
+                                                    isOpen: true,
+                                                    type: 'danger',
+                                                    title: "Удалить бланк?",
+                                                    message: `Вы действительно хотите безвозвратно удалить бланк "${sheet.title}"?`,
+                                                    onConfirm: () => {
+                                                        const updated = {...activeCycle!, sheets: activeCycle!.sheets.filter(s=>s.id!==sheet.id)};
+                                                        apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+                                                        setActiveCycle(updated); addToast("Удалено", "info");
+                                                    }
+                                                });
+                                            }} className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M14.74 9l-.346 9m-4.788 0L9.26 9" /></svg></button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
