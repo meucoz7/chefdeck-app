@@ -72,7 +72,7 @@ const inventoryCycleSchema = new mongoose.Schema({
     id: { type: String, required: true },
     date: { type: Number, required: true },
     sheets: Array,
-    isFinalized: { type: Boolean, default: false, index: true },
+    isFinalized: { type: Boolean, default: false },
     createdBy: String
 });
 
@@ -140,21 +140,12 @@ const setupBotListeners = (bot, token) => {
 const getBotInstance = (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
     try {
-        const isWebhook = !!WEBHOOK_URL;
-        const bot = new TelegramBot(token, { polling: !isWebhook });
-        
-        if (isWebhook) {
-            bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
-            console.log(`📡 Webhook set for bot with token ending in ...${token.slice(-5)}`);
-        }
-        
+        const bot = new TelegramBot(token, { polling: !WEBHOOK_URL });
+        if (WEBHOOK_URL) bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) { 
-        console.error("❌ Failed to create bot instance:", e);
-        return null; 
-    }
+    } catch (e) { return null; }
 };
 
 const initializeDefaultBot = async () => {
@@ -169,18 +160,6 @@ app.use((req, res, next) => {
     res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
-});
-
-// --- TELEGRAM WEBHOOK ENDPOINT ---
-app.post('/webhook/:token', (req, res) => {
-    const { token } = req.params;
-    const bot = botInstances.get(token);
-    if (bot) {
-        bot.processUpdate(req.body);
-        res.sendStatus(200);
-    } else {
-        res.sendStatus(404);
-    }
 });
 
 const resolveTenant = async (req, res, next) => {
@@ -212,28 +191,11 @@ app.post('/api/settings', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- INVENTORY API OPTIMIZED ---
-app.get('/api/inventory/active', resolveTenant, async (req, res) => {
+// --- INVENTORY API ---
+app.get('/api/inventory', resolveTenant, async (req, res) => {
     try {
-        const cycle = await InventoryCycle.findOne({ botId: req.tenant.botId, isFinalized: false });
-        res.json(cycle || null);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/inventory/archive', resolveTenant, async (req, res) => {
-    try {
-        // Return only IDs and Dates for the list, not full sheets data to save traffic
-        const archives = await InventoryCycle.find({ botId: req.tenant.botId, isFinalized: true })
-            .select('id date createdBy')
-            .sort({ date: -1 });
-        res.json(archives);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/inventory/archive/:id', resolveTenant, async (req, res) => {
-    try {
-        const cycle = await InventoryCycle.findOne({ botId: req.tenant.botId, id: req.params.id });
-        res.json(cycle);
+        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
+        res.json(cycles);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
