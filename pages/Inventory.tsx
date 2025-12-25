@@ -9,6 +9,19 @@ import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
 import { apiFetch } from '../services/api';
 
+// --- TYPES ---
+interface ImportSheet {
+    name: string;
+    data: any[][];
+    isSummary: boolean;
+    isSelected: boolean;
+    mapping: {
+        code: number;
+        name: number;
+        unit: number;
+    };
+}
+
 // --- UI COMPONENTS ---
 
 const Modal: React.FC<{ 
@@ -209,7 +222,7 @@ const Inventory: React.FC = () => {
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, type?: any, title: string, message: string, onConfirm: () => void} | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isGlobalImportOpen, setIsGlobalImportOpen] = useState(false);
-    const [importSheets, setImportSheets] = useState<any[]>([]);
+    const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [importProgress, setImportProgress] = useState(0);
     const [globalFiles, setGlobalFiles] = useState<{file1?: File, file2?: File}>({});
@@ -259,7 +272,7 @@ const Inventory: React.FC = () => {
         reader.onload = (evt) => {
             const bstr = evt.target?.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
-            const sheets = wb.SheetNames.map((name, idx) => {
+            const sheets: ImportSheet[] = wb.SheetNames.map((name, idx) => {
                 const sheet = wb.Sheets[name];
                 const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
                 
@@ -451,7 +464,7 @@ const Inventory: React.FC = () => {
             onConfirm: async () => {
                 setIsSaving(true);
                 try {
-                    // Создаем архивную версию (isFinalized: true, фильтруем ненулевые)
+                    // 1. СОЗДАЕМ АРХИВ (ОБЯЗАТЕЛЬНО НОВЫЙ ID)
                     const archiveCycle = { 
                         ...activeCycle, 
                         id: uuidv4(), 
@@ -463,14 +476,16 @@ const Inventory: React.FC = () => {
                         })).filter(s => s.items.length > 0)
                     };
 
-                    // Отправляем архив в базу
-                    await apiFetch('/api/inventory/cycle', { 
+                    // Отправляем в БД архивный снимок
+                    const archiveRes = await apiFetch('/api/inventory/cycle', { 
                         method: 'POST', 
                         headers: { 'Content-Type': 'application/json' }, 
                         body: JSON.stringify(archiveCycle) 
                     });
 
-                    // Сбрасываем ТЕКУЩИЙ цикл (очищаем actual)
+                    if (!archiveRes.ok) throw new Error("Failed to save archive");
+
+                    // 2. СБРАСЫВАЕМ АКТИВНЫЙ ЦИКЛ (Очищаем поля ввода, но оставляем структуру)
                     const resetCycle = { 
                         ...activeCycle, 
                         sheets: activeCycle.sheets.map(s => ({ 
@@ -489,8 +504,11 @@ const Inventory: React.FC = () => {
                     setActiveCycle(resetCycle); 
                     setViewMode('list'); 
                     loadData();
-                    addToast("Инвентаризация завершена!", "success");
-                } catch (e) { addToast("Ошибка завершения", "error"); }
+                    addToast("Инвентаризация завершена и в архиве!", "success");
+                } catch (e) { 
+                    console.error(e);
+                    addToast("Ошибка при сохранении архива", "error"); 
+                }
                 finally { setIsSaving(false); }
             }
         });
