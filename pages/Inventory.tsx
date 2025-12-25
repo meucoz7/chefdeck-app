@@ -103,10 +103,8 @@ const InventoryItemRow = React.memo<{
     onSync: (id: string, val: string) => void;
     readOnly?: boolean;
 }>(({ item, cycleId, sheetId, onDelete, onSync, readOnly }) => {
-    // Unique key for local persistence
     const draftKey = `inv_draft_${cycleId}_${sheetId}_${item.id}`;
     
-    // Local input state for 0ms response time
     const [localValue, setLocalValue] = useState(() => {
         const saved = localStorage.getItem(draftKey);
         return saved !== null ? saved : (item.actual?.toString() || '');
@@ -118,14 +116,11 @@ const InventoryItemRow = React.memo<{
     const { webApp } = useTelegram();
     const syncTimerRef = useRef<any>(null);
 
-    // Sync local state if parent value changes (e.g. from server poll),
-    // but only if we are NOT currently typing to prevent jumping cursors
     useEffect(() => {
         if (!syncTimerRef.current) {
             const parentVal = item.actual?.toString() || '';
             if (parentVal !== localValue) {
                 setLocalValue(parentVal);
-                // If it came from parent (server), we don't need the local draft anymore
                 localStorage.removeItem(draftKey);
             }
         }
@@ -133,21 +128,14 @@ const InventoryItemRow = React.memo<{
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let val = e.target.value.replace(',', '.');
-        
-        // Regex allows numbers, a single dot, and empty string
         if (/^[0-9]*\.?[0-9]*$/.test(val)) {
-            // 1. Instant UI update
             setLocalValue(val);
-            
-            // 2. Instant safety save to disk
             localStorage.setItem(draftKey, val);
-            
-            // 3. Debounced sync with global state and server
             if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
             syncTimerRef.current = setTimeout(() => {
                 onSync(item.id, val);
                 syncTimerRef.current = null;
-            }, 800); // 800ms debounce
+            }, 800);
         }
     };
 
@@ -414,7 +402,6 @@ const Inventory: React.FC = () => {
         } catch (e) { addToast("Ошибка", "error"); }
     };
 
-    // Use Callback to maintain reference stability for memoized rows
     const handleActualSync = useCallback((itemId: string, val: string) => {
         setActiveCycle(prev => {
             if (!prev || !activeSheetId) return prev;
@@ -423,7 +410,6 @@ const Inventory: React.FC = () => {
             const sheet = updated.sheets.find(s => s.id === activeSheetId);
             if (sheet) {
                 sheet.items = sheet.items.map(i => i.id === itemId ? { ...i, actual: isNaN(numeric) ? undefined : numeric } : i);
-                // Background server push
                 apiFetch('/api/inventory/cycle', { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
@@ -474,17 +460,45 @@ const Inventory: React.FC = () => {
             isOpen: true,
             type: 'success',
             title: "Финализировать?",
-            message: "Все бланки будут перенесены в архив. Значения 'Факт' в текущих бланках обнулятся для новой инвентаризации.",
+            message: "Все бланки будут перенесены в архив. В архив попадут ТОЛЬКО позиции с остатком > 0. Текущие бланки обнулятся.",
             onConfirm: async () => {
                 setIsSaving(true);
                 try {
-                    const archiveCopy = { ...activeCycle, id: uuidv4(), isFinalized: true, date: Date.now() };
-                    await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(archiveCopy) });
+                    // OPTIMIZATION: Filter items with actual > 0 for ARCHIVE
+                    const archiveCycle = { 
+                        ...activeCycle, 
+                        id: uuidv4(), 
+                        isFinalized: true, 
+                        date: Date.now(),
+                        sheets: activeCycle.sheets.map(s => ({
+                            ...s,
+                            items: s.items.filter(it => (it.actual !== undefined && it.actual > 0))
+                        })).filter(s => s.items.length > 0) // Remove totally empty sheets too
+                    };
+
+                    // Send optimized archive to DB
+                    await apiFetch('/api/inventory/cycle', { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify(archiveCycle) 
+                    });
+
+                    // Reset ACTIVE cycle: Keep all positions but set actual to undefined
                     const resetCycle = { 
                         ...activeCycle, 
-                        sheets: activeCycle.sheets.map(s => ({ ...s, status: 'active' as const, items: s.items.map(i => ({ ...i, actual: undefined })) }))
+                        sheets: activeCycle.sheets.map(s => ({ 
+                            ...s, 
+                            status: 'active' as const, 
+                            items: s.items.map(i => ({ ...i, actual: undefined })) 
+                        }))
                     };
-                    await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resetCycle) });
+
+                    await apiFetch('/api/inventory/cycle', { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify(resetCycle) 
+                    });
+
                     setActiveCycle(resetCycle); setViewMode('list'); loadData();
                     addToast("Инвентаризация завершена!", "success");
                 } catch (e) { addToast("Ошибка завершения", "error"); }
