@@ -245,8 +245,6 @@ export default function Editor() {
     setIsUploading(true);
     try {
       const url = await uploadImage(file, 'recipes');
-      // ВАЖНО: Мы сразу обновляем imageUrl в стейте,
-      // это должно мгновенно отобразить превью
       setImageUrl(url);
       addToast("Фото загружено успешно", "success");
     } catch (e) {
@@ -278,7 +276,7 @@ export default function Editor() {
         id: id || uuidv4(),
         title: title.trim(),
         description: description || 'Нет описания',
-        imageUrl: imageUrl, // Используем текущее значение стейта
+        imageUrl: imageUrl,
         videoUrl: videoUrl.trim(),
         category: category.trim() || 'Без категории',
         outputWeight: outputWeight.trim() || '',
