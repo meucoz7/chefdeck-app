@@ -109,6 +109,8 @@ if (MONGODB_URI) {
             initializeDefaultBot();
         })
         .catch(err => console.error("❌ MongoDB Connection Error:", err));
+} else {
+    console.error("❌ MONGODB_URI is not defined in .env file");
 }
 
 // --- BOT INSTANCE MANAGER ---
@@ -118,6 +120,7 @@ const setupBotListeners = (bot, token) => {
     bot.onText(/\/start/, async (msg) => {
         const chatId = msg.chat.id;
         const tgUser = msg.from;
+        console.log(`[Bot] Received /start from ${tgUser?.username || tgUser?.id}`);
         try {
             const config = await BotConfig.findOne({ token });
             if (!config) return;
@@ -129,31 +132,68 @@ const setupBotListeners = (bot, token) => {
                 );
             }
             const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
-            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ChefDeck!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
+            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
         } catch (e) { console.error("❌ Start command error:", e); }
+    });
+
+    bot.on('webhook_error', (error) => {
+        console.error('[Bot] Webhook Error:', error.message);
+    });
+
+    bot.on('error', (error) => {
+        console.error('[Bot] General Error:', error.message);
     });
 };
 
 const getBotInstance = (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
     try {
-        const bot = new TelegramBot(token, { polling: !WEBHOOK_URL });
-        if (WEBHOOK_URL) bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`);
+        const isPolling = !WEBHOOK_URL;
+        console.log(`[Bot] Initializing bot. Mode: ${isPolling ? 'Polling' : 'Webhook'}`);
+        
+        const bot = new TelegramBot(token, { polling: isPolling });
+        
+        if (WEBHOOK_URL) {
+            const hookUrl = `${WEBHOOK_URL}/webhook/${token}`;
+            bot.setWebHook(hookUrl);
+            console.log(`[Bot] Webhook set to: ${hookUrl}`);
+        }
+
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) { return null; }
+    } catch (e) { 
+        console.error(`[Bot] Failed to create instance for token ${token.substring(0, 10)}... :`, e.message);
+        return null; 
+    }
 };
 
 const initializeDefaultBot = async () => {
-    const bots = await BotConfig.find({});
-    bots.forEach(b => getBotInstance(b.token));
+    try {
+        const bots = await BotConfig.find({});
+        console.log(`[Bot] Found ${bots.length} bot configurations in DB`);
+        bots.forEach(b => getBotInstance(b.token));
+    } catch (e) {
+        console.error("[Bot] Failed to initialize bots from DB:", e.message);
+    }
 };
 
 app.use(express.json({ limit: '50mb' }));
+
+// --- TELEGRAM WEBHOOK ENDPOINT ---
+// ЭТОГО НЕ ХВАТАЛО: Принимаем уведомления от серверов Telegram
+app.post('/webhook/:token', async (req, res) => {
+    const { token } = req.params;
+    const bot = botInstances.get(token);
+    if (bot) {
+        bot.processUpdate(req.body);
+    }
+    res.sendStatus(200);
+});
+
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
