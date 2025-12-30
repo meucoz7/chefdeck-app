@@ -15,8 +15,17 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-// --- MONGODB SCHEMAS ---
+// --- GLOBAL ERROR HANDLING ---
+// Предотвращает падение сервера при сетевых ошибках Telegram (ECONNRESET и др.)
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Runtime] Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
+process.on('uncaughtException', (err) => {
+    console.error('[Runtime] Uncaught Exception thrown:', err);
+});
+
+// --- MONGODB SCHEMAS ---
 const botConfigSchema = new mongoose.Schema({
     botId: { type: String, required: true, unique: true },
     token: { type: String, required: true },
@@ -106,11 +115,11 @@ if (MONGODB_URI) {
     mongoose.connect(MONGODB_URI)
         .then(() => {
             console.log("✅ Connected to MongoDB");
-            initializeDefaultBot();
+            initializeAllBots();
         })
         .catch(err => console.error("❌ MongoDB Connection Error:", err));
 } else {
-    console.error("❌ MONGODB_URI is not defined in .env file");
+    console.error("❌ MONGODB_URI is not defined");
 }
 
 // --- BOT INSTANCE MANAGER ---
@@ -120,7 +129,6 @@ const setupBotListeners = (bot, token) => {
     bot.onText(/\/start/, async (msg) => {
         const chatId = msg.chat.id;
         const tgUser = msg.from;
-        console.log(`[Bot] Received /start from ${tgUser?.username || tgUser?.id}`);
         try {
             const config = await BotConfig.findOne({ token });
             if (!config) return;
@@ -131,69 +139,74 @@ const setupBotListeners = (bot, token) => {
                     { upsert: true, new: true }
                 );
             }
-            const appUrl = `${WEBHOOK_URL}/?bot_id=${config.botId}`;
-            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
+            const appUrl = `${WEBHOOK_URL || 'https://chefdeck.ru'}/?bot_id=${config.botId}`;
+            await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ChefDeck!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
-        } catch (e) { console.error("❌ Start command error:", e); }
-    });
-
-    bot.on('webhook_error', (error) => {
-        console.error('[Bot] Webhook Error:', error.message);
+        } catch (e) { console.error(`[Bot ${token.substring(0,5)}] Error:`, e.message); }
     });
 
     bot.on('error', (error) => {
-        console.error('[Bot] General Error:', error.message);
+        console.error(`[Bot ${token.substring(0,5)}] Network Error:`, error.message);
     });
 };
 
-const getBotInstance = (token) => {
+const getBotInstance = async (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
+    
     try {
-        const isPolling = !WEBHOOK_URL;
-        console.log(`[Bot] Initializing bot. Mode: ${isPolling ? 'Polling' : 'Webhook'}`);
-        
-        const bot = new TelegramBot(token, { polling: isPolling });
-        
+        // Если есть Webhook URL, выключаем Polling для экономии ресурсов
+        const usePolling = !WEBHOOK_URL;
+        const bot = new TelegramBot(token, { polling: usePolling });
+
         if (WEBHOOK_URL) {
             const hookUrl = `${WEBHOOK_URL}/webhook/${token}`;
-            bot.setWebHook(hookUrl);
-            console.log(`[Bot] Webhook set to: ${hookUrl}`);
+            await bot.setWebHook(hookUrl).catch(e => console.error(`[Bot] Hook failed for ${token.substring(0,5)}:`, e.message));
         }
 
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) { 
-        console.error(`[Bot] Failed to create instance for token ${token.substring(0, 10)}... :`, e.message);
-        return null; 
+    } catch (e) {
+        console.error(`[Bot] Init failed for ${token.substring(0,5)}:`, e.message);
+        return null;
     }
 };
 
-const initializeDefaultBot = async () => {
+const initializeAllBots = async () => {
     try {
         const bots = await BotConfig.find({});
-        console.log(`[Bot] Found ${bots.length} bot configurations in DB`);
-        bots.forEach(b => getBotInstance(b.token));
+        console.log(`[BotManager] Initializing ${bots.length} bots sequentially...`);
+        
+        // Последовательная инициализация с задержкой, чтобы не перегружать сервер
+        for (const b of bots) {
+            await getBotInstance(b.token);
+            await new Promise(resolve => setTimeout(resolve, 500)); // 0.5с пауза между ботами
+        }
+        console.log(`[BotManager] All bots initialized`);
     } catch (e) {
-        console.error("[Bot] Failed to initialize bots from DB:", e.message);
+        console.error("[BotManager] Global init error:", e.message);
     }
 };
 
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '10mb' })); // Уменьшили лимит, чтобы не забивать память
 
 // --- TELEGRAM WEBHOOK ENDPOINT ---
-// ЭТОГО НЕ ХВАТАЛО: Принимаем уведомления от серверов Telegram
 app.post('/webhook/:token', async (req, res) => {
     const { token } = req.params;
-    const bot = botInstances.get(token);
-    if (bot) {
-        bot.processUpdate(req.body);
+    try {
+        const bot = botInstances.get(token);
+        if (bot) {
+            bot.processUpdate(req.body);
+        }
+    } catch (e) {
+        console.error(`[Webhook] Update error for ${token.substring(0,5)}:`, e.message);
     }
     res.sendStatus(200);
 });
 
+// CORS
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
@@ -208,12 +221,11 @@ const resolveTenant = async (req, res, next) => {
         const config = await BotConfig.findOne({ botId });
         if (!config) return res.status(404).json({ error: "Bot not found" });
         req.tenant = { botId: config.botId, token: config.token };
-        req.botInstance = getBotInstance(config.token);
         next();
-    } catch (e) { res.status(500).send("Server Error"); }
+    } catch (e) { res.status(500).send("Tenant resolution error"); }
 };
 
-// --- SETTINGS API ---
+// --- API ROUTES ---
 app.get('/api/settings', resolveTenant, async (req, res) => {
     try {
         let settings = await AppSettingsModel.findOne({ botId: req.tenant.botId });
@@ -224,19 +236,14 @@ app.get('/api/settings', resolveTenant, async (req, res) => {
 
 app.post('/api/settings', resolveTenant, async (req, res) => {
     try {
-        const data = req.body;
-        const { _id, __v, botId, ...cleanData } = data;
+        const { _id, __v, botId, ...cleanData } = req.body;
         await AppSettingsModel.findOneAndUpdate({ botId: req.tenant.botId }, cleanData, { upsert: true });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- INVENTORY API ---
 app.get('/api/inventory', resolveTenant, async (req, res) => {
-    try {
-        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
-        res.json(cycles);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { res.json(await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 })); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
@@ -249,24 +256,11 @@ app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
 });
 
 app.delete('/api/inventory/cycle/:id', resolveTenant, async (req, res) => {
-    try {
-        await InventoryCycle.deleteOne({ id: req.params.id, botId: req.tenant.botId });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/inventory/archive/all', resolveTenant, async (req, res) => {
-    try {
-        await InventoryCycle.deleteMany({ botId: req.tenant.botId, isFinalized: true });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { await InventoryCycle.deleteOne({ id: req.params.id, botId: req.tenant.botId }); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
-    try {
-        const items = await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 });
-        res.json(items);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { res.json(await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 })); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) => {
@@ -283,46 +277,13 @@ app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) =
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/inventory/lock', resolveTenant, async (req, res) => {
-    const { cycleId, sheetId, user } = req.body;
-    try {
-        const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
-        if (!cycle) return res.status(404).json({ error: "Cycle not found" });
-        const sheet = cycle.sheets.find(s => s.id === sheetId);
-        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) return res.json({ success: false, lockedBy: sheet.lockedBy });
-        cycle.sheets = cycle.sheets.map(s => {
-            if (s.lockedBy && s.lockedBy.id === user.id) delete s.lockedBy;
-            if (s.id === sheetId) s.lockedBy = { id: user.id, name: user.name };
-            return s;
-        });
-        await InventoryCycle.updateOne({ id: cycleId, botId: req.tenant.botId }, { sheets: cycle.sheets });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
-    const { cycleId, sheetId } = req.body;
-    try {
-        const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
-        if (!cycle) return res.sendStatus(404);
-        cycle.sheets = cycle.sheets.map(s => { if (s.id === sheetId) delete s.lockedBy; return s; });
-        await InventoryCycle.updateOne({ id: cycleId, botId: req.tenant.botId }, { sheets: cycle.sheets });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// --- USERS & ADMIN API ---
 app.get('/api/users', resolveTenant, async (req, res) => {
-    try {
-        const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
-        res.json(users);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { res.json(await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 })); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/users/toggle-admin', resolveTenant, async (req, res) => {
-    const { targetId, status } = req.body;
     try {
-        await User.updateOne({ id: targetId, botId: req.tenant.botId }, { isAdmin: status });
+        await User.updateOne({ id: req.body.targetId, botId: req.tenant.botId }, { isAdmin: req.body.status });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -331,15 +292,14 @@ app.post('/admin/register-bot', async (req, res) => {
     try {
         const { botId, token, name, ownerId } = req.body;
         const existing = await BotConfig.findOne({ botId });
-        if (existing) return res.status(400).json({ error: "Этот ID уже занят" });
+        if (existing) return res.status(400).json({ error: "ID занят" });
         const newBot = new BotConfig({ botId, token, name, ownerId });
         await newBot.save();
-        getBotInstance(token); 
+        await getBotInstance(token); 
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- RECIPES API ---
 app.get('/api/recipes', resolveTenant, async (req, res) => {
     try { res.json(await Recipe.find({ botId: req.tenant.botId })); } catch (e) { res.status(500).send(e.message); }
 });
@@ -364,7 +324,6 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// --- SCHEDULE API ---
 app.get('/api/schedule', resolveTenant, async (req, res) => {
     try {
         const s = await Schedule.findOne({ botId: req.tenant.botId });
@@ -379,12 +338,8 @@ app.post('/api/schedule', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// --- WASTAGE API ---
 app.get('/api/wastage', resolveTenant, async (req, res) => {
-    try {
-        const logs = await Wastage.find({ botId: req.tenant.botId }).sort({ date: -1 });
-        res.json(logs);
-    } catch (e) { res.status(500).send(e.message); }
+    try { res.json(await Wastage.find({ botId: req.tenant.botId }).sort({ date: -1 })); } catch (e) { res.status(500).send(e.message); }
 });
 
 app.post('/api/wastage', resolveTenant, async (req, res) => {
@@ -396,16 +351,16 @@ app.post('/api/wastage', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// --- PROXY ---
 app.get('/api/proxy', async (req, res) => {
     try {
         const url = req.query.url;
         const response = await fetch(url);
         const text = await response.text();
         res.send(text);
-    } catch (e) { res.status(500).send(e.message); }
+    } catch (e) { res.status(500).send("Proxy Error"); }
 });
 
+// Static
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
