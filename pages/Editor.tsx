@@ -343,13 +343,8 @@ export default function Editor() {
       setMode('import-staging');
     } catch (err: unknown) {
       // Fix: Proper type narrowing to handle the unknown error type before calling addToast
-      let errorMessage = "Ошибка PDF";
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      addToast(errorMessage, "error");
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      addToast(errorMessage || "Ошибка PDF", "error");
     } finally {
       setIsParsing(false);
       setParsingProgress(0);
@@ -386,10 +381,9 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      let message = "Ошибка при сохранении";
-      if (e instanceof Error) message = e.message;
-      else if (typeof e === 'string') message = e;
-      addToast(message, "error");
+      // Fix: Robust type narrowing for unknown error type
+      const message = e instanceof Error ? e.message : String(e);
+      addToast(message || "Ошибка при сохранении", "error");
     } finally {
       setIsImporting(false);
     }
@@ -605,6 +599,7 @@ export default function Editor() {
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
     } catch (e: unknown) {
       console.error(e);
+      // Fix: Consistent error narrowing using String(e) as fallback
       const msg = e instanceof Error ? e.message : String(e);
       addToast(`Ошибка парсинга: ${msg}`, "error");
     } finally {
@@ -628,10 +623,9 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      let message = "Ошибка обновления";
-      if (e instanceof Error) message = e.message;
-      else if (typeof e === 'string') message = e;
-      addToast(message, "error");
+      // Fix: Proper type narrowing for unknown error type
+      const message = e instanceof Error ? e.message : String(e);
+      addToast(message || "Ошибка обновления", "error");
     } finally {
       setIsImporting(false);
     }
@@ -739,20 +733,20 @@ export default function Editor() {
                   </div>
                   <div className="space-y-4">
                       <div className="bg-gray-50 dark:bg-black/20 rounded-2xl px-5 py-3 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                          <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1 block">Название блюда</label>
+                          <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1.5 block">Название блюда</label>
                           <input type="text" className="w-full bg-transparent font-black text-xl dark:text-white outline-none" value={title} onChange={e => setTitle(e.target.value)} placeholder="Напр. Паста Карбонара" />
                       </div>
                       <div className="space-y-1">
-                          <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 ml-5 mb-1 block">Категория</label>
+                          <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 ml-5 mb-1.5 block">Категория</label>
                           <CategorySelector value={category} onChange={setCategory} existingCategories={existingCategories} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                           <div className="bg-gray-50 dark:bg-black/20 rounded-2xl px-5 py-3 border border-transparent focus-within:border-sky-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                              <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1 block">Выход</label>
+                              <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1.5 block">Выход</label>
                               <input type="text" className="w-full bg-transparent font-bold dark:text-white outline-none" value={outputWeight} onChange={e => setOutputWeight(e.target.value)} placeholder="350 г" />
                           </div>
                           <div className="bg-gray-50 dark:bg-black/20 rounded-2xl px-5 py-3 border border-transparent focus-within:border-red-500/30 focus-within:bg-white dark:focus-within:bg-[#2a2a35] transition-all">
-                              <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1 block">Видео URL</label>
+                              <label className="text-[9px] uppercase font-black tracking-widest text-gray-400 mb-1.5 block">Видео URL</label>
                               <input type="text" className="w-full bg-transparent text-sm dark:text-white outline-none" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="https://..." />
                           </div>
                       </div>
