@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -244,12 +243,15 @@ export default function Editor() {
   const handleImageInput = async (file: File | undefined) => {
     if (!file) return;
     setIsUploading(true);
+    console.log('[Editor] Starting upload for file:', file.name, file.size);
     try {
       const url = await uploadImage(file, 'recipes');
       setImageUrl(url);
       addToast("Фото загружено успешно", "success");
     } catch (err: any) {
-      addToast(err.message || "Ошибка при загрузке фото", "error");
+      console.error('[Editor] Upload catch:', err);
+      // Если в ошибке нет сообщения, используем более информативный дефолт
+      addToast(err.message || "Неизвестная ошибка загрузки. Проверьте консоль.", "error");
     } finally {
       setIsUploading(false);
     }
