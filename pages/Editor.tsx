@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -247,7 +248,7 @@ export default function Editor() {
       const url = await uploadImage(file, 'recipes');
       setImageUrl(url);
       addToast("Фото загружено успешно", "success");
-    } catch (e) {
+    } catch (e: unknown) {
       addToast("Ошибка при загрузке фото", "error");
     } finally {
       setIsUploading(false);
@@ -292,7 +293,7 @@ export default function Editor() {
 
       addToast("Сохранено", "success");
       navigate(id ? `/recipe/${id}` : '/', { replace: true });
-    } catch (e) {
+    } catch (e: unknown) {
       addToast("Ошибка сохранения", "error");
     } finally {
       setIsSaving(false);
@@ -340,7 +341,7 @@ export default function Editor() {
       setStagedRecipes(staged);
       setMode('import-staging');
     } catch (err: unknown) {
-      // Fix: Proper type narrowing to handle the unknown error type before calling addToast
+      // Correctly narrow unknown catch variable to string for addToast
       const errorMessage = err instanceof Error ? err.message : String(err);
       addToast(errorMessage || "Ошибка PDF", "error");
     } finally {
@@ -379,7 +380,7 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      // Fix: Robust type narrowing for unknown error type
+      // Correctly narrow unknown catch variable to string for addToast
       const message = e instanceof Error ? e.message : String(e);
       addToast(message || "Ошибка при сохранении", "error");
     } finally {
@@ -597,7 +598,7 @@ export default function Editor() {
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
     } catch (e: unknown) {
       console.error(e);
-      // Fix: Consistent error narrowing using String(e) as fallback
+      // Correctly narrow unknown catch variable to string for addToast
       const msg = e instanceof Error ? e.message : String(e);
       addToast(`Ошибка парсинга: ${msg}`, "error");
     } finally {
@@ -621,7 +622,7 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      // Fix: Proper type narrowing for unknown error type
+      // Correctly narrow unknown catch variable to string for addToast
       const message = e instanceof Error ? e.message : String(e);
       addToast(message || "Ошибка обновления", "error");
     } finally {
@@ -639,7 +640,7 @@ export default function Editor() {
                     <h3 className="font-black text-xl mb-6 dark:text-white leading-tight uppercase tracking-tight">
                         {isUploading ? 'Загрузка фото...' :
                          isImporting ? 'Обработка данных...' :
-                         isParsing ? parsingStatus :
+                         isParsing ? (parsingStatus as string) :
                          'Сохранение...'}
                     </h3>
                     {isParsing ? (
@@ -787,7 +788,7 @@ export default function Editor() {
                             </div>
                             <input type="text" placeholder="0" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3.5 text-sm font-black text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 w-full" value={ing.amount} onChange={e => { const n = [...ingredients]; n[i].amount = e.target.value; setIngredients(n); }} />
                             <input type="text" placeholder="ед" className="bg-gray-50 dark:bg-black/20 rounded-xl px-1 py-3.5 text-xs font-bold text-center outline-none dark:text-white focus:ring-2 focus:ring-sky-500/20 w-full uppercase" value={ing.unit} onChange={e => { const n = [...ingredients]; n[i].unit = e.target.value; setIngredients(n); }} />
-                            <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500 active:scale-90 transition-transform flex justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                            <button onClick={() => setIngredients(ingredients.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500 active:scale-90 transition-transform flex justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
                         </div>
                         );
                       })}
