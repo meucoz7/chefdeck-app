@@ -248,8 +248,8 @@ export default function Editor() {
       const url = await uploadImage(file, 'recipes');
       setImageUrl(url);
       addToast("Фото загружено успешно", "success");
-    } catch (e: unknown) {
-      addToast("Ошибка при загрузке фото", "error");
+    } catch (err: any) {
+      addToast(err.message || "Ошибка при загрузке фото", "error");
     } finally {
       setIsUploading(false);
     }
@@ -341,7 +341,6 @@ export default function Editor() {
       setStagedRecipes(staged);
       setMode('import-staging');
     } catch (err: unknown) {
-      // Correctly narrow unknown catch variable to string for addToast
       const errorMessage = err instanceof Error ? err.message : String(err);
       addToast(errorMessage || "Ошибка PDF", "error");
     } finally {
@@ -380,7 +379,6 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      // Correctly narrow unknown catch variable to string for addToast
       const message = e instanceof Error ? e.message : String(e);
       addToast(message || "Ошибка при сохранении", "error");
     } finally {
@@ -598,7 +596,6 @@ export default function Editor() {
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
     } catch (e: unknown) {
       console.error(e);
-      // Correctly narrow unknown catch variable to string for addToast
       const msg = e instanceof Error ? e.message : String(e);
       addToast(`Ошибка парсинга: ${msg}`, "error");
     } finally {
@@ -622,7 +619,6 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
-      // Correctly narrow unknown catch variable to string for addToast
       const message = e instanceof Error ? e.message : String(e);
       addToast(message || "Ошибка обновления", "error");
     } finally {
