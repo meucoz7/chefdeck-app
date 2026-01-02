@@ -1,4 +1,3 @@
-
 const API_URL = 'https://pro.filma4.ru/api';
 const API_KEY = '3f154923d8d6324c7a38dcd83159789f82a4ea9224335df225a375a6cb3d6415';
 
@@ -12,6 +11,7 @@ const getFolderId = async (name: string): Promise<number | null> => {
     if (folderCache[normalizedName]) return folderCache[normalizedName];
 
     try {
+        // 1. Пытаемся найти существующую папку
         const res = await fetch(`${API_URL}/folders`, {
             headers: { 'X-API-Key': API_KEY }
         });
@@ -27,7 +27,7 @@ const getFolderId = async (name: string): Promise<number | null> => {
             }
         }
 
-        // Если папка не найдена, создаем новую
+        // 2. Если папка не найдена или ошибка списка, пытаемся создать
         const createRes = await fetch(`${API_URL}/folders`, {
             method: 'POST',
             headers: { 
@@ -43,25 +43,26 @@ const getFolderId = async (name: string): Promise<number | null> => {
             return createResult.data.id;
         }
     } catch (e) {
-        console.error('[UploadService] Folder resolution error:', e);
+        console.error('[UploadService] Critical error during folder resolution:', e);
     }
     return null;
 };
 
 /**
- * Загружает файл на сервер с указанием folder_id.
- * Использует заголовок X-API-Key согласно документации.
+ * Загружает файл на сервер.
+ * @param file Файл для загрузки
+ * @param folderName Имя папки (напр. 'recipes', 'wastage')
  */
 export const uploadImage = async (file: File, folderName: string = 'general'): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const folderId = await getFolderId(folderName);
-    if (folderId !== null) {
-        formData.append('folder_id', folderId.toString());
-    }
-
     try {
+        const folderId = await getFolderId(folderName);
+        if (folderId !== null) {
+            formData.append('folder_id', folderId.toString());
+        }
+
         const response = await fetch(`${API_URL}/upload`, {
             method: 'POST',
             headers: { 
@@ -70,20 +71,23 @@ export const uploadImage = async (file: File, folderName: string = 'general'): P
             body: formData
         });
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `Server error: ${response.status}`);
+        const result = await response.json().catch(() => ({ success: false, message: 'Invalid JSON response' }));
+
+        if (!response.ok || !result.success) {
+            const errorMsg = result.message || `Server error: ${response.status}`;
+            console.error('[UploadService] Upload failed:', errorMsg, result);
+            throw new Error(errorMsg);
         }
 
-        const result = await response.json();
-        if (result.success && result.data && result.data.url) {
-            // Возвращаем основной URL изображения
+        if (result.data && result.data.url) {
+            // Возвращаем URL изображения (сервер обычно возвращает относительный или полный путь)
             return result.data.url;
         } else {
-            throw new Error('Invalid response format from upload server');
+            console.error('[UploadService] No URL in success response:', result);
+            throw new Error('Invalid response format: Missing data.url');
         }
     } catch (error) {
-        console.error('[UploadService] Upload error:', error);
+        console.error('[UploadService] Detailed upload error:', error);
         throw error;
     }
 };
