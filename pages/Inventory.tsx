@@ -100,7 +100,6 @@ const CustomConfirm: React.FC<{
     );
 };
 
-/* Added missing ImportSheet interface to fix compilation errors */
 interface ImportSheet {
     name: string;
     data: any[][];
@@ -238,6 +237,7 @@ const Inventory: React.FC = () => {
     const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [summarySearchTerm, setSummarySearchTerm] = useState('');
+    const [modalSearchTerm, setModalSearchTerm] = useState('');
     
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, type?: any, title: string, message: string, onConfirm: () => void} | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -574,7 +574,7 @@ const Inventory: React.FC = () => {
         
         try {
             await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-            setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set());
+            setActiveCycle(updated); setIsAddingSheet(false); setNewSheetTitle(''); setSelectedGlobalIds(new Set()); setModalSearchTerm('');
             addToast("Бланк создан", "success");
             lockSyncTemporarily();
         } catch (e) { addToast("Ошибка создания", "error"); }
@@ -595,8 +595,8 @@ const Inventory: React.FC = () => {
         const existingNames = new Set(currentSheet?.items.map(i => `${i.name}_${i.unit}`) || []);
         return globalItems
             .filter(gi => !existingNames.has(`${gi.name}_${gi.unit}`))
-            .filter(gi => !searchTerm || gi.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [globalItems, currentSheet, searchTerm]);
+            .filter(gi => !modalSearchTerm || gi.name.toLowerCase().includes(modalSearchTerm.toLowerCase()));
+    }, [globalItems, currentSheet, modalSearchTerm]);
 
     const filteredSummaryItems = useMemo(() => {
         if (!summarySearchTerm) return globalItems;
@@ -635,7 +635,7 @@ const Inventory: React.FC = () => {
                     
                     <div className="flex gap-2 flex-shrink-0 ml-2">
                         {viewMode === 'filling' && (isLockedByMe || isAdmin) && (
-                             <button onClick={() => { setIsAddingSheet(true); setSearchTerm(''); }} className="w-10 h-10 rounded-full bg-sky-500 text-white shadow-lg shadow-sky-500/30 flex items-center justify-center active:scale-95 transition">
+                             <button onClick={() => { setIsAddingSheet(true); setModalSearchTerm(''); }} className="w-10 h-10 rounded-full bg-sky-500 text-white shadow-lg shadow-sky-500/30 flex items-center justify-center active:scale-95 transition">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                              </button>
                         )}
@@ -702,7 +702,7 @@ const Inventory: React.FC = () => {
                                         <h3 className="font-black dark:text-white text-lg">Нет бланков инвентаризации</h3>
                                         <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 uppercase tracking-widest mb-6 text-center font-bold leading-tight">Создайте первый бланк вручную <br/> или импортируйте из Excel</p>
                                         {isAdmin && (
-                                            <button onClick={() => setIsAddingSheet(true)} className="px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-3xl shadow-xl active:scale-95 transition-all text-[11px] uppercase tracking-widest">
+                                            <button onClick={() => { setIsAddingSheet(true); setModalSearchTerm(''); }} className="px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-black font-black rounded-3xl shadow-xl active:scale-95 transition-all text-[11px] uppercase tracking-widest">
                                                 + Создать вручную
                                             </button>
                                         )}
@@ -787,7 +787,7 @@ const Inventory: React.FC = () => {
                             <div className="animate-slide-up space-y-4">
                                 <div className="flex justify-between items-center px-1">
                                     <h3 className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Управление бланками</h3>
-                                    <button onClick={() => setIsAddingSheet(true)} className="px-5 py-2.5 bg-purple-600 text-white rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-purple-500/20 transition active:scale-95">+ Создать бланк</button>
+                                    <button onClick={() => { setIsAddingSheet(true); setModalSearchTerm(''); }} className="px-5 py-2.5 bg-purple-600 text-white rounded-2xl text-[9px] font-black uppercase shadow-lg shadow-purple-500/20 transition active:scale-95">+ Создать бланк</button>
                                 </div>
                                 {activeCycle?.sheets.map(sheet => (
                                     <div key={sheet.id} className="bg-white dark:bg-[#1e1e24] p-4 pl-5 rounded-[2rem] border border-gray-100 dark:border-white/5 flex items-center justify-between shadow-sm group">
@@ -942,7 +942,7 @@ const Inventory: React.FC = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={isAddingSheet} onClose={() => { setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set()); }} title={viewMode === 'filling' ? 'Добавить товары' : 'Новый бланк'} subtitle="Выберите из базы">
+            <Modal isOpen={isAddingSheet} onClose={() => { setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set()); setModalSearchTerm(''); }} title={viewMode === 'filling' ? 'Добавить товары' : 'Новый бланк'} subtitle="Выберите из базы">
                 <div className="space-y-6">
                     {viewMode !== 'filling' && (
                         <div className="bg-gray-50 dark:bg-black/40 rounded-2xl px-5 py-4 border-2 border-transparent focus-within:border-purple-500/20 transition-all shadow-inner">
@@ -954,7 +954,7 @@ const Inventory: React.FC = () => {
                         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-sky-500 transition-colors">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
-                        <input type="text" placeholder="Поиск товара..." className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold dark:text-white outline-none shadow-inner border-2 border-transparent focus:border-sky-500/20 transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <input type="text" placeholder="Поиск товара..." className="w-full bg-gray-50 dark:bg-black/40 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold dark:text-white outline-none shadow-inner border-2 border-transparent focus:border-sky-500/20 transition-all" value={modalSearchTerm} onChange={e => setModalSearchTerm(e.target.value)} />
                     </div>
                     {viewMode === 'filling' && (
                          <div className="bg-sky-50 dark:bg-sky-500/5 rounded-2xl p-4 border border-sky-100 dark:border-sky-500/20">
@@ -998,7 +998,7 @@ const Inventory: React.FC = () => {
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-8">
-                    <button onClick={() => { setIsAddingSheet(false); setSelectedGlobalIds(new Set()); setInitialAmount(''); }} className="py-4 bg-gray-100 dark:bg-white/5 rounded-[1.5rem] font-bold text-gray-500 uppercase text-[10px] tracking-widest">Отмена</button>
+                    <button onClick={() => { setIsAddingSheet(false); setSelectedGlobalIds(new Set()); setInitialAmount(''); setModalSearchTerm(''); }} className="py-4 bg-gray-100 dark:bg-white/5 rounded-[1.5rem] font-bold text-gray-500 uppercase text-[10px] tracking-widest">Отмена</button>
                     <button 
                         onClick={async () => {
                             if (viewMode === 'filling') {
@@ -1014,7 +1014,7 @@ const Inventory: React.FC = () => {
                                     try {
                                         await apiFetch('/api/inventory/cycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
                                         setActiveCycle(updated); 
-                                        setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set());
+                                        setIsAddingSheet(false); setInitialAmount(''); setSelectedGlobalIds(new Set()); setModalSearchTerm('');
                                         addToast(`Добавлено позиций: ${selectedGlobalIds.size}`, "success");
                                         lockSyncTemporarily();
                                     } catch (e) { addToast("Ошибка добавления", "error"); }
