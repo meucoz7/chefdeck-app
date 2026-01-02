@@ -1,4 +1,3 @@
-
 export interface Ingredient {
   name: string;
   amount: string;
@@ -169,20 +168,6 @@ export interface ChefScheduleItem {
     shifts: Record<string, ShiftType>;
 }
 
-// RD Calendar Types
-export type RDStatus = 'idea' | 'work' | 'tasting' | 'done';
-
-export interface RDTask {
-    id: string;
-    title: string;
-    notes?: string;
-    status: RDStatus;
-    imageUrl?: string;
-    tastingRating?: number;
-    tastingFeedback?: string;
-    createdAt: number;
-}
-
 // Checklist Types
 export type ItemInputType = 'boolean' | 'number' | 'text' | 'health';
 export type ChecklistType = 'task' | 'log';
@@ -225,4 +210,18 @@ export interface WastageLog {
     date: number;
     items: WastageItem[];
     createdBy?: string;
+}
+
+// R&D Types
+export type RDStatus = 'idea' | 'work' | 'tasting' | 'done';
+
+export interface RDTask {
+    id: string;
+    title: string;
+    notes: string;
+    status: RDStatus;
+    imageUrl?: string;
+    tastingRating?: number;
+    tastingFeedback?: string;
+    createdAt: number;
 }
