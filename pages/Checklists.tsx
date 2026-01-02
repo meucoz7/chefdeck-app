@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { Checklist, ChecklistType } from '../types';
 import { useToast } from '../context/ToastContext';
+import { scopedStorage } from '../services/storage';
+import { uploadImage } from '../services/uploadService';
 
 const DEFAULT_CHECKLISTS: Checklist[] = [
     {
@@ -41,19 +43,21 @@ const Checklists: React.FC = () => {
     const [activeTab, setActiveTab] = useState<ChecklistType>('log'); 
     const [expandedListId, setExpandedListId] = useState<string | null>(null);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const activeUploadRef = useRef<{listId: string, itemId: string} | null>(null);
 
     useEffect(() => {
-        const saved = localStorage.getItem('pro_checklists');
-        if (saved) setLists(JSON.parse(saved));
+        const saved = scopedStorage.getJson<Checklist[] | null>('pro_checklists', null);
+        if (saved) setLists(saved);
         else setLists(DEFAULT_CHECKLISTS);
     }, []);
 
-    useEffect(() => { if(lists.length > 0) localStorage.setItem('pro_checklists', JSON.stringify(lists)); }, [lists]);
+    useEffect(() => { 
+        if(lists.length > 0) scopedStorage.setJson('pro_checklists', lists); 
+    }, [lists]);
 
-    // --- HELPER: CHECK IF COMPLETED TODAY ---
     const isCompletedToday = (list: Checklist) => {
         if (!list.lastCompleted) return false;
         const today = new Date().toDateString();
@@ -61,7 +65,6 @@ const Checklists: React.FC = () => {
         return today === last;
     };
 
-    // --- LOGIC HANDLERS ---
     const updateItem = (listId: string, itemId: string, updates: any) => {
         setLists(prev => prev.map(l => l.id !== listId ? l : {
             ...l, items: l.items.map(i => i.id !== itemId ? i : { ...i, ...updates })
@@ -97,21 +100,24 @@ const Checklists: React.FC = () => {
         updateItem(listId, itemId, { completed: !currentStatus });
     };
 
-    const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !activeUploadRef.current) return;
         const { listId, itemId } = activeUploadRef.current;
         
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            updateItem(listId, itemId, { completed: true, photoUrl: ev.target?.result as string });
-            addToast("Фото загружено", "success");
+        setIsUploadingPhoto(true);
+        try {
+            const url = await uploadImage(file, 'checklists');
+            updateItem(listId, itemId, { completed: true, photoUrl: url });
+            addToast("Фото подтверждено", "success");
             activeUploadRef.current = null;
-        };
-        reader.readAsDataURL(file);
+        } catch (e) {
+            addToast("Ошибка при загрузке фото", "error");
+        } finally {
+            setIsUploadingPhoto(false);
+        }
     };
 
-    // --- MASS ACTIONS ---
     const markAllTasks = (listId: string) => {
         setLists(prev => prev.map(l => l.id !== listId ? l : {
             ...l, items: l.items.map(i => {
@@ -123,7 +129,6 @@ const Checklists: React.FC = () => {
     };
 
     const saveReport = (list: Checklist) => {
-        // Validation
         const incomplete = list.items.filter(i => {
             if (i.inputType === 'boolean' && !i.completed) return true;
             if (i.inputType === 'number' && (!i.value || i.value === '')) return true;
@@ -136,12 +141,12 @@ const Checklists: React.FC = () => {
             return;
         }
 
-        if (confirm("Завершить журнал и сохранить отчет? Изменения будут заблокированы до завтра.")) {
+        if (confirm("Завершить журнал и сохранить отчет?")) {
              setLists(prev => prev.map(l => l.id !== list.id ? l : {
                  ...l, 
-                 lastCompleted: Date.now() // Mark as done today
+                 lastCompleted: Date.now()
              }));
-             setExpandedListId(null); // Collapse
+             setExpandedListId(null);
              addToast("Отчет сохранен успешно", "success");
         }
     };
@@ -150,7 +155,7 @@ const Checklists: React.FC = () => {
         if (confirm("Открыть журнал для внесения правок?")) {
             setLists(prev => prev.map(l => l.id !== listId ? l : {
                  ...l, 
-                 lastCompleted: undefined // Clear completion status
+                 lastCompleted: undefined
              }));
              setExpandedListId(listId);
         }
@@ -169,6 +174,17 @@ const Checklists: React.FC = () => {
         <div className="pb-24 animate-fade-in min-h-screen">
              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
              
+             {isUploadingPhoto && createPortal(
+                <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-md flex items-center justify-center animate-fade-in">
+                    <div className="bg-white dark:bg-[#1e1e24] p-6 rounded-3xl flex flex-col items-center">
+                        <div className="animate-spin text-sky-500 mb-2">
+                             <svg className="w-8 h-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        </div>
+                        <p className="text-xs font-bold dark:text-white uppercase tracking-wider">Загрузка фото подтверждения...</p>
+                    </div>
+                </div>, document.body
+             )}
+
              {lightboxUrl && createPortal(
                  <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-fade-in" onClick={() => setLightboxUrl(null)}>
                      <button className="absolute top-10 right-5 text-white bg-white/20 p-2 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -176,7 +192,6 @@ const Checklists: React.FC = () => {
                  </div>, document.body
              )}
 
-             {/* Header */}
              <div className="pt-safe-top px-5 pb-2 bg-[#f2f4f7] dark:bg-[#0f1115] sticky top-0 z-40 transition-colors duration-300">
                 <div className="flex items-center justify-between pt-4 mb-4">
                     <div className="flex items-center gap-3">
@@ -189,7 +204,6 @@ const Checklists: React.FC = () => {
                     <button onClick={() => navigate('/checklists/new')} className="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/30 active:scale-95 transition hover:bg-sky-600"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" /></svg></button>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex p-1.5 bg-white dark:bg-[#1e1e24] rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 mb-2">
                     <button onClick={() => setActiveTab('log')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'log' ? 'bg-gray-900 text-white dark:bg-white dark:text-black shadow-md' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>Журналы (HACCP)</button>
                     <button onClick={() => setActiveTab('task')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'task' ? 'bg-gray-900 text-white dark:bg-white dark:text-black shadow-md' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>Чек-листы</button>
@@ -208,12 +222,10 @@ const Checklists: React.FC = () => {
                      const isExpanded = expandedListId === list.id;
                      const completed = isCompletedToday(list);
                      
-                     // Calculate progress (visual only if completed)
                      const completedCount = list.items.filter(i => i.completed).length;
                      const totalCount = list.items.length;
                      const progress = Math.round((completedCount / totalCount) * 100) || 0;
 
-                     // IF COMPLETED TODAY: Show Green Card
                      if (completed) {
                          return (
                             <div key={list.id} className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-[2rem] p-6 flex flex-col items-center text-center shadow-sm animate-fade-in relative overflow-hidden">
@@ -230,7 +242,6 @@ const Checklists: React.FC = () => {
                          );
                      }
 
-                     // IF NOT COMPLETED: Show Active Card
                      return (
                          <div key={list.id} className={`bg-white dark:bg-[#1e1e24] rounded-[2rem] overflow-hidden shadow-sm transition-all duration-300 ${isExpanded ? 'ring-2 ring-sky-500/20 shadow-xl scale-[1.01]' : 'border border-gray-100 dark:border-white/5'}`}>
                              
@@ -244,7 +255,6 @@ const Checklists: React.FC = () => {
                                          <p className="text-xs text-gray-400 font-medium">{list.items.length} пунктов • {list.type === 'log' ? 'Данные' : 'Задачи'}</p>
                                      </div>
                                  </div>
-                                 {/* Simple Chevron or Progress if started */}
                                  {progress > 0 ? (
                                     <span className="text-xs font-bold text-sky-500">{progress}%</span>
                                  ) : (
@@ -285,7 +295,6 @@ const Checklists: React.FC = () => {
                                                  )}
                                              </div>
                                              
-                                             {/* --- INPUTS --- */}
                                              {item.inputType === 'health' && (
                                                  <div className="flex gap-2">
                                                      <button 
@@ -338,7 +347,6 @@ const Checklists: React.FC = () => {
                                          </div>
                                      ))}
 
-                                     {/* FOOTER ACTIONS */}
                                      <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-white/5">
                                          <button onClick={() => deleteList(list.id)} className="px-4 py-3 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-xl hover:bg-red-100 transition">
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
