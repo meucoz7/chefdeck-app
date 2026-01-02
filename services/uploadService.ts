@@ -13,7 +13,10 @@ const getFolderId = async (name: string): Promise<number | null> => {
     try {
         // 1. Пытаемся найти существующую папку
         const res = await fetch(`${API_URL}/folders`, {
-            headers: { 'X-API-Key': API_KEY }
+            headers: { 
+                'X-API-Key': API_KEY,
+                'Accept': 'application/json'
+            }
         });
         
         if (res.ok) {
@@ -27,12 +30,13 @@ const getFolderId = async (name: string): Promise<number | null> => {
             }
         }
 
-        // 2. Если папка не найдена или ошибка списка, пытаемся создать
+        // 2. Если папка не найдена, пытаемся создать
         const createRes = await fetch(`${API_URL}/folders`, {
             method: 'POST',
             headers: { 
                 'X-API-Key': API_KEY,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
             body: JSON.stringify({ name: normalizedName })
         });
@@ -43,17 +47,17 @@ const getFolderId = async (name: string): Promise<number | null> => {
             return createResult.data.id;
         }
     } catch (e) {
-        console.error('[UploadService] Critical error during folder resolution:', e);
+        console.error('[UploadService] Folder resolution error:', e);
     }
     return null;
 };
 
 /**
  * Загружает файл на сервер.
- * @param file Файл для загрузки
- * @param folderName Имя папки (напр. 'recipes', 'wastage')
  */
 export const uploadImage = async (file: File, folderName: string = 'general'): Promise<string> => {
+    if (!file) throw new Error('Файл не выбран');
+    
     const formData = new FormData();
     formData.append('file', file);
 
@@ -66,28 +70,27 @@ export const uploadImage = async (file: File, folderName: string = 'general'): P
         const response = await fetch(`${API_URL}/upload`, {
             method: 'POST',
             headers: { 
-                'X-API-Key': API_KEY 
+                'X-API-Key': API_KEY,
+                'Accept': 'application/json'
             },
             body: formData
         });
 
-        const result = await response.json().catch(() => ({ success: false, message: 'Invalid JSON response' }));
+        const result = await response.json().catch(() => null);
 
-        if (!response.ok || !result.success) {
-            const errorMsg = result.message || `Server error: ${response.status}`;
-            console.error('[UploadService] Upload failed:', errorMsg, result);
-            throw new Error(errorMsg);
+        if (!response.ok || !result || !result.success) {
+            const serverMsg = result?.message || `Ошибка сервера: ${response.status}`;
+            console.error('[UploadService] Server rejection:', serverMsg, result);
+            throw new Error(serverMsg);
         }
 
         if (result.data && result.data.url) {
-            // Возвращаем URL изображения (сервер обычно возвращает относительный или полный путь)
             return result.data.url;
         } else {
-            console.error('[UploadService] No URL in success response:', result);
-            throw new Error('Invalid response format: Missing data.url');
+            throw new Error('Сервер не вернул ссылку на файл (data.url)');
         }
-    } catch (error) {
-        console.error('[UploadService] Detailed upload error:', error);
+    } catch (error: any) {
+        console.error('[UploadService] Critical error:', error);
         throw error;
     }
 };
