@@ -15,8 +15,12 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
+// Внутренние константы для хранилища (скрыты от фронтенда)
+const UPLOAD_API_URL = 'https://pro.filma4.ru/api';
+const UPLOAD_API_KEY = '3f154923d8d6324c7a38dcd83159789f82a4ea9224335df225a375a6cb3d6415';
+const folderCache = new Map();
+
 // --- GLOBAL ERROR HANDLING ---
-// Предотвращает падение сервера при сетевых ошибках Telegram (ECONNRESET и др.)
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[Runtime] Unhandled Rejection at:', promise, 'reason:', reason);
 });
@@ -118,8 +122,6 @@ if (MONGODB_URI) {
             initializeAllBots();
         })
         .catch(err => console.error("❌ MongoDB Connection Error:", err));
-} else {
-    console.error("❌ MONGODB_URI is not defined");
 }
 
 // --- BOT INSTANCE MANAGER ---
@@ -144,32 +146,24 @@ const setupBotListeners = (bot, token) => {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [[{ text: "📱 Открыть приложение", web_app: { url: appUrl } }]] }
             });
-        } catch (e) { console.error(`[Bot ${token.substring(0,5)}] Error:`, e.message); }
-    });
-
-    bot.on('error', (error) => {
-        console.error(`[Bot ${token.substring(0,5)}] Network Error:`, error.message);
+        } catch (e) { console.error(`[Bot] Error:`, e.message); }
     });
 };
 
 const getBotInstance = async (token) => {
     if (botInstances.has(token)) return botInstances.get(token);
-    
     try {
-        // Если есть Webhook URL, выключаем Polling для экономии ресурсов
         const usePolling = !WEBHOOK_URL;
         const bot = new TelegramBot(token, { polling: usePolling });
-
         if (WEBHOOK_URL) {
             const hookUrl = `${WEBHOOK_URL}/webhook/${token}`;
-            await bot.setWebHook(hookUrl).catch(e => console.error(`[Bot] Hook failed for ${token.substring(0,5)}:`, e.message));
+            await bot.setWebHook(hookUrl).catch(e => console.error(`[Bot] Hook failed:`, e.message));
         }
-
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
     } catch (e) {
-        console.error(`[Bot] Init failed for ${token.substring(0,5)}:`, e.message);
+        console.error(`[Bot] Init failed:`, e.message);
         return null;
     }
 };
@@ -177,32 +171,42 @@ const getBotInstance = async (token) => {
 const initializeAllBots = async () => {
     try {
         const bots = await BotConfig.find({});
-        console.log(`[BotManager] Initializing ${bots.length} bots sequentially...`);
-        
-        // Последовательная инициализация с задержкой, чтобы не перегружать сервер
         for (const b of bots) {
             await getBotInstance(b.token);
-            await new Promise(resolve => setTimeout(resolve, 500)); // 0.5с пауза между ботами
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
-        console.log(`[BotManager] All bots initialized`);
-    } catch (e) {
-        console.error("[BotManager] Global init error:", e.message);
-    }
+    } catch (e) {}
 };
 
-app.use(express.json({ limit: '10mb' })); // Уменьшили лимит, чтобы не забивать память
+app.use(express.json({ limit: '10mb' }));
 
-// --- TELEGRAM WEBHOOK ENDPOINT ---
+// --- UPLOAD HELPER ---
+const getServerFolderId = async (name) => {
+    const key = name.toLowerCase().trim();
+    if (folderCache.has(key)) return folderCache.get(key);
+    try {
+        const res = await fetch(`${UPLOAD_API_URL}/folders`, { headers: { 'X-API-Key': UPLOAD_API_KEY } });
+        const result = await res.json();
+        if (result.success && Array.isArray(result.data)) {
+            const f = result.data.find(folder => folder.name.toLowerCase() === key);
+            if (f) { folderCache.set(key, f.id); return f.id; }
+        }
+        const createRes = await fetch(`${UPLOAD_API_URL}/folders`, {
+            method: 'POST',
+            headers: { 'X-API-Key': UPLOAD_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: key })
+        });
+        const createResult = await createRes.json();
+        if (createResult.success) { folderCache.set(key, createResult.data.id); return createResult.data.id; }
+    } catch (e) { console.error('[ServerUpload] Folder error:', e.message); }
+    return null;
+};
+
+// --- TELEGRAM WEBHOOK ---
 app.post('/webhook/:token', async (req, res) => {
     const { token } = req.params;
-    try {
-        const bot = botInstances.get(token);
-        if (bot) {
-            bot.processUpdate(req.body);
-        }
-    } catch (e) {
-        console.error(`[Webhook] Update error for ${token.substring(0,5)}:`, e.message);
-    }
+    const bot = botInstances.get(token);
+    if (bot) bot.processUpdate(req.body);
     res.sendStatus(200);
 });
 
@@ -225,11 +229,39 @@ const resolveTenant = async (req, res, next) => {
     } catch (e) { res.status(500).send("Tenant resolution error"); }
 };
 
-// --- API ROUTES ---
+// --- NEW UPLOAD PROXY ROUTE ---
+app.post('/api/upload', resolveTenant, async (req, res) => {
+    try {
+        const folderName = req.query.folder || 'general';
+        const folderId = await getServerFolderId(folderName);
+        
+        // Перенаправляем запрос как есть (stream), добавляя API ключ
+        const targetUrl = new URL(`${UPLOAD_API_URL}/upload`);
+        if (folderId) targetUrl.searchParams.set('folder_id', folderId);
+
+        const uploadRes = await fetch(targetUrl.toString(), {
+            method: 'POST',
+            headers: {
+                'X-API-Key': UPLOAD_API_KEY,
+                'Accept': 'application/json',
+                'Content-Type': req.headers['content-type'] // multipart/form-data
+            },
+            body: req // Передаем входящий поток данных (файл) напрямую
+        });
+
+        const result = await uploadRes.json();
+        res.status(uploadRes.status).json(result);
+    } catch (e) {
+        console.error('[ServerUpload] Fatal:', e.message);
+        res.status(500).json({ success: false, message: 'Server Upload Proxy Error' });
+    }
+});
+
+// --- OTHER API ROUTES ---
 app.get('/api/settings', resolveTenant, async (req, res) => {
     try {
         let settings = await AppSettingsModel.findOne({ botId: req.tenant.botId });
-        if (!settings) { settings = await AppSettingsModel.create({ botId: req.tenant.botId }); }
+        if (!settings) settings = await AppSettingsModel.create({ botId: req.tenant.botId });
         res.json(settings);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
