@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-// Внутренние константы для хранилища (скрыты от фронтенда)
+// Внутренние константы для хранилища
 const UPLOAD_API_URL = 'https://pro.filma4.ru/api';
 const UPLOAD_API_KEY = '3f154923d8d6324c7a38dcd83159789f82a4ea9224335df225a375a6cb3d6415';
 const folderCache = new Map();
@@ -185,20 +185,26 @@ const getServerFolderId = async (name) => {
     const key = name.toLowerCase().trim();
     if (folderCache.has(key)) return folderCache.get(key);
     try {
-        const res = await fetch(`${UPLOAD_API_URL}/folders`, { headers: { 'X-API-Key': UPLOAD_API_KEY } });
+        const res = await fetch(`${UPLOAD_API_URL}/folders`, { 
+            headers: { 'X-API-Key': UPLOAD_API_KEY, 'Accept': 'application/json' } 
+        });
+        
+        if (!res.ok) return null;
+        
         const result = await res.json();
         if (result.success && Array.isArray(result.data)) {
             const f = result.data.find(folder => folder.name.toLowerCase() === key);
             if (f) { folderCache.set(key, f.id); return f.id; }
         }
+        
         const createRes = await fetch(`${UPLOAD_API_URL}/folders`, {
             method: 'POST',
-            headers: { 'X-API-Key': UPLOAD_API_KEY, 'Content-Type': 'application/json' },
+            headers: { 'X-API-Key': UPLOAD_API_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ name: key })
         });
         const createResult = await createRes.json();
         if (createResult.success) { folderCache.set(key, createResult.data.id); return createResult.data.id; }
-    } catch (e) { console.error('[ServerUpload] Folder error:', e.message); }
+    } catch (e) { console.error('[ServerUpload] Folder logic skip:', e.message); }
     return null;
 };
 
@@ -229,31 +235,34 @@ const resolveTenant = async (req, res, next) => {
     } catch (e) { res.status(500).send("Tenant resolution error"); }
 };
 
-// --- NEW UPLOAD PROXY ROUTE ---
+// --- CORRECTED UPLOAD PROXY ROUTE ---
 app.post('/api/upload', resolveTenant, async (req, res) => {
     try {
         const folderName = req.query.folder || 'general';
         const folderId = await getServerFolderId(folderName);
         
-        // Перенаправляем запрос как есть (stream), добавляя API ключ
         const targetUrl = new URL(`${UPLOAD_API_URL}/upload`);
         if (folderId) targetUrl.searchParams.set('folder_id', folderId);
 
+        console.log('[ServerUpload] Proxying to:', targetUrl.toString());
+
+        // ВАЖНО: Node.js fetch требует duplex: 'half' при передаче потока (req) в body
         const uploadRes = await fetch(targetUrl.toString(), {
             method: 'POST',
             headers: {
                 'X-API-Key': UPLOAD_API_KEY,
                 'Accept': 'application/json',
-                'Content-Type': req.headers['content-type'] // multipart/form-data
+                'Content-Type': req.headers['content-type']
             },
-            body: req // Передаем входящий поток данных (файл) напрямую
+            body: req,
+            duplex: 'half' 
         });
 
-        const result = await uploadRes.json();
+        const result = await uploadRes.json().catch(e => ({ success: false, message: 'Invalid JSON from upstream' }));
         res.status(uploadRes.status).json(result);
     } catch (e) {
-        console.error('[ServerUpload] Fatal:', e.message);
-        res.status(500).json({ success: false, message: 'Server Upload Proxy Error' });
+        console.error('[ServerUpload] Proxy Error:', e.message);
+        res.status(500).json({ success: false, message: e.message || 'Server Upload Proxy Error' });
     }
 });
 
