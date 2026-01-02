@@ -17,7 +17,6 @@ import Users from './pages/Users';
 import AppSettings from './pages/AppSettings';
 import Checklists from './pages/Checklists';
 import CreateChecklist from './pages/CreateChecklist';
-import RDCalendar from './pages/RDCalendar';
 import MenuPlanner from './pages/MenuPlanner';
 import Tools from './pages/Tools';
 import ShoppingList from './pages/ShoppingList';
@@ -47,7 +46,6 @@ const App: React.FC = () => {
                         <Route path="/app-settings" element={<AppSettings />} />
                         <Route path="/checklists" element={<Checklists />} />
                         <Route path="/checklists/new" element={<CreateChecklist />} />
-                        <Route path="/rd" element={<RDCalendar />} />
                         <Route path="/menu" element={<MenuPlanner />} />
                         <Route path="/tools" element={<Tools />} />
                         <Route path="/shopping" element={<ShoppingList />} />
