@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -316,7 +317,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     )}
                     <div className="aspect-square w-full relative overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 mb-3">
                       <img
-                        src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}&background=random`}
+                        src={recipe.imageUrls?.small || recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}&background=random`}
                         alt={recipe.title}
                         className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                         loading="lazy"
