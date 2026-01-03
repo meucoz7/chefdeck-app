@@ -223,6 +223,25 @@ const resolveCategoryId = async (name) => {
 
 // --- API ROUTES ---
 
+// Маршрут-прокси для скрапинга
+app.get('/api/proxy', async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).send("URL parameter is missing");
+    try {
+        const response = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const body = await response.text();
+        res.send(body);
+    } catch (e) {
+        console.error('[Proxy Error]:', e.message);
+        res.status(500).send("Failed to fetch target URL");
+    }
+});
+
 app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
