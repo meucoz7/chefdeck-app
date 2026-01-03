@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
-import { WastageLog, WastageItem, WastageReason } from '../types';
+import { WastageLog, WastageItem, WastageReason, ImageUrls } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
 import { apiFetch } from '../services/api';
@@ -35,7 +35,7 @@ const Wastage: React.FC = () => {
         unit: 'кг'
     });
     const [actPhoto, setActPhoto] = useState<string>('');
-    const [actPhotos, setActPhotos] = useState<any>(null);
+    const [actPhotos, setActPhotos] = useState<ImageUrls | null>(null);
 
     useEffect(() => {
         const cached = scopedStorage.getJson<WastageLog[]>('wastage_logs', []);
@@ -59,16 +59,15 @@ const Wastage: React.FC = () => {
             });
     }, []);
 
-    // Fix: extract original URL from ImageUrls response to assign to the string actPhoto state
     const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setIsUploadingPhoto(true);
             try {
-                // Изменено: 'wastages' вместо 'wastage' согласно ТЗ
-                const url = await uploadImage(file, 'wastages');
-                setActPhoto(url.original);
-                setActPhotos(url);
+                // Загружаем в папку 'wastages'
+                const urls = await uploadImage(file, 'wastages');
+                setActPhoto(urls.original);
+                setActPhotos(urls);
                 addToast("Фото прикреплено", "success");
             } catch (err: any) {
                 addToast(err.message || "Ошибка при загрузке фото", "error");
@@ -93,7 +92,7 @@ const Wastage: React.FC = () => {
             reason: newItem.reason || 'spoilage',
             comment: newItem.comment,
             photoUrl: actPhoto,
-            photoUrls: actPhotos
+            photoUrls: actPhotos || undefined
         };
 
         const newLog: WastageLog = {
@@ -266,9 +265,9 @@ const Wastage: React.FC = () => {
                                     <div className="space-y-3">
                                         {log.items.map(item => (
                                             <div key={item.id} className="bg-gray-50 dark:bg-black/20 p-4 rounded-2xl flex gap-4">
-                                                {item.photoUrl && (
-                                                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white shadow-sm cursor-pointer" onClick={() => window.open(item.photoUrl, '_blank')}>
-                                                        <img src={item.photoUrl} className="w-full h-full object-cover" />
+                                                {(item.photoUrls?.small || item.photoUrl) && (
+                                                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-white shadow-sm cursor-pointer" onClick={() => window.open(item.photoUrls?.original || item.photoUrl, '_blank')}>
+                                                        <img src={item.photoUrls?.small || item.photoUrl} className="w-full h-full object-cover" />
                                                     </div>
                                                 )}
                                                 <div className="flex-1 min-w-0">
