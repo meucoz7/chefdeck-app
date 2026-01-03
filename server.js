@@ -24,6 +24,21 @@ const categoryCache = new Map();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// --- HEALTH CHECK ROUTE (добавлено для Coolify) ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy', uptime: process.uptime() });
+});
+
+// --- Остальные middleware ---
+app.use(express.json({ limit: '10mb' }));
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
+  res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 // --- MONGODB SCHEMAS ---
 const botConfigSchema = new mongoose.Schema({
     botId: { type: String, required: true, unique: true },
@@ -325,7 +340,9 @@ app.post('/webhook/:token', async (req, res) => {
     res.sendStatus(200);
 });
 
+// --- Статика и fallback для SPA ---
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-app.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
+// --- Запуск сервера с bind на 0.0.0.0 (важно для Docker/Coolify) ---
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port ${PORT}`));
