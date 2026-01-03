@@ -312,7 +312,6 @@ app.post('/api/wastage', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// НОВЫЙ МАРШРУТ УДАЛЕНИЯ СПИСАНИЯ
 app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
     try {
         const { id } = req.params;
@@ -322,6 +321,86 @@ app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
         } else {
             res.status(404).json({ error: "Act not found" });
         }
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+// --- INVENTORY ROUTES ---
+
+app.get('/api/inventory', resolveTenant, async (req, res) => {
+    try {
+        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
+        res.json(cycles);
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
+    try {
+        const data = req.body;
+        data.botId = req.tenant.botId;
+        await InventoryCycle.findOneAndUpdate({ id: data.id, botId: req.tenant.botId }, data, { upsert: true });
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
+    try {
+        const items = await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 });
+        res.json(items);
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) => {
+    try {
+        const { items } = req.body;
+        for (const item of items) {
+            await GlobalInventoryItem.findOneAndUpdate(
+                { code: item.code, botId: req.tenant.botId },
+                { ...item, botId: req.tenant.botId },
+                { upsert: true }
+            );
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/inventory/lock', resolveTenant, async (req, res) => {
+    try {
+        const { cycleId, sheetId, user } = req.body;
+        const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
+        if (!cycle) return res.status(404).json({ success: false });
+
+        const sheet = cycle.sheets.find(s => s.id === sheetId);
+        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) {
+            return res.json({ success: false, lockedBy: sheet.lockedBy });
+        }
+
+        if (sheet) {
+            sheet.lockedBy = user;
+            await cycle.save();
+            res.json({ success: true });
+        } else res.status(404).json({ success: false });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
+    try {
+        const { cycleId, sheetId } = req.body;
+        const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
+        if (cycle) {
+            const sheet = cycle.sheets.find(s => s.id === sheetId);
+            if (sheet) {
+                sheet.lockedBy = undefined;
+                await cycle.save();
+                res.json({ success: true });
+            } else res.status(404).json({ success: false });
+        } else res.status(404).json({ success: false });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
+app.delete('/api/inventory/archive/all', resolveTenant, async (req, res) => {
+    try {
+        await InventoryCycle.deleteMany({ botId: req.tenant.botId, isFinalized: true });
+        res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
 });
 
