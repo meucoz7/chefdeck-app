@@ -30,8 +30,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { recipes } = useRecipes();
   const mainRef = useRef<HTMLDivElement>(null);
   
-  // Calculate favorites count
-  const favoritesCount = recipes.filter(r => r.isFavorite).length;
+  // Calculate active favorites count (excluding archived ones)
+  const favoritesCount = recipes.filter(r => r.isFavorite && !r.isArchived).length;
   
   // Hide nav on specific sections
   const hideNav = 
