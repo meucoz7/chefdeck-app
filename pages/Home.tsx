@@ -140,20 +140,14 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const startLongPress = (e: React.MouseEvent | React.TouchEvent, cat: string) => {
     if (!isAdmin || isReordering) return;
     
-    // Prevent default context menu on touch devices
-    if (e.type === 'touchstart') {
-      longPressTimer.current = setTimeout(() => {
-        setIsReordering(true);
-        if (window.navigator.vibrate) window.navigator.vibrate(50);
-        setSelectedSwap(cat);
-      }, 600);
-    } else {
-      longPressTimer.current = setTimeout(() => {
-        setIsReordering(true);
-        if (window.navigator.vibrate) window.navigator.vibrate(50);
-        setSelectedSwap(cat);
-      }, 600);
-    }
+    // Clear any existing timer
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+
+    longPressTimer.current = setTimeout(() => {
+      setIsReordering(true);
+      if (window.navigator.vibrate) window.navigator.vibrate(50);
+      setSelectedSwap(cat);
+    }, 600);
   };
 
   const cancelLongPress = () => {
@@ -287,13 +281,15 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                         key={cat}
                         onMouseDown={(e) => startLongPress(e, cat)}
                         onTouchStart={(e) => startLongPress(e, cat)}
+                        onMouseMove={cancelLongPress}
+                        onTouchMove={cancelLongPress}
                         onMouseUp={cancelLongPress}
                         onMouseLeave={cancelLongPress}
                         onTouchEnd={cancelLongPress}
                         onContextMenu={(e) => e.preventDefault()}
                         onClick={() => handleCategoryClick(cat)}
-                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none touch-none 
-                        ${isReordering ? 'animate-wiggle border-2 ring-2 ring-sky-500/5' : 'border-gray-100 dark:border-white/5 hover:shadow-md'} 
+                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none 
+                        ${isReordering ? 'animate-wiggle border-2 ring-2 ring-sky-500/5 touch-none' : 'border-gray-100 dark:border-white/5 hover:shadow-md touch-pan-y'} 
                         ${isSelectedForSwap ? 'border-sky-500 ring-4 ring-sky-500/20 scale-105 z-10' : ''}`}
                       >
                         <div className="flex justify-between items-start">
