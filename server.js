@@ -154,7 +154,6 @@ const setupBotListeners = (bot, token) => {
                 );
             }
             
-            // Используем название бота из конфига или дефолтное значение
             const botName = config.name || 'ChefDeck';
             const appUrl = `${WEBHOOK_URL || 'https://chefdeck.ru'}/?bot_id=${config.botId}`;
             
@@ -191,35 +190,19 @@ const initializeAllBots = async () => {
     } catch (e) {}
 };
 
-// --- TENANT RESOLVER (FIXED 404 ISSUE) ---
 const resolveTenant = async (req, res, next) => {
     const botId = req.headers['x-bot-id'] || req.query.bot_id || 'default';
     try {
         let config = await BotConfig.findOne({ botId });
-        
-        // Fallback for default bot if not in DB yet
         if (!config && botId === 'default') {
-            config = { 
-                botId: 'default', 
-                token: process.env.TELEGRAM_BOT_TOKEN || 'placeholder',
-                name: 'Default Bot'
-            };
+            config = { botId: 'default', token: process.env.TELEGRAM_BOT_TOKEN || 'placeholder', name: 'Default Bot' };
         }
-
-        if (!config) {
-            console.warn(`[Tenant] Bot configuration for "${botId}" not found in database.`);
-            return res.status(404).json({ error: "Bot not found" });
-        }
-
+        if (!config) return res.status(404).json({ error: "Bot not found" });
         req.tenant = { botId: config.botId, token: config.token };
         next();
-    } catch (e) { 
-        console.error(`[Tenant] Error:`, e.message);
-        res.status(500).send("Tenant resolution error"); 
-    }
+    } catch (e) { res.status(500).send("Tenant resolution error"); }
 };
 
-// --- HELPER FOR IMAGE CATEGORIES ---
 const resolveCategoryId = async (name) => {
     const key = name.toLowerCase().trim();
     if (categoryCache.has(key)) return categoryCache.get(key);
@@ -243,39 +226,19 @@ const resolveCategoryId = async (name) => {
 app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
-
         const folderName = req.query.folder || 'general';
         const categoryId = await resolveCategoryId(folderName);
-        
         const form = new FormData();
-        form.append('image', req.file.buffer, {
-            filename: req.file.originalname || 'upload.jpg',
-            contentType: req.file.mimetype
-        });
+        form.append('image', req.file.buffer, { filename: req.file.originalname || 'upload.jpg', contentType: req.file.mimetype });
         if (categoryId) form.append('category_id', String(categoryId));
-
-        console.log(`[Upload] Proxying to ${UPLOAD_API_URL}/upload ...`);
-        
         const uploadRes = await fetch(`${UPLOAD_API_URL}/upload`, {
             method: 'POST',
-            headers: {
-                'X-API-Key': UPLOAD_API_KEY,
-                ...form.getHeaders()
-            },
+            headers: { 'X-API-Key': UPLOAD_API_KEY, ...form.getHeaders() },
             body: form
         });
-
         const result = await uploadRes.json();
-        
-        if (!uploadRes.ok) {
-            console.error('[Upload] External service error:', result);
-        }
-
         res.status(uploadRes.status).json(result);
-    } catch (e) {
-        console.error('[Proxy] Upload Error:', e.message);
-        res.status(500).json({ success: false, message: 'Proxy Upload Failed: ' + e.message });
-    }
+    } catch (e) { res.status(500).json({ success: false, message: 'Proxy Upload Failed: ' + e.message }); }
 });
 
 app.get('/api/settings', resolveTenant, async (req, res) => {
@@ -318,16 +281,10 @@ app.post('/api/share-recipe', resolveTenant, async (req, res) => {
                           `⚖️ Выход: ${recipe.outputWeight || '-'}\n\n` +
                           `🛒 Ингредиенты:\n` + 
                           recipe.ingredients.map(i => `• ${i.name}: ${i.amount} ${i.unit}`).join('\n');
-            
-            if (photoUrl) {
-                await bot.sendPhoto(targetChatId, photoUrl, { caption, parse_mode: 'HTML' });
-            } else {
-                await bot.sendMessage(targetChatId, caption, { parse_mode: 'HTML' });
-            }
+            if (photoUrl) await bot.sendPhoto(targetChatId, photoUrl, { caption, parse_mode: 'HTML' });
+            else await bot.sendMessage(targetChatId, caption, { parse_mode: 'HTML' });
             res.json({ success: true });
-        } else {
-            res.status(404).send("Bot or Recipe not found");
-        }
+        } else res.status(404).send("Bot or Recipe not found");
     } catch (e) { res.status(500).send(e.message); }
 });
 
@@ -355,6 +312,19 @@ app.post('/api/wastage', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
+// НОВЫЙ МАРШРУТ УДАЛЕНИЯ СПИСАНИЯ
+app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await Wastage.deleteOne({ id: id, botId: req.tenant.botId });
+        if (result.deletedCount > 0) {
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: "Act not found" });
+        }
+    } catch (e) { res.status(500).send(e.message); }
+});
+
 app.post('/webhook/:token', async (req, res) => {
     const { token } = req.params;
     const bot = botInstances.get(token);
@@ -362,7 +332,6 @@ app.post('/webhook/:token', async (req, res) => {
     res.sendStatus(200);
 });
 
-// --- STATIC ASSETS & SPA FALLBACK ---
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
