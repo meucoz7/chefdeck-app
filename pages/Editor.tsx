@@ -250,10 +250,11 @@ export default function Editor() {
       const urls = await uploadImage(file, 'recipes'); // Updated to receive ImageUrls object
       setImageUrls(urls); // Updated to set the object
       addToast("Фото загружено во всех размерах", "success");
-    } catch (err: any) {
+    /* Added type check for 'err' to satisfy strict typing and fix line 773 related errors */
+    } catch (err: unknown) {
       console.error('[Editor] Upload catch:', err);
-      // Если в ошибке нет сообщения, используем более информативный дефолт
-      addToast(err.message || "Неизвестная ошибка загрузки. Проверьте консоль.", "error");
+      const errorMessage = err instanceof Error ? err.message : "Неизвестная ошибка загрузки. Проверьте консоль.";
+      addToast(errorMessage, "error");
     } finally {
       setIsUploading(false);
     }
