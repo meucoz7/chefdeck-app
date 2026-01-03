@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -20,7 +19,6 @@ const Details: React.FC = () => {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  
   const [textSizeIndex, setTextSizeIndex] = useState(2);
 
   if (!recipe) return null;
@@ -69,10 +67,7 @@ const Details: React.FC = () => {
   };
 
   const handleSendToChat = async () => {
-    if (!user) {
-        addToast("Недоступно в браузере", "error");
-        return;
-    }
+    if (!user) { addToast("Недоступно в браузере", "error"); return; }
     setIsSending(true);
     try {
         const res = await apiFetch('/api/share-recipe', {
@@ -80,19 +75,14 @@ const Details: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 recipeId: recipe.id,
-                targetChatId: user.id
+                targetChatId: user.id,
+                photoUrl: recipe.imageUrls?.original || recipe.imageUrl // Send Original size to TG
             })
         });
-        if (res.ok) {
-            addToast("Отправлено в чат", "success");
-        } else {
-            throw new Error("Failed");
-        }
-    } catch (e) {
-        addToast("Ошибка отправки", "error");
-    } finally {
-        setIsSending(false);
-    }
+        if (res.ok) addToast("Отправлено в чат", "success");
+        else throw new Error();
+    } catch (e) { addToast("Ошибка отправки", "error"); }
+    finally { setIsSending(false); }
   };
 
   const getEmbedVideoUrl = (url: string) => {
@@ -112,17 +102,17 @@ const Details: React.FC = () => {
       {isImageOpen && createPortal(
           <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-fade-in backdrop-blur-md" onClick={() => setIsImageOpen(false)}>
              <button className="absolute top-safe-top right-4 p-2 bg-white/10 rounded-full text-white"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
-             <img src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}`} className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+             <img src={recipe.imageUrls?.original || recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}`} className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
           </div>, document.body
       )}
 
       {isVideoOpen && createPortal(
           <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 animate-fade-in backdrop-blur-md">
              <div className="w-full max-w-4xl flex justify-end mb-4 pt-safe-top">
-                 <button onClick={() => setIsVideoOpen(false)} className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                 <button onClick={() => setIsVideoOpen(false)} className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center">✕</button>
              </div>
-             <div className="w-full max-w-4xl aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/10">
-                  {youtubeEmbed ? <iframe src={youtubeEmbed} className="w-full h-full" allowFullScreen title="Video" /> : <video controls className="w-full h-full" src={recipe.videoUrl} autoPlay />}
+             <div className="w-full max-w-4xl aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl">
+                  {youtubeEmbed ? <iframe src={youtubeEmbed} className="w-full h-full" allowFullScreen /> : <video controls className="w-full h-full" src={recipe.videoUrl} autoPlay />}
              </div>
           </div>, document.body
       )}
@@ -196,6 +186,11 @@ const Details: React.FC = () => {
                       </div>
                   )}
               </div>
+              {recipe.imageUrls?.medium && (
+                  <div className="w-full aspect-video rounded-3xl overflow-hidden shadow-sm border border-gray-100 dark:border-white/5 cursor-pointer" onClick={() => setIsImageOpen(true)}>
+                      <img src={recipe.imageUrls.medium} className="w-full h-full object-cover" alt="Dish Medium" />
+                  </div>
+              )}
           </div>
           <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 flex justify-between items-center">
