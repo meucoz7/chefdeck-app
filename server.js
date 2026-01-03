@@ -22,7 +22,6 @@ const UPLOAD_API_URL = 'http://pro.filma4.ru/api/v1';
 const UPLOAD_API_KEY = '3f154923d8d6324c7a38dcd83159789f82a4ea9224335df225a375a6cb3d6415';
 const categoryCache = new Map();
 
-// Multer for local handling of uploads before proxying
 const upload = multer({ storage: multer.memoryStorage() });
 
 // --- MONGODB SCHEMAS ---
@@ -114,7 +113,6 @@ const InventoryCycle = mongoose.model('InventoryCycle', inventoryCycleSchema);
 const AppSettingsModel = mongoose.model('AppSettings', settingsSchema);
 const GlobalInventoryItem = mongoose.model('GlobalInventoryItem', globalInventoryItemSchema);
 
-// --- DB CONNECTION ---
 if (MONGODB_URI) {
     mongoose.connect(MONGODB_URI)
         .then(() => {
@@ -124,7 +122,6 @@ if (MONGODB_URI) {
         .catch(err => console.error("❌ MongoDB Connection Error:", err));
 }
 
-// --- BOT INSTANCE MANAGER ---
 const botInstances = new Map();
 
 const setupBotListeners = (bot, token) => {
@@ -177,7 +174,6 @@ const initializeAllBots = async () => {
 
 app.use(express.json({ limit: '10mb' }));
 
-// CORS
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
@@ -196,7 +192,6 @@ const resolveTenant = async (req, res, next) => {
     } catch (e) { res.status(500).send("Tenant resolution error"); }
 };
 
-// --- CATEGORY HELPER ---
 const resolveCategoryId = async (name) => {
     const key = name.toLowerCase().trim();
     if (categoryCache.has(key)) return categoryCache.get(key);
@@ -215,7 +210,6 @@ const resolveCategoryId = async (name) => {
     return null;
 };
 
-// --- ENHANCED UPLOAD PROXY ---
 app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
@@ -247,7 +241,6 @@ app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) 
     }
 });
 
-// --- API ROUTES ---
 app.get('/api/settings', resolveTenant, async (req, res) => {
     try {
         let settings = await AppSettingsModel.findOne({ botId: req.tenant.botId });
