@@ -270,6 +270,22 @@ app.post('/api/recipes', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
+app.post('/api/recipes/bulk', resolveTenant, async (req, res) => {
+    try {
+        const recipes = req.body;
+        if (!Array.isArray(recipes)) return res.status(400).send("Expected array");
+        const operations = recipes.map(r => ({
+            updateOne: {
+                filter: { id: r.id, botId: req.tenant.botId },
+                update: { ...r, botId: req.tenant.botId },
+                upsert: true
+            }
+        }));
+        await Recipe.bulkWrite(operations);
+        res.json({ success: true });
+    } catch (e) { res.status(500).send(e.message); }
+});
+
 app.post('/api/share-recipe', resolveTenant, async (req, res) => {
     try {
         const { recipeId, targetChatId, photoUrl } = req.body;
