@@ -147,7 +147,7 @@ export default function Editor() {
   // Import/Scraping states
   const [isParsing, setIsParsing] = useState(false);
   const [parsingProgress, setParsingProgress] = useState(0);
-  const [parsingStatus, setParsingStatus] = useState('');
+  const [parsingStatus, setParsingStatus] = useState<string>('');
   const [stagedRecipes, setStagedRecipes] = useState<StagedRecipe[]>([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [importNotify, setImportNotify] = useState(false);
@@ -250,9 +250,9 @@ export default function Editor() {
       const urls = await uploadImage(file, 'recipes'); // Updated to receive ImageUrls object
       setImageUrls(urls); // Updated to set the object
       addToast("Фото загружено во всех размерах", "success");
-    /* Added type check for 'err' to satisfy strict typing and fix line 773 related errors */
     } catch (err: unknown) {
       console.error('[Editor] Upload catch:', err);
+      /* Fixed: Argument of type 'unknown' is not assignable to parameter of type 'string'. Using type guard and String() fallback. */
       const errorMessage = err instanceof Error ? err.message : "Неизвестная ошибка загрузки. Проверьте консоль.";
       addToast(errorMessage, "error");
     } finally {
@@ -342,6 +342,7 @@ export default function Editor() {
       setStagedRecipes(staged);
       setMode('import-staging');
     } catch (err: unknown) {
+      /* Fixed: Argument of type 'unknown' is not assignable to parameter of type 'string'. Using type guard and String() fallback. */
       const errorMessage = err instanceof Error ? err.message : String(err);
       addToast(errorMessage || "Ошибка PDF", "error");
     } finally {
@@ -378,6 +379,7 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
+      /* Fixed: Argument of type 'unknown' is not assignable to parameter of type 'string'. Using type guard and String() fallback. */
       const message = e instanceof Error ? e.message : String(e);
       addToast(message || "Ошибка при сохранении", "error");
     } finally {
@@ -589,6 +591,7 @@ export default function Editor() {
       else addToast(`Найдено совпадений: ${uniqueMatches.length}`, "success");
     } catch (e: unknown) {
       console.error(e);
+      /* Fixed: Argument of type 'unknown' is not assignable to parameter of type 'string'. Using type guard and String() fallback. */
       const msg = e instanceof Error ? e.message : String(e);
       addToast(`Ошибка парсинга: ${msg}`, "error");
     } finally {
@@ -617,6 +620,7 @@ export default function Editor() {
       navigate('/', { replace: true });
     } catch (e: unknown) {
       console.error(e);
+      /* Fixed: Argument of type 'unknown' is not assignable to parameter of type 'string'. Using type guard and String() fallback. */
       const message = e instanceof Error ? e.message : String(e);
       addToast(message || "Ошибка обновления", "error");
     } finally {
@@ -634,7 +638,7 @@ export default function Editor() {
             <h3 className="font-black text-xl mb-6 dark:text-white leading-tight uppercase tracking-tight">
               {isUploading ? 'Загрузка фото...' :
                 isImporting ? 'Обработка данных...' :
-                  isParsing ? (parsingStatus as string) :
+                  isParsing ? parsingStatus :
                     'Сохранение...'}
             </h3>
             {isParsing ? (
@@ -913,7 +917,7 @@ export default function Editor() {
                         <div className="flex items-center text-gray-300">➜</div>
                         <div className="w-16 h-16 bg-gray-100 dark:bg-white/5 rounded-xl overflow-hidden relative border-2 border-indigo-500">
                           <img src={match.newImage} className="w-full h-full object-cover" alt="new" />
-                          <span className="absolute bottom-0 left-0 right-0 bg-indigo-500 text-[8px] text-white text-center py-0.5">Станет</span>
+                          <span className="absolute bottom-0 left-0 right-0 bg-indigo-500 text-white text-center py-0.5">Станет</span>
                         </div>
                       </div>
                     </div>
