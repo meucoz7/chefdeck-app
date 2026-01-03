@@ -1,3 +1,4 @@
+
 import { apiFetch } from './api';
 
 /**
@@ -12,14 +13,13 @@ export const uploadImage = async (file: File, folderName: string = 'general'): P
     }
 
     const formData = new FormData();
-    formData.append('file', file);
+    // Изменено: 'image' вместо 'file' согласно новой документации API v1
+    formData.append('image', file);
 
     try {
-        // Мы отправляем запрос на НАШ сервер, а не на сторонний домен.
-        // Это гарантирует отсутствие ошибок CORS ("Failed to fetch").
+        // Отправляем запрос на НАШ сервер.
         const response = await apiFetch(`/api/upload?folder=${encodeURIComponent(folderName)}`, {
             method: 'POST',
-            // Headers: Content-Type не ставим, fetch поставит multipart/form-data сам
             body: formData
         });
 
@@ -30,7 +30,11 @@ export const uploadImage = async (file: File, folderName: string = 'general'): P
             throw new Error(serverMsg);
         }
 
-        if (result.data && result.data.url) {
+        // Изменено: парсинг вложенной структуры data.urls.original
+        if (result.data && result.data.urls && result.data.urls.original) {
+            return result.data.urls.original;
+        } else if (result.data && result.data.url) {
+            // Fallback для совместимости
             return result.data.url;
         } else {
             throw new Error('Сервер вернул пустой путь к файлу');
