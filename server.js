@@ -24,12 +24,7 @@ const categoryCache = new Map();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- HEALTH CHECK ROUTE (добавлено для Coolify) ---
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy', uptime: process.uptime() });
-});
-
-// --- Остальные middleware ---
+// --- MIDDLEWARES ---
 app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -37,6 +32,11 @@ app.use((req, res, next) => {
   res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
+});
+
+// --- HEALTH CHECK ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy', uptime: process.uptime() });
 });
 
 // --- MONGODB SCHEMAS ---
@@ -187,26 +187,35 @@ const initializeAllBots = async () => {
     } catch (e) {}
 };
 
-app.use(express.json({ limit: '10mb' }));
-
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, x-bot-id");
-    res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-});
-
+// --- TENANT RESOLVER (FIXED 404 ISSUE) ---
 const resolveTenant = async (req, res, next) => {
-    let botId = req.headers['x-bot-id'] || req.query.bot_id || 'default';
+    const botId = req.headers['x-bot-id'] || req.query.bot_id || 'default';
     try {
-        const config = await BotConfig.findOne({ botId });
-        if (!config) return res.status(404).json({ error: "Bot not found" });
+        let config = await BotConfig.findOne({ botId });
+        
+        // Fallback for default bot if not in DB yet
+        if (!config && botId === 'default') {
+            config = { 
+                botId: 'default', 
+                token: process.env.TELEGRAM_BOT_TOKEN || 'placeholder',
+                name: 'Default Bot'
+            };
+        }
+
+        if (!config) {
+            console.warn(`[Tenant] Bot configuration for "${botId}" not found in database.`);
+            return res.status(404).json({ error: "Bot not found" });
+        }
+
         req.tenant = { botId: config.botId, token: config.token };
         next();
-    } catch (e) { res.status(500).send("Tenant resolution error"); }
+    } catch (e) { 
+        console.error(`[Tenant] Error:`, e.message);
+        res.status(500).send("Tenant resolution error"); 
+    }
 };
 
+// --- HELPER FOR IMAGE CATEGORIES ---
 const resolveCategoryId = async (name) => {
     const key = name.toLowerCase().trim();
     if (categoryCache.has(key)) return categoryCache.get(key);
@@ -225,6 +234,8 @@ const resolveCategoryId = async (name) => {
     return null;
 };
 
+// --- API ROUTES ---
+
 app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
@@ -234,11 +245,13 @@ app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) 
         
         const form = new FormData();
         form.append('image', req.file.buffer, {
-            filename: req.file.originalname,
+            filename: req.file.originalname || 'upload.jpg',
             contentType: req.file.mimetype
         });
         if (categoryId) form.append('category_id', String(categoryId));
 
+        console.log(`[Upload] Proxying to ${UPLOAD_API_URL}/upload ...`);
+        
         const uploadRes = await fetch(`${UPLOAD_API_URL}/upload`, {
             method: 'POST',
             headers: {
@@ -249,10 +262,15 @@ app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) 
         });
 
         const result = await uploadRes.json();
+        
+        if (!uploadRes.ok) {
+            console.error('[Upload] External service error:', result);
+        }
+
         res.status(uploadRes.status).json(result);
     } catch (e) {
         console.error('[Proxy] Upload Error:', e.message);
-        res.status(500).json({ success: false, message: 'Proxy Upload Failed' });
+        res.status(500).json({ success: false, message: 'Proxy Upload Failed: ' + e.message });
     }
 });
 
@@ -340,9 +358,8 @@ app.post('/webhook/:token', async (req, res) => {
     res.sendStatus(200);
 });
 
-// --- Статика и fallback для SPA ---
+// --- STATIC ASSETS & SPA FALLBACK ---
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-// --- Запуск сервера с bind на 0.0.0.0 (важно для Docker/Coolify) ---
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port ${PORT}`));
