@@ -281,6 +281,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                 <div className="grid grid-cols-2 gap-3">
                   {sortedCategories.map((cat: string, idx: number) => {
                     const count = activeRecipes.filter(r => r.category === cat).length;
+                    const isSelectedForSwap = selectedSwap === cat;
                     return (
                       <div
                         key={cat}
@@ -291,14 +292,18 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                         onTouchEnd={cancelLongPress}
                         onContextMenu={(e) => e.preventDefault()}
                         onClick={() => handleCategoryClick(cat)}
-                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none touch-none ${isReordering ? 'animate-wiggle border-2' : 'border-gray-100 dark:border-white/5 hover:shadow-md'}`}
+                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none touch-none 
+                        ${isReordering ? 'animate-wiggle border-2 ring-2 ring-sky-500/5' : 'border-gray-100 dark:border-white/5 hover:shadow-md'} 
+                        ${isSelectedForSwap ? 'border-sky-500 ring-4 ring-sky-500/20 scale-105 z-10' : ''}`}
                       >
                         <div className="flex justify-between items-start">
                           <div className={`w-10 h-10 rounded-xl ${getCategoryColor(idx)} flex items-center justify-center`}>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M19.5 21a3 3 0 003-3v-4.5a3 3 0 00-3-3h-15a3 3 0 00-3 3V18a3 3 0 003 3h15zM1.5 10.146V6a3 3 0 013-3h5.379a2.25 2.25 0 011.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 013 3v1.146A4.483 4.483 0 0019.5 9h-15a4.483 4.483 0 00-3 1.146z" /></svg>
                           </div>
                           <div className="flex flex-col items-end gap-1">
-                            <span className="text-xs font-bold text-gray-400">{count}</span>
+                            <span className={`text-xs font-bold ${isSelectedForSwap ? 'text-sky-500 animate-pulse' : 'text-gray-400'}`}>
+                                {isSelectedForSwap ? 'ВЫБРАНО' : count}
+                            </span>
                             {isReordering && isAdmin && (
                               <button onClick={(e) => openRenameModal(cat, e)} className="w-7 h-7 bg-white dark:bg-[#2a2a35] border border-gray-100 dark:border-white/10 rounded-full flex items-center justify-center text-sky-500 shadow-sm active:scale-90 transition-transform">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
@@ -307,7 +312,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                           </div>
                         </div>
                         <div className="flex items-end justify-between gap-2 mt-auto">
-                          <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight group-hover:text-sky-500 transition-colors line-clamp-2">{cat}</h3>
+                          <h3 className={`font-bold text-base leading-tight group-hover:text-sky-500 transition-colors line-clamp-2 ${isSelectedForSwap ? 'text-sky-600 dark:text-sky-400' : 'text-gray-900 dark:text-white'}`}>{cat}</h3>
                           {isAdmin && !isReordering && (
                             <button onClick={(e) => archiveCategoryGroup(cat, e)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 012.25-2.25h2.906a2.25 2.25 0 012.25 2.25v2.452a2.25 2.25 0 01-2.25 2.25H12a2.25 2.25 0 01-2.25-2.25V10.75z" /></svg></button>
                           )}
