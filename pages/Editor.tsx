@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -759,7 +760,11 @@ export default function Editor() {
                 {ingredients.map((ing, i) => {
                   const suggestions = activeIngIndex === i ? getSuggestions(ing.name) : [];
                   return (
-                    <div key={i} className="grid grid-cols-[1fr_4rem_3.5rem_2rem] gap-2 items-center relative z-20">
+                    <div 
+                      key={i} 
+                      style={{ zIndex: activeIngIndex === i ? 50 : 1 }}
+                      className="grid grid-cols-[1fr_4rem_3.5rem_2rem] gap-2 items-center relative transition-[z-index]"
+                    >
                       <div className="relative">
                         <input
                           type="text"
@@ -768,10 +773,10 @@ export default function Editor() {
                           value={ing.name}
                           onChange={(e) => handleIngredientNameChange(i, e.target.value)}
                           onFocus={() => setActiveIngIndex(i)}
-                          onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
+                          onBlur={() => setTimeout(() => setActiveIngIndex(null), 250)}
                         />
                         {suggestions.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-50 overflow-hidden max-h-40 overflow-y-auto no-scrollbar">
+                          <div className="absolute top-full left-0 w-[calc(100%+8.5rem)] mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-[60] overflow-hidden max-h-40 overflow-y-auto no-scrollbar animate-fade-in">
                             {suggestions.map((suggestion) => (
                               <div
                                 key={suggestion}
