@@ -186,11 +186,7 @@ const Details: React.FC = () => {
                       </div>
                   )}
               </div>
-              {recipe.imageUrls?.medium && (
-                  <div className="w-full aspect-video rounded-3xl overflow-hidden shadow-sm border border-gray-100 dark:border-white/5 cursor-pointer" onClick={() => setIsImageOpen(true)}>
-                      <img src={recipe.imageUrls.medium} className="w-full h-full object-cover" alt="Dish Medium" />
-                  </div>
-              )}
+        
           </div>
           <div className="bg-white dark:bg-[#1e1e24] rounded-3xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 flex justify-between items-center">
