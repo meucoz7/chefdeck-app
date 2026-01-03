@@ -334,6 +334,37 @@ app.post('/api/sync-user', resolveTenant, async (req, res) => {
     } catch (e) { res.status(500).send(e.message); }
 });
 
+// --- USER MANAGEMENT ROUTES ---
+app.get('/api/users', resolveTenant, async (req, res) => {
+    try {
+        const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
+        res.json(users);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/users/toggle-admin', resolveTenant, async (req, res) => {
+    try {
+        const { targetId, status } = req.body;
+        await User.findOneAndUpdate(
+            { id: targetId, botId: req.tenant.botId },
+            { isAdmin: status }
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/admin/register-bot', async (req, res) => {
+    try {
+        const { botId, token, name, ownerId } = req.body;
+        const existing = await BotConfig.findOne({ botId });
+        if (existing) return res.status(400).json({ success: false, error: "Bot ID уже занят" });
+        
+        const newBot = await BotConfig.create({ botId, token, name, ownerId });
+        await getBotInstance(token); // Инициализируем инстанс сразу
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 app.get('/api/wastage', resolveTenant, async (req, res) => {
     try { res.json(await Wastage.find({ botId: req.tenant.botId }).sort({ date: -1 })); } catch (e) { res.status(500).send(e.message); }
 });
