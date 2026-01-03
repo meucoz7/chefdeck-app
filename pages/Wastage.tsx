@@ -328,7 +328,11 @@ const Wastage: React.FC = () => {
                                 {stagedItems.map((item, idx) => {
                                     const suggestions = activeIngIndex === idx ? getSuggestions(item.ingredientName || '') : [];
                                     return (
-                                        <div key={item.id} className="grid grid-cols-[1fr_5rem_2rem] gap-2 items-center group/item animate-fade-in relative z-[50]">
+                                        <div 
+                                            key={item.id} 
+                                            style={{ zIndex: activeIngIndex === idx ? 70 : 1 }}
+                                            className="grid grid-cols-[1fr_5rem_2rem] gap-2 items-center group/item animate-fade-in relative transition-[z-index]"
+                                        >
                                             <div className="relative">
                                                 <div className="flex bg-gray-50 dark:bg-black/20 rounded-xl overflow-hidden border border-transparent focus-within:border-indigo-500/30 transition-all shadow-sm">
                                                     <input 
@@ -350,7 +354,7 @@ const Wastage: React.FC = () => {
                                                     />
                                                 </div>
                                                 {suggestions.length > 0 && (
-                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-[100] overflow-hidden max-h-40 overflow-y-auto no-scrollbar animate-fade-in">
+                                                    <div className="absolute top-full left-0 w-[calc(100%+5.5rem)] mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-[100] overflow-hidden max-h-40 overflow-y-auto no-scrollbar animate-fade-in">
                                                         {suggestions.map((suggestion) => (
                                                             <div 
                                                                 key={suggestion}
@@ -442,7 +446,7 @@ const Wastage: React.FC = () => {
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 {isAdmin && (
-                                                    <button onClick={(e) => exportMonthToExcel(month, e)} className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${isMonthExpanded ? 'bg-white/20 text-white' : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10'}`}>
+                                                    <button onClick={(e) => exportMonthToExcel(month, e)} className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${isMonthExpanded ? 'bg-white/20 text-white' : 'text-emerald-50 dark:bg-emerald-500/10'}`}>
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 10l-4 4m0 0l-4-4m4 4V4" /></svg>
                                                     </button>
                                                 )}
