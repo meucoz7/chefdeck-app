@@ -1,14 +1,22 @@
+
 export interface Ingredient {
   name: string;
   amount: string;
   unit: string;
 }
 
+export interface ImageUrls {
+  small: string;
+  medium: string;
+  original: string;
+}
+
 export interface TechCard {
   id: string;
   title: string;
   description: string;
-  imageUrl?: string;
+  imageUrl?: string; // Legacy
+  imageUrls?: ImageUrls; // New: storage for all sizes
   videoUrl?: string;
   ingredients: Ingredient[];
   steps: string[];
@@ -203,6 +211,7 @@ export interface WastageItem {
     reason: WastageReason;
     comment?: string;
     photoUrl?: string;
+    photoUrls?: ImageUrls;
 }
 
 export interface WastageLog {
@@ -221,6 +230,7 @@ export interface RDTask {
     notes: string;
     status: RDStatus;
     imageUrl?: string;
+    imageUrls?: ImageUrls;
     tastingRating?: number;
     tastingFeedback?: string;
     createdAt: number;
