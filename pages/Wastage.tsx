@@ -35,6 +35,7 @@ const Wastage: React.FC = () => {
         unit: 'кг'
     });
     const [actPhoto, setActPhoto] = useState<string>('');
+    const [actPhotos, setActPhotos] = useState<any>(null);
 
     useEffect(() => {
         const cached = scopedStorage.getJson<WastageLog[]>('wastage_logs', []);
@@ -58,6 +59,7 @@ const Wastage: React.FC = () => {
             });
     }, []);
 
+    // Fix: extract original URL from ImageUrls response to assign to the string actPhoto state
     const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -65,7 +67,8 @@ const Wastage: React.FC = () => {
             try {
                 // Изменено: 'wastages' вместо 'wastage' согласно ТЗ
                 const url = await uploadImage(file, 'wastages');
-                setActPhoto(url);
+                setActPhoto(url.original);
+                setActPhotos(url);
                 addToast("Фото прикреплено", "success");
             } catch (err: any) {
                 addToast(err.message || "Ошибка при загрузке фото", "error");
@@ -89,7 +92,8 @@ const Wastage: React.FC = () => {
             unit: newItem.unit || 'кг',
             reason: newItem.reason || 'spoilage',
             comment: newItem.comment,
-            photoUrl: actPhoto
+            photoUrl: actPhoto,
+            photoUrls: actPhotos
         };
 
         const newLog: WastageLog = {
@@ -118,6 +122,7 @@ const Wastage: React.FC = () => {
             setIsAdding(false);
             setNewItem({ reason: 'spoilage', unit: 'кг' });
             setActPhoto('');
+            setActPhotos(null);
         } catch (err) {
             addToast("Ошибка сохранения", "error");
         }
