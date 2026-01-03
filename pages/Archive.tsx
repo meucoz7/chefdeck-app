@@ -77,7 +77,7 @@ const Archive: React.FC = () => {
                             <div key={recipe.id} onClick={() => navigate(`/recipe/${recipe.id}`)} className="bg-white dark:bg-[#1e1e24] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 flex gap-4 cursor-pointer active:scale-[0.98] transition">
                                 <div className="w-16 h-16 rounded-xl bg-gray-100 dark:bg-white/5 overflow-hidden flex-shrink-0 grayscale opacity-80">
                                     <img 
-                                        src={recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}`} 
+                                        src={recipe.imageUrls?.small || recipe.imageUrl || `https://ui-avatars.com/api/?name=${recipe.title}`} 
                                         className="w-full h-full object-cover" 
                                     />
                                 </div>
@@ -102,4 +102,3 @@ const Archive: React.FC = () => {
 };
 
 export default Archive;
-
