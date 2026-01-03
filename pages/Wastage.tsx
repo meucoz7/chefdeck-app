@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -115,7 +116,6 @@ const Wastage: React.FC = () => {
     const getSuggestions = (query: string) => {
         if (!query || query.length < 2) return [];
         const lowerQuery = query.toLowerCase();
-        /* Added explicit type casting for 'Array.from' to fix line 120 related errors */
         return (Array.from(ingredientDatabase.keys()) as string[])
             .filter(name => name.includes(lowerQuery))
             .slice(0, 5);
@@ -151,7 +151,6 @@ const Wastage: React.FC = () => {
                 setActPhoto(urls.original);
                 setActPhotos(urls);
                 addToast("Фото прикреплено", "success");
-            /* Updated 'err' type to 'unknown' and added type guard to satisfy strict typing and fix potential line 373 related errors */
             } catch (err: unknown) {
                 const errorMessage = err instanceof Error ? err.message : "Ошибка при загрузке фото";
                 addToast(errorMessage, "error");
@@ -210,7 +209,6 @@ const Wastage: React.FC = () => {
             setGlobalComment('');
             setActPhoto('');
             setActPhotos(null);
-        /* Updated 'err' type to 'unknown' to satisfy strict typing and fix potential line 373 related errors */
         } catch (err: unknown) {
             addToast("Ошибка сохранения", "error");
         }
@@ -231,7 +229,6 @@ const Wastage: React.FC = () => {
                 } else {
                     throw new Error();
                 }
-            /* Updated 'err' type to 'unknown' to satisfy strict typing and fix line 373 related errors */
             } catch (err: unknown) {
                 setLogs(prev => prev.filter(l => l.id !== logId));
                 addToast("Удалено локально", "info");
@@ -346,9 +343,8 @@ const Wastage: React.FC = () => {
 
                         {/* Items Table */}
                         <div className="space-y-2">
-                            <div className="grid grid-cols-[1fr_5rem_5rem_2rem] gap-2 px-2">
-                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">Продукт</label>
-                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter text-center">Ед.изм</label>
+                            <div className="grid grid-cols-[1fr_5rem_2rem] gap-2 px-2">
+                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">Продукт и ед.изм</label>
                                 <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter text-center">Кол-во</label>
                                 <div className="w-2"></div>
                             </div>
@@ -357,18 +353,30 @@ const Wastage: React.FC = () => {
                                 {stagedItems.map((item, idx) => {
                                     const suggestions = activeIngIndex === idx ? getSuggestions(item.ingredientName || '') : [];
                                     return (
-                                        <div key={item.id} className="grid grid-cols-[1fr_5rem_5rem_2rem] gap-2 items-center group/item animate-fade-in relative z-[50]">
+                                        <div key={item.id} className="grid grid-cols-[1fr_5rem_2rem] gap-2 items-center group/item animate-fade-in relative z-[50]">
                                             <div className="relative">
-                                                <input 
-                                                    type="text" 
-                                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-2.5 text-xs font-bold dark:text-white outline-none border border-transparent focus:border-indigo-500/30 transition-all"
-                                                    placeholder="Введите продукт..."
-                                                    value={item.ingredientName}
-                                                    onChange={e => updateStagedItem(item.id!, 'ingredientName', e.target.value)}
-                                                    onFocus={() => setActiveIngIndex(idx)}
-                                                    onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
-                                                />
-                                                {/* AUTOCOMPLETE DROPDOWN */}
+                                                {/* COMBINED PRODUCT + UNIT FIELD */}
+                                                <div className="flex bg-gray-50 dark:bg-black/20 rounded-xl overflow-hidden border border-transparent focus-within:border-indigo-500/30 transition-all shadow-sm">
+                                                    <input 
+                                                        type="text" 
+                                                        className="flex-1 bg-transparent px-3 py-2.5 text-xs font-bold dark:text-white outline-none"
+                                                        placeholder="Введите продукт..."
+                                                        value={item.ingredientName}
+                                                        onChange={e => updateStagedItem(item.id!, 'ingredientName', e.target.value)}
+                                                        onFocus={() => setActiveIngIndex(idx)}
+                                                        onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
+                                                    />
+                                                    <div className="w-[1px] bg-gray-200 dark:bg-white/10 my-2"></div>
+                                                    <input 
+                                                        type="text"
+                                                        className="w-14 bg-transparent px-2 py-2.5 text-[10px] font-black dark:text-white outline-none text-center uppercase"
+                                                        placeholder="ЕД"
+                                                        value={item.unit}
+                                                        onChange={e => updateStagedItem(item.id!, 'unit', e.target.value)}
+                                                    />
+                                                </div>
+
+                                                {/* AUTOCOMPLETE DROPDOWN - FULL WIDTH OF COMBINED FIELD */}
                                                 {suggestions.length > 0 && (
                                                     <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-[100] overflow-hidden max-h-40 overflow-y-auto no-scrollbar animate-fade-in">
                                                         {suggestions.map((suggestion) => (
@@ -386,24 +394,18 @@ const Wastage: React.FC = () => {
                                                     </div>
                                                 )}
                                             </div>
-                                            <input 
-                                                type="text"
-                                                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-[10px] font-black dark:text-white outline-none text-center uppercase"
-                                                placeholder="Ед"
-                                                value={item.unit}
-                                                onChange={e => updateStagedItem(item.id!, 'unit', e.target.value)}
-                                            />
+
                                             <input 
                                                 type="text" 
                                                 inputMode="decimal"
-                                                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-xs font-black dark:text-white outline-none border border-transparent focus:border-indigo-500/30 text-center"
+                                                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-xs font-black dark:text-white outline-none border border-transparent focus:border-indigo-500/30 text-center shadow-sm"
                                                 placeholder="0.00"
                                                 value={item.amount}
                                                 onChange={e => updateStagedItem(item.id!, 'amount', e.target.value)}
                                             />
                                             <button 
                                                 onClick={() => removeStagedItem(item.id!)} 
-                                                className={`text-gray-300 hover:text-red-500 transition active:scale-90 ${stagedItems.length === 1 ? 'opacity-0 pointer-events-none' : ''}`}
+                                                className={`text-gray-300 hover:text-red-500 transition active:scale-90 flex justify-center ${stagedItems.length === 1 ? 'opacity-0 pointer-events-none' : ''}`}
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path d="M6 18L18 6M6 6l12 12" /></svg>
                                             </button>
