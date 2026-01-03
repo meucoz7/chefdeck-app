@@ -63,7 +63,8 @@ const Wastage: React.FC = () => {
         if (file) {
             setIsUploadingPhoto(true);
             try {
-                const url = await uploadImage(file, 'wastage');
+                // Изменено: 'wastages' вместо 'wastage' согласно ТЗ
+                const url = await uploadImage(file, 'wastages');
                 setActPhoto(url);
                 addToast("Фото прикреплено", "success");
             } catch (err: any) {
