@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRecipes } from '../context/RecipeContext';
@@ -27,11 +27,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
   const [isReordering, setIsReordering] = useState(false);
   const [selectedSwap, setSelectedSwap] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  // Pagination State for Categories
-  const [visibleCategoriesCount, setVisibleCategoriesCount] = useState(10);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
   // States for the rename modal
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -58,37 +53,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
       return idxA - idxB;
     });
   }, [uniqueCategories, safeOrder]);
-
-  // Paginated categories slice
-  const paginatedCategories = useMemo(() => {
-    return sortedCategories.slice(0, visibleCategoriesCount);
-  }, [sortedCategories, visibleCategoriesCount]);
-
-  const hasMoreCategories = visibleCategoriesCount < sortedCategories.length;
-
-  // Infinite scroll observer
-  useEffect(() => {
-    if (!sentinelRef.current || !hasMoreCategories || isReordering) return;
-
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        setVisibleCategoriesCount(prev => prev + 10);
-      }
-    }, { threshold: 0.1 });
-
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [hasMoreCategories, isReordering]);
-
-  // Reset pagination when reordering starts or filters change
-  useEffect(() => {
-    if (isReordering) {
-        setVisibleCategoriesCount(sortedCategories.length);
-    } else if (!search && !selectedCategory) {
-        // We don't reset to 10 immediately to avoid layout jumps, 
-        // but normally search/categories view are mutually exclusive
-    }
-  }, [isReordering, sortedCategories.length]);
 
   const filteredRecipes = displayRecipes.filter(r => {
     let matchesSearch = true;
@@ -309,7 +273,7 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
             {showCategoriesView && (
               <div className="animate-slide-up">
                 <div className="grid grid-cols-2 gap-3">
-                  {paginatedCategories.map((cat: string, idx: number) => {
+                  {sortedCategories.map((cat: string, idx: number) => {
                     const count = activeRecipes.filter(r => r.category === cat).length;
                     const isSelectedForSwap = selectedSwap === cat;
                     return (
@@ -353,17 +317,6 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     );
                   })}
                 </div>
-                
-                {/* Intersection Observer Sentinel */}
-                {hasMoreCategories && !isReordering && (
-                    <div ref={sentinelRef} className="h-20 flex items-center justify-center py-10">
-                        <div className="flex gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-sky-500/40 animate-bounce"></div>
-                            <div className="w-2 h-2 rounded-full bg-sky-500/60 animate-bounce [animation-delay:0.2s]"></div>
-                            <div className="w-2 h-2 rounded-full bg-sky-500/80 animate-bounce [animation-delay:0.4s]"></div>
-                        </div>
-                    </div>
-                )}
               </div>
             )}
             {!showCategoriesView && (
