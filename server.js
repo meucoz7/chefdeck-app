@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-const UPLOAD_API_URL = 'http://pro.filma4.ru/api/v1';
+const UPLOAD_API_URL = 'https://pro.filma4.ru/api/v1';
 const UPLOAD_API_KEY = '3f154923d8d6324c7a38dcd83159789f82a4ea9224335df225a375a6cb3d6415';
 const categoryCache = new Map();
 
