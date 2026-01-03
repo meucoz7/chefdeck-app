@@ -1,23 +1,22 @@
 
 import { apiFetch } from './api';
+import { ImageUrls } from '../types';
 
 /**
- * Загружает файл на сервер через локальный прокси (обход CORS).
+ * Загружает файл на сервер через локальный прокси.
+ * Возвращает объект со всеми размерами изображений.
  */
-export const uploadImage = async (file: File, folderName: string = 'general'): Promise<string> => {
+export const uploadImage = async (file: File, folderName: string = 'general'): Promise<ImageUrls> => {
     if (!file) throw new Error('Файл не выбран');
     
-    // Проверка размера на клиенте (15МБ)
     if (file.size > 15 * 1024 * 1024) {
         throw new Error('Файл слишком большой (макс. 15МБ)');
     }
 
     const formData = new FormData();
-    // Изменено: 'image' вместо 'file' согласно новой документации API v1
     formData.append('image', file);
 
     try {
-        // Отправляем запрос на НАШ сервер.
         const response = await apiFetch(`/api/upload?folder=${encodeURIComponent(folderName)}`, {
             method: 'POST',
             body: formData
@@ -30,19 +29,19 @@ export const uploadImage = async (file: File, folderName: string = 'general'): P
             throw new Error(serverMsg);
         }
 
-        // Изменено: парсинг вложенной структуры data.urls.original
-        if (result.data && result.data.urls && result.data.urls.original) {
-            return result.data.urls.original;
-        } else if (result.data && result.data.url) {
-            // Fallback для совместимости
-            return result.data.url;
+        if (result.data && result.data.urls) {
+            return {
+                small: result.data.urls.small,
+                medium: result.data.urls.medium,
+                original: result.data.urls.original
+            };
         } else {
-            throw new Error('Сервер вернул пустой путь к файлу');
+            throw new Error('Сервер вернул некорректный формат ссылок');
         }
     } catch (error: any) {
         console.error('[UploadService] Error:', error.message);
         if (error.message === 'Failed to fetch') {
-            throw new Error('Ошибка сети: Ваш сервер недоступен');
+            throw new Error('Ошибка сети: Сервер недоступен или проблема CORS');
         }
         throw error;
     }
