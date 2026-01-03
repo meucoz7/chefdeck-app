@@ -137,17 +137,30 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
     }
   };
 
-  const startLongPress = (cat: string) => {
+  const startLongPress = (e: React.MouseEvent | React.TouchEvent, cat: string) => {
     if (!isAdmin || isReordering) return;
-    longPressTimer.current = setTimeout(() => {
-      setIsReordering(true);
-      if (window.navigator.vibrate) window.navigator.vibrate(50);
-      setSelectedSwap(cat);
-    }, 800);
+    
+    // Prevent default context menu on touch devices
+    if (e.type === 'touchstart') {
+      longPressTimer.current = setTimeout(() => {
+        setIsReordering(true);
+        if (window.navigator.vibrate) window.navigator.vibrate(50);
+        setSelectedSwap(cat);
+      }, 600);
+    } else {
+      longPressTimer.current = setTimeout(() => {
+        setIsReordering(true);
+        if (window.navigator.vibrate) window.navigator.vibrate(50);
+        setSelectedSwap(cat);
+      }, 600);
+    }
   };
 
   const cancelLongPress = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+    }
   };
 
   const getCategoryColor = (index: number) => {
@@ -271,13 +284,14 @@ const Home: React.FC<HomeProps> = ({ favoritesOnly = false }) => {
                     return (
                       <div
                         key={cat}
-                        onMouseDown={() => startLongPress(cat)}
-                        onTouchStart={() => startLongPress(cat)}
+                        onMouseDown={(e) => startLongPress(e, cat)}
+                        onTouchStart={(e) => startLongPress(e, cat)}
                         onMouseUp={cancelLongPress}
                         onMouseLeave={cancelLongPress}
                         onTouchEnd={cancelLongPress}
+                        onContextMenu={(e) => e.preventDefault()}
                         onClick={() => handleCategoryClick(cat)}
-                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none ${isReordering ? 'animate-wiggle border-2' : 'border-gray-100 dark:border-white/5 hover:shadow-md'}`}
+                        className={`group relative bg-white dark:bg-[#1e1e24] p-5 rounded-[1.8rem] shadow-sm border active:scale-[0.98] transition-all duration-300 cursor-pointer flex flex-col justify-between h-32 select-none touch-none ${isReordering ? 'animate-wiggle border-2' : 'border-gray-100 dark:border-white/5 hover:shadow-md'}`}
                       >
                         <div className="flex justify-between items-start">
                           <div className={`w-10 h-10 rounded-xl ${getCategoryColor(idx)} flex items-center justify-center`}>
