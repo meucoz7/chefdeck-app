@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,24 +5,26 @@ import * as XLSX from 'xlsx';
 import { WastageLog, WastageItem, WastageReason, ImageUrls } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useTelegram } from '../context/TelegramContext';
+import { useRecipes } from '../context/RecipeContext';
 import { apiFetch } from '../services/api';
 import { uploadImage } from '../services/uploadService';
 import { scopedStorage } from '../services/storage';
 
-const REASONS: { value: WastageReason; label: string; icon: string; color: string }[] = [
-    { value: 'spoilage', label: 'Порча', icon: '🥀', color: 'bg-red-500' },
-    { value: 'expired', label: 'Срок годности', icon: '⏰', color: 'bg-orange-500' },
-    { value: 'mistake', label: 'Ошибка', icon: '🥣', color: 'bg-amber-500' },
-    { value: 'training', label: 'Обучение', icon: '🎓', color: 'bg-blue-500' },
-    { value: 'staff', label: 'Питание', icon: '🥗', color: 'bg-emerald-500' },
-    { value: 'employee', label: 'Сотрудник', icon: '👤', color: 'bg-indigo-500' },
-    { value: 'other', label: 'Другое', icon: '❓', color: 'bg-gray-500' }
+const REASONS: { value: WastageReason; label: string; icon: string; color: string; bgColor: string; textColor: string }[] = [
+    { value: 'spoilage', label: 'Порча', icon: '🥀', color: 'bg-red-500', bgColor: 'bg-red-50 dark:bg-red-500/10', textColor: 'text-red-600 dark:text-red-400' },
+    { value: 'expired', label: 'Срок годности', icon: '⏰', color: 'bg-orange-500', bgColor: 'bg-orange-50 dark:bg-orange-500/10', textColor: 'text-orange-600 dark:text-orange-400' },
+    { value: 'mistake', label: 'Ошибка', icon: '🥣', color: 'bg-amber-500', bgColor: 'bg-amber-50 dark:bg-amber-500/10', textColor: 'text-amber-600 dark:text-amber-400' },
+    { value: 'training', label: 'Обучение', icon: '🎓', color: 'bg-blue-500', bgColor: 'bg-blue-50 dark:bg-blue-500/10', textColor: 'text-blue-600 dark:text-blue-400' },
+    { value: 'staff', label: 'Питание', icon: '🥗', color: 'bg-emerald-500', bgColor: 'bg-emerald-50 dark:bg-emerald-500/10', textColor: 'text-emerald-600 dark:text-emerald-400' },
+    { value: 'employee', label: 'Сотрудник', icon: '👤', color: 'bg-indigo-500', bgColor: 'bg-indigo-50 dark:bg-indigo-500/10', textColor: 'text-indigo-600 dark:text-indigo-400' },
+    { value: 'other', label: 'Другое', icon: '❓', color: 'bg-gray-500', bgColor: 'bg-gray-50 dark:bg-gray-500/10', textColor: 'text-gray-600 dark:text-gray-400' }
 ];
 
 const Wastage: React.FC = () => {
     const navigate = useNavigate();
     const { addToast } = useToast();
     const { user, isAdmin } = useTelegram();
+    const { recipes } = useRecipes();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +34,7 @@ const Wastage: React.FC = () => {
     const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
     const [isReasonDropdownOpen, setIsReasonDropdownOpen] = useState(false);
+    const [activeIngIndex, setActiveIngIndex] = useState<number | null>(null);
 
     // Multi-item Entry State
     const [globalReason, setGlobalReason] = useState<WastageReason>('spoilage');
@@ -56,8 +58,9 @@ const Wastage: React.FC = () => {
             })
             .then(data => {
                 if (Array.isArray(data)) {
-                    setLogs(data);
-                    scopedStorage.setJson('wastage_logs', data);
+                    const sorted = data.sort((a, b) => b.date - a.date);
+                    setLogs(sorted);
+                    scopedStorage.setJson('wastage_logs', sorted);
                 }
             })
             .catch(() => {
@@ -77,14 +80,14 @@ const Wastage: React.FC = () => {
     }, []);
 
     const groupedData = useMemo(() => {
-        const months: Record<string, Record<WastageReason, (WastageItem & { logId: string })[]>> = {};
+        const months: Record<string, Record<WastageReason, (WastageItem & { logId: string, timestamp: number })[]>> = {};
 
         logs.forEach(log => {
             const date = new Date(log.date);
             const monthKey = date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
             
             if (!months[monthKey]) {
-                months[monthKey] = {} as Record<WastageReason, (WastageItem & { logId: string })[]>;
+                months[monthKey] = {} as Record<WastageReason, any[]>;
                 REASONS.forEach(r => { months[monthKey][r.value] = []; });
             }
 
@@ -92,13 +95,31 @@ const Wastage: React.FC = () => {
                 months[monthKey][item.reason].push({
                     ...item,
                     logId: log.id,
-                    comment: `${item.comment || ''} (Дата: ${date.toLocaleDateString()})`.trim()
+                    timestamp: log.date
                 });
             });
         });
 
         return months;
     }, [logs]);
+
+    // Ingredient Database for Suggestions
+    const ingredientDatabase = useMemo(() => {
+        const map = new Map<string, string>();
+        recipes.forEach(r => r.ingredients.forEach(i => {
+            if (i.name.trim()) map.set(i.name.trim().toLowerCase(), i.unit);
+        }));
+        return map;
+    }, [recipes]);
+
+    const getSuggestions = (query: string) => {
+        if (!query || query.length < 2) return [];
+        const lowerQuery = query.toLowerCase();
+        /* Added explicit type casting for 'Array.from' to fix line 120 related errors */
+        return (Array.from(ingredientDatabase.keys()) as string[])
+            .filter(name => name.includes(lowerQuery))
+            .slice(0, 5);
+    };
 
     const addStagedItem = () => {
         setStagedItems([...stagedItems, { id: uuidv4(), unit: 'кг', ingredientName: '', amount: '' }]);
@@ -114,6 +135,13 @@ const Wastage: React.FC = () => {
         setStagedItems(stagedItems.map(i => i.id === id ? { ...i, [field]: value } : i));
     };
 
+    const selectSuggestion = (idx: number, id: string, name: string) => {
+        const suggestedUnit = ingredientDatabase.get(name.toLowerCase()) || 'кг';
+        const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
+        setStagedItems(prev => prev.map(i => i.id === id ? { ...i, ingredientName: formattedName, unit: suggestedUnit } : i));
+        setActiveIngIndex(null);
+    };
+
     const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -123,8 +151,10 @@ const Wastage: React.FC = () => {
                 setActPhoto(urls.original);
                 setActPhotos(urls);
                 addToast("Фото прикреплено", "success");
-            } catch (err: any) {
-                addToast(err.message || "Ошибка при загрузке фото", "error");
+            /* Updated 'err' type to 'unknown' and added type guard to satisfy strict typing and fix potential line 373 related errors */
+            } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : "Ошибка при загрузке фото";
+                addToast(errorMessage, "error");
             } finally {
                 setIsUploadingPhoto(false);
             }
@@ -180,7 +210,8 @@ const Wastage: React.FC = () => {
             setGlobalComment('');
             setActPhoto('');
             setActPhotos(null);
-        } catch (err) {
+        /* Updated 'err' type to 'unknown' to satisfy strict typing and fix potential line 373 related errors */
+        } catch (err: unknown) {
             addToast("Ошибка сохранения", "error");
         }
     };
@@ -200,7 +231,8 @@ const Wastage: React.FC = () => {
                 } else {
                     throw new Error();
                 }
-            } catch (err) {
+            /* Updated 'err' type to 'unknown' to satisfy strict typing and fix line 373 related errors */
+            } catch (err: unknown) {
                 setLogs(prev => prev.filter(l => l.id !== logId));
                 addToast("Удалено локально", "info");
             }
@@ -245,6 +277,7 @@ const Wastage: React.FC = () => {
 
     return (
         <div className="pb-28 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
+            {/* STICKY HEADER */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-40 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md border-b border-gray-100 dark:border-white/5">
                 <div className="flex items-center justify-between pt-4">
                     <div className="flex items-center gap-3">
@@ -256,7 +289,7 @@ const Wastage: React.FC = () => {
                             <p className="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-widest">Акты и архив</p>
                         </div>
                     </div>
-                    <button onClick={() => setIsAdding(!isAdding)} className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 active:scale-90 ${isAdding ? 'bg-gray-800 text-white rotate-45' : 'bg-indigo-600 text-white shadow-indigo-500/30'}`}>
+                    <button onClick={() => { setIsAdding(!isAdding); setExpandedMonth(null); }} className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 active:scale-90 ${isAdding ? 'bg-gray-800 text-white rotate-45' : 'bg-indigo-600 text-white shadow-indigo-500/30'}`}>
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                     </button>
                 </div>
@@ -264,13 +297,14 @@ const Wastage: React.FC = () => {
 
             <div className="px-5 pt-6 space-y-4">
                 {isAdding ? (
+                    /* ADD FORM */
                     <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-white/5 space-y-5 animate-slide-up">
                         <div className="flex justify-between items-center px-1">
                             <h2 className="text-lg font-black dark:text-white uppercase tracking-tight">Новый акт</h2>
                             <button onClick={() => setIsAdding(false)} className="text-gray-300 p-2">✕</button>
                         </div>
 
-                        {/* Custom Dropdown for Reason Selection */}
+                        {/* Reason Selection */}
                         <div className="space-y-2 relative" ref={dropdownRef}>
                             <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Причина списания</label>
                             <button 
@@ -310,6 +344,7 @@ const Wastage: React.FC = () => {
                             )}
                         </div>
 
+                        {/* Items Table */}
                         <div className="space-y-2">
                             <div className="grid grid-cols-[1fr_5rem_5rem_2rem] gap-2 px-2">
                                 <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">Продукт</label>
@@ -319,57 +354,76 @@ const Wastage: React.FC = () => {
                             </div>
                             
                             <div className="space-y-2">
-                                {stagedItems.map((item, idx) => (
-                                    <div key={item.id} className="grid grid-cols-[1fr_5rem_5rem_2rem] gap-2 items-center group/item animate-fade-in">
-                                        <input 
-                                            type="text" 
-                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-2.5 text-xs font-bold dark:text-white outline-none border border-transparent focus:border-indigo-500/30 transition-all"
-                                            placeholder="Лосось"
-                                            value={item.ingredientName}
-                                            onChange={e => updateStagedItem(item.id!, 'ingredientName', e.target.value)}
-                                        />
-                                        <select 
-                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-[10px] font-black dark:text-white outline-none appearance-none text-center"
-                                            value={item.unit}
-                                            onChange={e => updateStagedItem(item.id!, 'unit', e.target.value)}
-                                        >
-                                            <option value="кг">кг</option>
-                                            <option value="г">г</option>
-                                            <option value="л">л</option>
-                                            <option value="мл">мл</option>
-                                            <option value="шт">шт</option>
-                                            <option value="упак">уп</option>
-                                        </select>
-                                        <input 
-                                            type="text" 
-                                            inputMode="decimal"
-                                            className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-xs font-black dark:text-white outline-none border border-transparent focus:border-indigo-500/30 text-center"
-                                            placeholder="0.00"
-                                            value={item.amount}
-                                            onChange={e => updateStagedItem(item.id!, 'amount', e.target.value)}
-                                        />
-                                        <button 
-                                            onClick={() => removeStagedItem(item.id!)} 
-                                            className={`text-gray-300 hover:text-red-500 transition active:scale-90 ${stagedItems.length === 1 ? 'opacity-0 pointer-events-none' : ''}`}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path d="M6 18L18 6M6 6l12 12" /></svg>
-                                        </button>
-                                    </div>
-                                ))}
+                                {stagedItems.map((item, idx) => {
+                                    const suggestions = activeIngIndex === idx ? getSuggestions(item.ingredientName || '') : [];
+                                    return (
+                                        <div key={item.id} className="grid grid-cols-[1fr_5rem_5rem_2rem] gap-2 items-center group/item animate-fade-in relative z-[50]">
+                                            <div className="relative">
+                                                <input 
+                                                    type="text" 
+                                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-3 py-2.5 text-xs font-bold dark:text-white outline-none border border-transparent focus:border-indigo-500/30 transition-all"
+                                                    placeholder="Введите продукт..."
+                                                    value={item.ingredientName}
+                                                    onChange={e => updateStagedItem(item.id!, 'ingredientName', e.target.value)}
+                                                    onFocus={() => setActiveIngIndex(idx)}
+                                                    onBlur={() => setTimeout(() => setActiveIngIndex(null), 200)}
+                                                />
+                                                {/* AUTOCOMPLETE DROPDOWN */}
+                                                {suggestions.length > 0 && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-[100] overflow-hidden max-h-40 overflow-y-auto no-scrollbar animate-fade-in">
+                                                        {suggestions.map((suggestion) => (
+                                                            <div 
+                                                                key={suggestion}
+                                                                onMouseDown={() => selectSuggestion(idx, item.id!, suggestion)}
+                                                                className="px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-white/10 cursor-pointer flex justify-between items-center group border-b border-gray-50 dark:border-white/5 last:border-0"
+                                                            >
+                                                                <span className="text-[11px] font-bold dark:text-white uppercase truncate">{suggestion}</span>
+                                                                <span className="text-[9px] text-indigo-500 font-black uppercase flex-shrink-0 ml-2">
+                                                                    {ingredientDatabase.get(suggestion)}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <input 
+                                                type="text"
+                                                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-[10px] font-black dark:text-white outline-none text-center uppercase"
+                                                placeholder="Ед"
+                                                value={item.unit}
+                                                onChange={e => updateStagedItem(item.id!, 'unit', e.target.value)}
+                                            />
+                                            <input 
+                                                type="text" 
+                                                inputMode="decimal"
+                                                className="w-full bg-gray-50 dark:bg-black/20 rounded-xl px-2 py-2.5 text-xs font-black dark:text-white outline-none border border-transparent focus:border-indigo-500/30 text-center"
+                                                placeholder="0.00"
+                                                value={item.amount}
+                                                onChange={e => updateStagedItem(item.id!, 'amount', e.target.value)}
+                                            />
+                                            <button 
+                                                onClick={() => removeStagedItem(item.id!)} 
+                                                className={`text-gray-300 hover:text-red-500 transition active:scale-90 ${stagedItems.length === 1 ? 'opacity-0 pointer-events-none' : ''}`}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
                         <button onClick={addStagedItem} className="w-full py-3 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl flex items-center justify-center gap-2 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/5 transition active:scale-[0.98]">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                            <span className="text-[9px] font-black uppercase tracking-widest">Добавить строку</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest">Добавить позицию</span>
                         </button>
 
                         <div className="pt-2 space-y-4">
                             <div className="space-y-1">
                                 <label className="text-[9px] font-black text-gray-400 uppercase ml-3 tracking-widest">Общий комментарий</label>
                                 <textarea 
-                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl px-4 py-3 text-sm dark:text-white outline-none resize-none h-16 border border-transparent focus:border-indigo-500/20"
-                                    placeholder="Детали для всего акта (опц.)..."
+                                    className="w-full bg-gray-50 dark:bg-black/20 rounded-2xl px-4 py-3 text-sm dark:text-white outline-none resize-none h-16 border border-transparent focus:border-red-500/20"
+                                    placeholder="Детали списания (опционально)..."
                                     value={globalComment}
                                     onChange={e => setGlobalComment(e.target.value)}
                                 />
@@ -385,24 +439,25 @@ const Wastage: React.FC = () => {
                                     ) : actPhoto ? (
                                         <div className="flex items-center gap-2 text-emerald-600 font-black text-[9px] uppercase">✅ Фото добавлено</div>
                                     ) : (
-                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">📷 Фото подтверждение</span>
+                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">📷 Прикрепить фото</span>
                                     )}
                                 </div>
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                             </div>
 
                             <button onClick={handleSave} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl shadow-indigo-600/30 active:scale-95 transition-all text-[11px] tracking-[0.2em] uppercase">
-                                Подтвердить списание ({stagedItems.filter(i => i.ingredientName && i.amount).length})
+                                Создать акт ({stagedItems.filter(i => i.ingredientName && i.amount).length})
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="space-y-4 pb-20">
+                    /* ARCHIVE LIST (FOLDERS) */
+                    <div className="space-y-3 pb-24">
                         {Object.keys(groupedData).length === 0 ? (
                             <div className="text-center py-20 opacity-40 flex flex-col items-center">
                                 <span className="text-7xl mb-6 grayscale">📂</span>
                                 <h3 className="font-black dark:text-white uppercase tracking-widest text-xs">Архив пуст</h3>
-                                <p className="text-[10px] text-gray-400 mt-2 uppercase">Здесь появятся папки с отчетами</p>
+                                <p className="text-[10px] text-gray-400 mt-2 uppercase">Здесь появятся ваши акты</p>
                             </div>
                         ) : (
                             Object.entries(groupedData).map(([month, categories]) => {
@@ -410,82 +465,81 @@ const Wastage: React.FC = () => {
                                 const totalMonthItems = Object.values(categories).flat().length;
 
                                 return (
-                                    <div key={month} className="animate-slide-up">
+                                    <div key={month} className="space-y-2">
+                                        {/* MONTH FOLDER */}
                                         <div 
                                             onClick={() => setExpandedMonth(isMonthExpanded ? null : month)}
-                                            className={`p-5 rounded-[2.5rem] border transition-all duration-300 cursor-pointer flex items-center justify-between group relative overflow-hidden ${isMonthExpanded ? 'bg-white dark:bg-[#1e1e24] shadow-xl border-gray-100 dark:border-white/10 mb-4' : 'bg-white/60 dark:bg-white/5 border-transparent shadow-sm'}`}
+                                            className={`p-5 rounded-[2rem] border transition-all duration-300 cursor-pointer flex items-center justify-between ${isMonthExpanded ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-500/20' : 'bg-white dark:bg-[#1e1e24] border-gray-100 dark:border-white/5 shadow-sm'}`}
                                         >
-                                            <div className="flex items-center gap-4 relative z-10">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl transition-all duration-500 ${isMonthExpanded ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 -rotate-3' : 'bg-gray-100 dark:bg-white/5 text-gray-400 group-hover:bg-indigo-100 group-hover:text-indigo-600'}`}>
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xl transition-colors ${isMonthExpanded ? 'bg-white/20' : 'bg-gray-50 dark:bg-white/5'}`}>
                                                     {isMonthExpanded ? '📂' : '📁'}
                                                 </div>
                                                 <div>
-                                                    <h3 className={`font-black uppercase text-sm tracking-tight transition-colors ${isMonthExpanded ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>{month}</h3>
-                                                    <p className="text-[9px] font-black text-gray-400 uppercase mt-0.5 tracking-widest">{totalMonthItems} записей</p>
+                                                    <h3 className={`font-black text-sm uppercase tracking-tight ${isMonthExpanded ? 'text-white' : 'text-gray-900 dark:text-white'}`}>{month}</h3>
+                                                    <p className={`text-[9px] font-black uppercase mt-0.5 ${isMonthExpanded ? 'text-indigo-100' : 'text-gray-400'}`}>
+                                                        {totalMonthItems} {totalMonthItems === 1 ? 'позиция' : totalMonthItems < 5 ? 'позиции' : 'позиций'}
+                                                    </p>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-3 relative z-10">
+                                            <div className="flex items-center gap-3">
                                                 {isAdmin && (
-                                                    <button 
-                                                        onClick={(e) => exportMonthToExcel(month, e)}
-                                                        className={`p-2.5 rounded-xl transition-all active:scale-90 ${isMonthExpanded ? 'bg-emerald-500 text-white shadow-md' : 'bg-gray-100 dark:bg-white/5 text-gray-400'}`}
-                                                        title="Экспорт в Excel"
-                                                    >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 10l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                                    <button onClick={(e) => exportMonthToExcel(month, e)} className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${isMonthExpanded ? 'bg-white/20 text-white' : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10'}`}>
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 10l-4 4m0 0l-4-4m4 4V4" /></svg>
                                                     </button>
                                                 )}
-                                                <svg className={`w-5 h-5 transition-transform duration-500 ${isMonthExpanded ? 'rotate-180 text-indigo-500' : 'text-gray-300'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                                                <svg className={`w-5 h-5 transition-transform duration-300 ${isMonthExpanded ? 'rotate-180 text-white' : 'text-gray-300'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                    <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                                </svg>
                                             </div>
                                         </div>
 
+                                        {/* CATEGORY SUBFOLDERS */}
                                         {isMonthExpanded && (
-                                            <div className="space-y-2 pl-4 pr-1 animate-fade-in">
+                                            <div className="grid gap-2 pl-6 pr-2 animate-slide-up pb-4">
                                                 {REASONS.map(reasonInfo => {
                                                     const itemsInCategory = categories[reasonInfo.value];
                                                     if (itemsInCategory.length === 0) return null;
-                                                    const isCatExpanded = expandedCategory === `${month}_${reasonInfo.value}`;
+                                                    const catKey = `${month}_${reasonInfo.value}`;
+                                                    const isCatExpanded = expandedCategory === catKey;
 
                                                     return (
-                                                        <div key={reasonInfo.value} className="space-y-2">
+                                                        <div key={reasonInfo.value} className="space-y-1">
                                                             <div 
-                                                                onClick={() => setExpandedCategory(isCatExpanded ? null : `${month}_${reasonInfo.value}`)}
-                                                                className={`p-4 rounded-[1.8rem] border transition-all cursor-pointer flex items-center justify-between ${isCatExpanded ? 'bg-gray-50 dark:bg-black/20 border-gray-200 dark:border-white/5' : 'bg-white dark:bg-[#1e1e24] border-transparent shadow-sm'}`}
+                                                                onClick={() => setExpandedCategory(isCatExpanded ? null : catKey)}
+                                                                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${isCatExpanded ? 'bg-white dark:bg-white/5 border-indigo-500/30' : 'bg-white dark:bg-[#1e1e24] border-gray-100 dark:border-white/5 shadow-sm'}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm text-white ${reasonInfo.color} shadow-sm`}>
-                                                                        {reasonInfo.icon}
-                                                                    </div>
-                                                                    <span className="font-bold text-xs uppercase tracking-tight dark:text-white">{reasonInfo.label}</span>
-                                                                    <span className="px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-white/5 text-[9px] font-black text-gray-400">{itemsInCategory.length}</span>
+                                                                    <span className="text-base">{reasonInfo.icon}</span>
+                                                                    <span className="font-bold text-[10px] uppercase tracking-wider dark:text-white">{reasonInfo.label}</span>
+                                                                    <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-black ${reasonInfo.bgColor} ${reasonInfo.textColor}`}>{itemsInCategory.length}</span>
                                                                 </div>
                                                                 <svg className={`w-4 h-4 text-gray-300 transition-transform ${isCatExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                                             </div>
 
+                                                            {/* ITEM LIST */}
                                                             {isCatExpanded && (
-                                                                <div className="space-y-2 pl-3 animate-slide-up pb-2">
-                                                                    {itemsInCategory.map((item, idx) => (
-                                                                        <div key={idx} className="bg-white dark:bg-[#1e1e24] p-4 rounded-3xl shadow-sm border border-gray-50 dark:border-white/5 flex gap-4 transition-all hover:border-indigo-500/20 relative group">
+                                                                <div className="space-y-1.5 pt-1 pl-4 animate-fade-in">
+                                                                    {itemsInCategory.sort((a,b) => b.timestamp - a.timestamp).map((item, idx) => (
+                                                                        <div key={idx} className="bg-white dark:bg-[#1e1e24] p-3 rounded-2xl border border-gray-100 dark:border-white/5 flex gap-3 shadow-sm group">
                                                                             {(item.photoUrls?.small || item.photoUrl) && (
-                                                                                <div className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-100 cursor-pointer shadow-sm" onClick={() => window.open(item.photoUrls?.original || item.photoUrl, '_blank')}>
+                                                                                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 cursor-pointer" onClick={() => window.open(item.photoUrls?.original || item.photoUrl, '_blank')}>
                                                                                     <img src={item.photoUrls?.small || item.photoUrl} className="w-full h-full object-cover" />
                                                                                 </div>
                                                                             )}
-                                                                            <div className="flex-1 min-w-0 flex flex-col justify-center pr-8">
+                                                                            <div className="flex-1 min-w-0 pr-6">
                                                                                 <div className="flex justify-between items-start">
-                                                                                    <h5 className="font-bold text-[13px] dark:text-white truncate uppercase tracking-tight leading-tight">{item.ingredientName}</h5>
-                                                                                    <span className="font-black text-indigo-600 dark:text-indigo-400 text-[13px] whitespace-nowrap ml-2">{item.amount} {item.unit}</span>
+                                                                                    <h5 className="font-bold text-[11px] dark:text-white uppercase truncate">{item.ingredientName}</h5>
+                                                                                    <div className="text-right ml-2 flex-shrink-0">
+                                                                                        <span className="font-black text-indigo-600 dark:text-indigo-400 text-xs block">{item.amount} {item.unit}</span>
+                                                                                        <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">{new Date(item.timestamp).toLocaleDateString()}</span>
+                                                                                    </div>
                                                                                 </div>
-                                                                                {item.comment && (
-                                                                                    <p className="text-[10px] text-gray-400 mt-1 line-clamp-2 leading-relaxed italic">"{item.comment}"</p>
-                                                                                )}
+                                                                                {item.comment && <p className="text-[8px] text-gray-400 mt-0.5 line-clamp-1 italic">"{item.comment}"</p>}
                                                                             </div>
                                                                             {isAdmin && (
-                                                                                <button 
-                                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteLog(item.logId); }}
-                                                                                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-red-50 dark:bg-red-500/10 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity active:scale-90"
-                                                                                >
-                                                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                                                                <button onClick={() => handleDeleteLog(item.logId)} className="text-gray-300 hover:text-red-500 p-1 active:scale-90 transition">
+                                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                                                                 </button>
                                                                             )}
                                                                         </div>
