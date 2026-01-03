@@ -104,7 +104,6 @@ const Wastage: React.FC = () => {
         return months;
     }, [logs]);
 
-    // Ingredient Database for Suggestions
     const ingredientDatabase = useMemo(() => {
         const map = new Map<string, string>();
         recipes.forEach(r => r.ingredients.forEach(i => {
@@ -163,12 +162,10 @@ const Wastage: React.FC = () => {
 
     const handleSave = async () => {
         const validItems = stagedItems.filter(i => i.ingredientName && i.amount);
-        
         if (validItems.length === 0) {
             addToast("Добавьте хотя бы одну позицию", "error");
             return;
         }
-
         const finalItems: WastageItem[] = validItems.map(i => ({
             id: i.id || uuidv4(),
             ingredientName: i.ingredientName!.trim(),
@@ -179,29 +176,24 @@ const Wastage: React.FC = () => {
             photoUrl: actPhoto,
             photoUrls: actPhotos || undefined
         }));
-
         const newLog: WastageLog = {
             id: uuidv4(),
             date: Date.now(),
             items: finalItems,
             createdBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown'
         };
-
         try {
             const res = await apiFetch('/api/wastage', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newLog)
             });
-            
             if (!res.ok) throw new Error();
-
             setLogs(prev => {
                 const updated = [newLog, ...prev];
                 scopedStorage.setJson('wastage_logs', updated);
                 return updated;
             });
-
             addToast("Акт списания сохранен", "success");
             setIsAdding(false);
             setStagedItems([{ id: uuidv4(), unit: 'кг', ingredientName: '', amount: '' }]);
@@ -216,7 +208,7 @@ const Wastage: React.FC = () => {
 
     const handleDeleteLog = async (logId: string) => {
         if (!isAdmin) return;
-        if (confirm("Удалить этот акт списания (все позиции в нем)?")) {
+        if (confirm("ВНИМАНИЕ! Удалить весь АКТ списания целиком? Это действие удалит все продукты внутри этого акта.")) {
             try {
                 const res = await apiFetch(`/api/wastage/${logId}`, { method: 'DELETE' });
                 if (res.ok) {
@@ -225,13 +217,14 @@ const Wastage: React.FC = () => {
                         scopedStorage.setJson('wastage_logs', updated);
                         return updated;
                     });
-                    addToast("Списание удалено", "success");
+                    addToast("Акт списания удален навсегда", "success");
                 } else {
-                    throw new Error();
+                    const data = await res.json();
+                    throw new Error(data.error || "Ошибка удаления");
                 }
             } catch (err: unknown) {
-                setLogs(prev => prev.filter(l => l.id !== logId));
-                addToast("Удалено локально", "info");
+                console.error("Delete error:", err);
+                addToast("Не удалось удалить акт из базы", "error");
             }
         }
     };
@@ -241,11 +234,9 @@ const Wastage: React.FC = () => {
         if (!isAdmin) return;
         const monthData = groupedData[monthName];
         const workbook = XLSX.utils.book_new();
-
         REASONS.forEach(reason => {
             const items = monthData[reason.value];
             if (items.length === 0) return;
-
             const summary: Record<string, { name: string; unit: string; amount: number }> = {};
             items.forEach(it => {
                 const key = `${it.ingredientName.toLowerCase().trim()}_${it.unit.toLowerCase()}`;
@@ -255,17 +246,14 @@ const Wastage: React.FC = () => {
                 }
                 summary[key].amount += num;
             });
-
             const sheetData = Object.values(summary).map(s => ({
                 "Наименование": s.name,
                 "Кол-во": s.amount,
                 "Ед. изм.": s.unit
             }));
-
             const worksheet = XLSX.utils.json_to_sheet(sheetData);
             XLSX.utils.book_append_sheet(workbook, worksheet, reason.label.substring(0, 31));
         });
-
         XLSX.writeFile(workbook, `Списания_${monthName.replace(/\s+/g, '_')}.xlsx`);
         addToast("Отчет сформирован", "success");
     };
@@ -274,7 +262,6 @@ const Wastage: React.FC = () => {
 
     return (
         <div className="pb-28 animate-fade-in min-h-screen bg-[#f2f4f7] dark:bg-[#0f1115]">
-            {/* STICKY HEADER */}
             <div className="pt-safe-top px-5 pb-4 sticky top-0 z-40 bg-[#f2f4f7]/85 dark:bg-[#0f1115]/85 backdrop-blur-md border-b border-gray-100 dark:border-white/5">
                 <div className="flex items-center justify-between pt-4">
                     <div className="flex items-center gap-3">
@@ -294,14 +281,11 @@ const Wastage: React.FC = () => {
 
             <div className="px-5 pt-6 space-y-4">
                 {isAdding ? (
-                    /* ADD FORM */
                     <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-white/5 space-y-5 animate-slide-up">
                         <div className="flex justify-between items-center px-1">
                             <h2 className="text-lg font-black dark:text-white uppercase tracking-tight">Новый акт</h2>
                             <button onClick={() => setIsAdding(false)} className="text-gray-300 p-2">✕</button>
                         </div>
-
-                        {/* Reason Selection */}
                         <div className="space-y-2 relative" ref={dropdownRef}>
                             <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Причина списания</label>
                             <button 
@@ -316,46 +300,36 @@ const Wastage: React.FC = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                                 </svg>
                             </button>
-
                             {isReasonDropdownOpen && (
                                 <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#2a2a35] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 z-[60] overflow-hidden animate-scale-in origin-top">
                                     <div className="p-2 space-y-1">
                                         {REASONS.map(r => (
                                             <button 
                                                 key={r.value}
-                                                onClick={() => {
-                                                    setGlobalReason(r.value);
-                                                    setIsReasonDropdownOpen(false);
-                                                }}
+                                                onClick={() => { setGlobalReason(r.value); setIsReasonDropdownOpen(false); }}
                                                 className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all ${globalReason === r.value ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-200'}`}
                                             >
                                                 <span className="text-lg">{r.icon}</span>
                                                 <span className="font-black text-[11px] uppercase tracking-wider">{r.label}</span>
-                                                {globalReason === r.value && (
-                                                    <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}><path d="M5 13l4 4L19 7" /></svg>
-                                                )}
+                                                {globalReason === r.value && <svg className="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}><path d="M5 13l4 4L19 7" /></svg>}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             )}
                         </div>
-
-                        {/* Items Table */}
                         <div className="space-y-2">
                             <div className="grid grid-cols-[1fr_5rem_2rem] gap-2 px-2">
                                 <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">Продукт и ед.изм</label>
                                 <label className="text-[8px] font-black text-gray-400 uppercase tracking-tighter text-center">Кол-во</label>
                                 <div className="w-2"></div>
                             </div>
-                            
                             <div className="space-y-2">
                                 {stagedItems.map((item, idx) => {
                                     const suggestions = activeIngIndex === idx ? getSuggestions(item.ingredientName || '') : [];
                                     return (
                                         <div key={item.id} className="grid grid-cols-[1fr_5rem_2rem] gap-2 items-center group/item animate-fade-in relative z-[50]">
                                             <div className="relative">
-                                                {/* COMBINED PRODUCT + UNIT FIELD */}
                                                 <div className="flex bg-gray-50 dark:bg-black/20 rounded-xl overflow-hidden border border-transparent focus-within:border-indigo-500/30 transition-all shadow-sm">
                                                     <input 
                                                         type="text" 
@@ -375,8 +349,6 @@ const Wastage: React.FC = () => {
                                                         onChange={e => updateStagedItem(item.id!, 'unit', e.target.value)}
                                                     />
                                                 </div>
-
-                                                {/* AUTOCOMPLETE DROPDOWN - FULL WIDTH OF COMBINED FIELD */}
                                                 {suggestions.length > 0 && (
                                                     <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#2a2a35] rounded-xl shadow-2xl border border-gray-100 dark:border-white/10 z-[100] overflow-hidden max-h-40 overflow-y-auto no-scrollbar animate-fade-in">
                                                         {suggestions.map((suggestion) => (
@@ -386,15 +358,12 @@ const Wastage: React.FC = () => {
                                                                 className="px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-white/10 cursor-pointer flex justify-between items-center group border-b border-gray-50 dark:border-white/5 last:border-0"
                                                             >
                                                                 <span className="text-[11px] font-bold dark:text-white uppercase truncate">{suggestion}</span>
-                                                                <span className="text-[9px] text-indigo-500 font-black uppercase flex-shrink-0 ml-2">
-                                                                    {ingredientDatabase.get(suggestion)}
-                                                                </span>
+                                                                <span className="text-[9px] text-indigo-500 font-black uppercase flex-shrink-0 ml-2">{ingredientDatabase.get(suggestion)}</span>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 )}
                                             </div>
-
                                             <input 
                                                 type="text" 
                                                 inputMode="decimal"
@@ -414,12 +383,10 @@ const Wastage: React.FC = () => {
                                 })}
                             </div>
                         </div>
-
                         <button onClick={addStagedItem} className="w-full py-3 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl flex items-center justify-center gap-2 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/5 transition active:scale-[0.98]">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                             <span className="text-[9px] font-black uppercase tracking-widest">Добавить позицию</span>
                         </button>
-
                         <div className="pt-2 space-y-4">
                             <div className="space-y-1">
                                 <label className="text-[9px] font-black text-gray-400 uppercase ml-3 tracking-widest">Общий комментарий</label>
@@ -430,30 +397,21 @@ const Wastage: React.FC = () => {
                                     onChange={e => setGlobalComment(e.target.value)}
                                 />
                             </div>
-
                             <div className="flex gap-3">
                                 <div 
                                     onClick={() => fileInputRef.current?.click()}
                                     className={`flex-1 h-14 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 cursor-pointer transition-all ${actPhoto ? 'border-emerald-500 bg-emerald-500/5' : 'border-gray-200 dark:border-white/10 hover:border-indigo-400'}`}
                                 >
-                                    {isUploadingPhoto ? (
-                                        <div className="animate-spin text-indigo-500">⏳</div>
-                                    ) : actPhoto ? (
-                                        <div className="flex items-center gap-2 text-emerald-600 font-black text-[9px] uppercase">✅ Фото добавлено</div>
-                                    ) : (
-                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">📷 Прикрепить фото</span>
-                                    )}
+                                    {isUploadingPhoto ? <div className="animate-spin text-indigo-500">⏳</div> : actPhoto ? <div className="flex items-center gap-2 text-emerald-600 font-black text-[9px] uppercase">✅ Фото добавлено</div> : <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">📷 Прикрепить фото</span>}
                                 </div>
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                             </div>
-
                             <button onClick={handleSave} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl shadow-indigo-600/30 active:scale-95 transition-all text-[11px] tracking-[0.2em] uppercase">
                                 Создать акт ({stagedItems.filter(i => i.ingredientName && i.amount).length})
                             </button>
                         </div>
                     </div>
                 ) : (
-                    /* ARCHIVE LIST (FOLDERS) */
                     <div className="space-y-3 pb-24">
                         {Object.keys(groupedData).length === 0 ? (
                             <div className="text-center py-20 opacity-40 flex flex-col items-center">
@@ -465,10 +423,8 @@ const Wastage: React.FC = () => {
                             Object.entries(groupedData).map(([month, categories]) => {
                                 const isMonthExpanded = expandedMonth === month;
                                 const totalMonthItems = Object.values(categories).flat().length;
-
                                 return (
                                     <div key={month} className="space-y-2">
-                                        {/* MONTH FOLDER */}
                                         <div 
                                             onClick={() => setExpandedMonth(isMonthExpanded ? null : month)}
                                             className={`p-5 rounded-[2rem] border transition-all duration-300 cursor-pointer flex items-center justify-between ${isMonthExpanded ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-500/20' : 'bg-white dark:bg-[#1e1e24] border-gray-100 dark:border-white/5 shadow-sm'}`}
@@ -495,8 +451,6 @@ const Wastage: React.FC = () => {
                                                 </svg>
                                             </div>
                                         </div>
-
-                                        {/* CATEGORY SUBFOLDERS */}
                                         {isMonthExpanded && (
                                             <div className="grid gap-2 pl-6 pr-2 animate-slide-up pb-4">
                                                 {REASONS.map(reasonInfo => {
@@ -504,7 +458,6 @@ const Wastage: React.FC = () => {
                                                     if (itemsInCategory.length === 0) return null;
                                                     const catKey = `${month}_${reasonInfo.value}`;
                                                     const isCatExpanded = expandedCategory === catKey;
-
                                                     return (
                                                         <div key={reasonInfo.value} className="space-y-1">
                                                             <div 
@@ -518,8 +471,6 @@ const Wastage: React.FC = () => {
                                                                 </div>
                                                                 <svg className={`w-4 h-4 text-gray-300 transition-transform ${isCatExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                                             </div>
-
-                                                            {/* ITEM LIST */}
                                                             {isCatExpanded && (
                                                                 <div className="space-y-1.5 pt-1 pl-4 animate-fade-in">
                                                                     {itemsInCategory.sort((a,b) => b.timestamp - a.timestamp).map((item, idx) => (
@@ -540,7 +491,11 @@ const Wastage: React.FC = () => {
                                                                                 {item.comment && <p className="text-[8px] text-gray-400 mt-0.5 line-clamp-1 italic">"{item.comment}"</p>}
                                                                             </div>
                                                                             {isAdmin && (
-                                                                                <button onClick={() => handleDeleteLog(item.logId)} className="text-gray-300 hover:text-red-500 p-1 active:scale-90 transition">
+                                                                                <button 
+                                                                                    onClick={() => handleDeleteLog(item.logId)} 
+                                                                                    className="text-gray-300 hover:text-red-500 p-1 active:scale-90 transition"
+                                                                                    title="Удалить весь акт списания целиком"
+                                                                                >
                                                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                                                                 </button>
                                                                             )}
