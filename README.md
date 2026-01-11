@@ -1,11 +1,37 @@
-<div align="center">
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+# ChefDeck - Telegram Mini App
 
-  <h1>Built with AI Studio</h2>
+Система управления техкартами для ресторанов с интеграцией Telegram Bot.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Функционал
+- 📱 Telegram Mini App (TWA)
+- 🤖 Telegram Bot (Уведомления)
+- 🍳 Управление рецептами и ингредиентами
+- 📂 Импорт из PDF
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Как запустить локально
 
-</div>
+1. Установите зависимости:
+   ```bash
+   npm install
+   ```
+
+2. Создайте файл `.env` в корне и добавьте ключи:
+   ```env
+   TELEGRAM_BOT_TOKEN=ващ_токен
+   WEBHOOK_URL=https://ваш-url.com
+   ```
+
+3. Запустите проект:
+   ```bash
+   npm run dev
+   ```
+
+## Деплой (Инструкция)
+
+Этот проект требует Node.js сервера. Рекомендуемый хостинг: Render.com.
+
+1. Залейте код на GitHub.
+2. Создайте "Web Service" на Render.
+3. Укажите Build Command: `npm install && npm run build`
+4. Укажите Start Command: `node server.js`

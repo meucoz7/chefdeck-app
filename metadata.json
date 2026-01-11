@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Copy of Copy of ChefDeck 4 - Менеджер Техкарт",
+  "description": "Трендовое мобильное приложение для управления кулинарными техкартами с использованием ИИ.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
