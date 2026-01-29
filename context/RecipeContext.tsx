@@ -29,6 +29,16 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { addToast } = useToast();
 
   const fetchRecipes = async () => {
+    // Ставим таймаут на общую загрузку, чтобы не висеть вечно
+    const timeout = setTimeout(() => {
+        if (isLoading) {
+            console.warn("Recipes fetch taking too long, showing cache...");
+            const cached = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
+            setRecipes(cached);
+            setIsLoading(false);
+        }
+    }, 5000);
+
     try {
       const res = await apiFetch('/api/recipes');
       if (!res.ok) throw new Error('Failed to fetch');
@@ -41,7 +51,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setRecipes(safeData);
       scopedStorage.setJson('recipes_cache', safeData);
     } catch (e) {
-      console.warn("API unavailable, switching to offline mode.");
+      console.warn("API unavailable or slow, switching to offline mode.");
       const parsed = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
       setRecipes(Array.isArray(parsed) ? parsed.map((r: any) => ({ 
         ...r, 
@@ -49,6 +59,7 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isFavorite: r.isFavorite === true
       })) : []);
     } finally {
+      clearTimeout(timeout);
       setIsLoading(false);
     }
   };
@@ -63,119 +74,55 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await apiFetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          recipeId: recipe.id,
-          recipeTitle: recipe.title,
-          targetChatId: user.id,
-          notifyAll,
-          changes,
-          silent
-        })
+        body: JSON.stringify({ action, recipeId: recipe.id, recipeTitle: recipe.title, targetChatId: user.id, notifyAll, changes, silent })
       });
-    } catch (e) {
-      console.error("Notify failed", e);
-    }
+    } catch (e) {}
   };
 
   const escapeHtml = (unsafe: string | undefined | null) => {
     if (!unsafe) return "";
-    return String(unsafe)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+    return String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   };
 
   const calculateChanges = (oldR: TechCard, newR: TechCard): string[] => {
     const changes: string[] = [];
     const clean = (s: string | undefined | null) => (s || '').trim();
-    
-    if (clean(oldR.title) !== clean(newR.title)) {
-      changes.push(`Название: ${escapeHtml(oldR.title)} -> <b>${escapeHtml(newR.title)}</b>`);
-    }
-    if (clean(oldR.outputWeight) !== clean(newR.outputWeight)) {
-      changes.push(`Выход: ${escapeHtml(oldR.outputWeight || '-')} -> <b>${escapeHtml(newR.outputWeight)}</b>`);
-    }
-    
+    if (clean(oldR.title) !== clean(newR.title)) changes.push(`Название: ${escapeHtml(oldR.title)} -> <b>${escapeHtml(newR.title)}</b>`);
+    if (clean(oldR.outputWeight) !== clean(newR.outputWeight)) changes.push(`Выход: ${escapeHtml(oldR.outputWeight || '-')} -> <b>${escapeHtml(newR.outputWeight)}</b>`);
     const oldMap = new Map(oldR.ingredients.map(i => [clean(i.name), i]));
-    
     newR.ingredients.forEach(newI => {
       const name = clean(newI.name);
       const oldI = oldMap.get(name);
-      
-      if (!oldI) {
-        changes.push(`Добавлен: <b>${escapeHtml(newI.name)}</b> (${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)})`);
-      } else {
+      if (!oldI) changes.push(`Добавлен: <b>${escapeHtml(newI.name)}</b> (${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)})`);
+      else {
         if (clean(oldI.amount) !== clean(newI.amount) || clean(oldI.unit) !== clean(newI.unit)) {
           changes.push(`${escapeHtml(newI.name)}: ${escapeHtml(oldI.amount)} ${escapeHtml(oldI.unit)} -> <b>${escapeHtml(newI.amount)} ${escapeHtml(newI.unit)}</b>`);
         }
         oldMap.delete(name);
       }
     });
-    
-    oldMap.forEach(oldI => {
-      changes.push(`Удален: ${escapeHtml(oldI.name)}`);
-    });
-    
+    oldMap.forEach(oldI => changes.push(`Удален: ${escapeHtml(oldI.name)}`));
     return changes;
   };
 
   const addRecipe = async (recipe: TechCard, notifyAll = false, silent = false) => {
-    const enriched = {
-      ...recipe,
-      isArchived: false,
-      lastModified: Date.now(),
-      lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown'
-    };
-    
-    setRecipes(prev => {
-      const newState = [enriched, ...prev];
-      scopedStorage.setJson('recipes_cache', newState);
-      return newState;
-    });
-
+    const enriched = { ...recipe, isArchived: false, lastModified: Date.now(), lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown' };
+    setRecipes(prev => { const newState = [enriched, ...prev]; scopedStorage.setJson('recipes_cache', newState); return newState; });
     try {
-      const res = await apiFetch('/api/recipes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(enriched)
-      });
+      const res = await apiFetch('/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(enriched) });
       if(!res.ok) throw new Error();
       await sendNotification(enriched, 'create', notifyAll, [], silent);
-    } catch (e) {
-      addToast("Сохранено локально", "info");
-    }
+    } catch (e) { addToast("Сохранено локально", "info"); }
   };
 
   const addRecipesBulk = async (newRecipes: TechCard[], notifyAll = false) => {
-    const enrichedRecipes = newRecipes.map(r => ({
-      ...r,
-      isArchived: false,
-      lastModified: Date.now(),
-      lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Import'
-    }));
-
-    setRecipes(prev => {
-      const newState = [...enrichedRecipes, ...prev];
-      scopedStorage.setJson('recipes_cache', newState);
-      return newState;
-    });
-
-    try {
-      await apiFetch('/api/recipes/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(enrichedRecipes)
-      });
-    } catch (e) {}
+    const enrichedRecipes = newRecipes.map(r => ({ ...r, isArchived: false, lastModified: Date.now(), lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Import' }));
+    setRecipes(prev => { const newState = [...enrichedRecipes, ...prev]; scopedStorage.setJson('recipes_cache', newState); return newState; });
+    try { await apiFetch('/api/recipes/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(enrichedRecipes) }); } catch (e) {}
   };
 
   const updateRecipe = async (updated: TechCard, notifyAll = false, silent = false) => {
     const oldRecipe = recipes.find(r => r.id === updated.id);
-    
-    // ВАЖНО: Всегда сохраняем флаг архивации и актуальный URL
     const enriched = { 
       ...updated, 
       isArchived: updated.isArchived ?? oldRecipe?.isArchived ?? false,
@@ -183,28 +130,15 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       lastModified: Date.now(),
       lastModifiedBy: user ? `${user.first_name} ${user.last_name || ''}` : 'Unknown'
     };
-
-    setRecipes(prev => {
-      const newState = prev.map(r => r.id === enriched.id ? enriched : r);
-      scopedStorage.setJson('recipes_cache', newState);
-      return newState;
-    });
-
+    setRecipes(prev => { const newState = prev.map(r => r.id === enriched.id ? enriched : r); scopedStorage.setJson('recipes_cache', newState); return newState; });
     try {
-      const res = await apiFetch('/api/recipes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(enriched)
-      });
+      const res = await apiFetch('/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(enriched) });
       if(!res.ok) throw new Error();
-      
       if (!silent) {
         const changes = oldRecipe ? calculateChanges(oldRecipe, enriched) : [];
         await sendNotification(enriched, 'update', notifyAll, changes, silent);
       }
-    } catch (e) {
-      addToast("Обновлено локально", "info");
-    }
+    } catch (e) { addToast("Обновлено локально", "info"); }
   };
 
   const archiveRecipe = async (id: string) => {
@@ -218,31 +152,14 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const archiveRecipesBulk = async (ids: string[]) => {
-    setRecipes(prev => {
-      const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r);
-      scopedStorage.setJson('recipes_cache', newState);
-      return newState;
-    });
-    try {
-      await apiFetch('/api/recipes/archive/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
-      });
-    } catch (e) {}
+    setRecipes(prev => { const newState = prev.map(r => ids.includes(r.id) ? { ...r, isArchived: true } : r); scopedStorage.setJson('recipes_cache', newState); return newState; });
+    try { await apiFetch('/api/recipes/archive/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) }); } catch (e) {}
   };
 
   const deleteRecipe = async (id: string) => {
     const target = recipes.find(r => r.id === id);
-    setRecipes(prev => {
-      const newState = prev.filter(r => r.id !== id);
-      scopedStorage.setJson('recipes_cache', newState);
-      return newState;
-    });
-    try {
-      await apiFetch(`/api/recipes/${id}`, { method: 'DELETE' });
-      if (target) await sendNotification(target, 'delete', false);
-    } catch (e) {}
+    setRecipes(prev => { const newState = prev.filter(r => r.id !== id); scopedStorage.setJson('recipes_cache', newState); return newState; });
+    try { await apiFetch(`/api/recipes/${id}`, { method: 'DELETE' }); if (target) await sendNotification(target, 'delete', false); } catch (e) {}
   };
 
   const deleteAllArchived = async () => {
