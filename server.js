@@ -1,4 +1,3 @@
-
 import 'dotenv/config';
 import express from 'express';
 import TelegramBot from 'node-telegram-bot-api';
@@ -20,7 +19,10 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 const UPLOAD_API_URL = 'https://pro.filma4.ru/api/v1';
 const UPLOAD_API_KEY = '3f154923d8d6324c7a38dcd83159789f82a4ea9224335df225a375a6cb3d6415';
+
 const categoryCache = new Map();
+const botConfigCache = new Map(); // Кэш конфигов ботов (botId -> config)
+const botInstances = new Map();   // Кэш инстансов ботов (token -> bot)
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -54,11 +56,7 @@ const recipeSchema = new mongoose.Schema({
     title: String,
     description: String,
     imageUrl: String,
-    imageUrls: {
-        small: String,
-        medium: String,
-        original: String
-    },
+    imageUrls: { small: String, medium: String, original: String },
     videoUrl: String,
     category: String,
     outputWeight: String,
@@ -137,15 +135,17 @@ if (MONGODB_URI) {
         .catch(err => console.error("❌ MongoDB Connection Error:", err));
 }
 
-const botInstances = new Map();
-
 const setupBotListeners = (bot, token) => {
     bot.onText(/\/start/, async (msg) => {
         const chatId = msg.chat.id;
         const tgUser = msg.from;
         try {
-            const config = await BotConfig.findOne({ token });
+            let config;
+            for (let c of botConfigCache.values()) { if (c.token === token) config = c; }
+            if (!config) config = await BotConfig.findOne({ token });
+            
             if (!config) return;
+            
             if (tgUser) {
                 await User.findOneAndUpdate(
                     { id: tgUser.id, botId: config.botId },
@@ -170,21 +170,19 @@ const getBotInstance = async (token) => {
     try {
         const bot = new TelegramBot(token, { polling: !WEBHOOK_URL });
         if (WEBHOOK_URL) {
-            await bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`).catch(e => console.error(`[Bot] Hook failed:`, e.message));
+            await bot.setWebHook(`${WEBHOOK_URL}/webhook/${token}`).catch(e => {});
         }
         setupBotListeners(bot, token);
         botInstances.set(token, bot);
         return bot;
-    } catch (e) {
-        console.error(`[Bot] Init failed:`, e.message);
-        return null;
-    }
+    } catch (e) { return null; }
 };
 
 const initializeAllBots = async () => {
     try {
         const bots = await BotConfig.find({});
         for (const b of bots) {
+            botConfigCache.set(b.botId, b);
             await getBotInstance(b.token);
         }
     } catch (e) {}
@@ -192,15 +190,19 @@ const initializeAllBots = async () => {
 
 const resolveTenant = async (req, res, next) => {
     const botId = req.headers['x-bot-id'] || req.query.bot_id || 'default';
-    try {
-        let config = await BotConfig.findOne({ botId });
-        if (!config && botId === 'default') {
-            config = { botId: 'default', token: process.env.TELEGRAM_BOT_TOKEN || 'placeholder', name: 'Default Bot' };
-        }
-        if (!config) return res.status(404).json({ error: "Bot not found" });
-        req.tenant = { botId: config.botId, token: config.token };
-        next();
-    } catch (e) { res.status(500).send("Tenant resolution error"); }
+    let config = botConfigCache.get(botId);
+    if (!config) {
+        try {
+            config = await BotConfig.findOne({ botId });
+            if (config) botConfigCache.set(botId, config);
+        } catch (e) {}
+    }
+    if (!config && botId === 'default') {
+        config = { botId: 'default', token: process.env.TELEGRAM_BOT_TOKEN || 'placeholder', name: 'Default Bot' };
+    }
+    if (!config) return res.status(404).json({ error: "Bot not found" });
+    req.tenant = { botId: config.botId, token: config.token };
+    next();
 };
 
 const resolveCategoryId = async (name) => {
@@ -217,29 +219,22 @@ const resolveCategoryId = async (name) => {
             categoryCache.set(key, result.data.id);
             return result.data.id;
         }
-    } catch (e) { console.error('[Proxy] Category error:', e.message); }
+    } catch (e) {}
     return null;
 };
 
 // --- API ROUTES ---
 
-// Маршрут-прокси для скрапинга
 app.get('/api/proxy', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send("URL parameter is missing");
     try {
         const response = await fetch(targetUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
         });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const body = await response.text();
         res.send(body);
-    } catch (e) {
-        console.error('[Proxy Error]:', e.message);
-        res.status(500).send("Failed to fetch target URL");
-    }
+    } catch (e) { res.status(500).send("Failed to fetch target URL"); }
 });
 
 app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) => {
@@ -257,7 +252,7 @@ app.post('/api/upload', resolveTenant, upload.single('image'), async (req, res) 
         });
         const result = await uploadRes.json();
         res.status(uploadRes.status).json(result);
-    } catch (e) { res.status(500).json({ success: false, message: 'Proxy Upload Failed: ' + e.message }); }
+    } catch (e) { res.status(500).json({ success: false, message: 'Proxy Upload Failed' }); }
 });
 
 app.get('/api/settings', resolveTenant, async (req, res) => {
@@ -292,13 +287,8 @@ app.post('/api/recipes', resolveTenant, async (req, res) => {
 app.post('/api/recipes/bulk', resolveTenant, async (req, res) => {
     try {
         const recipes = req.body;
-        if (!Array.isArray(recipes)) return res.status(400).send("Expected array");
         const operations = recipes.map(r => ({
-            updateOne: {
-                filter: { id: r.id, botId: req.tenant.botId },
-                update: { ...r, botId: req.tenant.botId },
-                upsert: true
-            }
+            updateOne: { filter: { id: r.id, botId: req.tenant.botId }, update: { ...r, botId: req.tenant.botId }, upsert: true }
         }));
         await Recipe.bulkWrite(operations);
         res.json({ success: true });
@@ -311,44 +301,29 @@ app.post('/api/share-recipe', resolveTenant, async (req, res) => {
         const recipe = await Recipe.findOne({ id: recipeId, botId: req.tenant.botId });
         const bot = botInstances.get(req.tenant.token);
         if (bot && recipe) {
-            const caption = `📖 <b>${recipe.title}</b>\n\n` +
-                          `📦 Категория: ${recipe.category}\n` +
-                          `⚖️ Выход: ${recipe.outputWeight || '-'}\n\n` +
-                          `🛒 Ингредиенты:\n` + 
-                          recipe.ingredients.map(i => `• ${i.name}: ${i.amount} ${i.unit}`).join('\n');
+            const caption = `📖 <b>${recipe.title}</b>\n\n🛒 Ингредиенты:\n` + recipe.ingredients.map(i => `• ${i.name}: ${i.amount} ${i.unit}`).join('\n');
             if (photoUrl) await bot.sendPhoto(targetChatId, photoUrl, { caption, parse_mode: 'HTML' });
             else await bot.sendMessage(targetChatId, caption, { parse_mode: 'HTML' });
             res.json({ success: true });
-        } else res.status(404).send("Bot or Recipe not found");
+        } else res.status(404).send("Not found");
     } catch (e) { res.status(500).send(e.message); }
 });
 
 app.post('/api/sync-user', resolveTenant, async (req, res) => {
     try {
-        const user = await User.findOneAndUpdate(
-            { id: req.body.id, botId: req.tenant.botId },
-            { ...req.body, botId: req.tenant.botId, lastSeen: Date.now() },
-            { upsert: true, new: true }
-        );
+        const user = await User.findOneAndUpdate({ id: req.body.id, botId: req.tenant.botId }, { ...req.body, botId: req.tenant.botId, lastSeen: Date.now() }, { upsert: true, new: true });
         res.json({ success: true, user });
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// --- USER MANAGEMENT ROUTES ---
 app.get('/api/users', resolveTenant, async (req, res) => {
-    try {
-        const users = await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 });
-        res.json(users);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    try { res.json(await User.find({ botId: req.tenant.botId }).sort({ lastSeen: -1 })); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/users/toggle-admin', resolveTenant, async (req, res) => {
     try {
         const { targetId, status } = req.body;
-        await User.findOneAndUpdate(
-            { id: targetId, botId: req.tenant.botId },
-            { isAdmin: status }
-        );
+        await User.findOneAndUpdate({ id: targetId, botId: req.tenant.botId }, { isAdmin: status });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -356,11 +331,9 @@ app.post('/api/users/toggle-admin', resolveTenant, async (req, res) => {
 app.post('/admin/register-bot', async (req, res) => {
     try {
         const { botId, token, name, ownerId } = req.body;
-        const existing = await BotConfig.findOne({ botId });
-        if (existing) return res.status(400).json({ success: false, error: "Bot ID уже занят" });
-        
         const newBot = await BotConfig.create({ botId, token, name, ownerId });
-        await getBotInstance(token); // Инициализируем инстанс сразу
+        botConfigCache.set(botId, newBot);
+        await getBotInstance(token);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
@@ -380,23 +353,13 @@ app.post('/api/wastage', resolveTenant, async (req, res) => {
 
 app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
     try {
-        const { id } = req.params;
-        const result = await Wastage.deleteOne({ id: id, botId: req.tenant.botId });
-        if (result.deletedCount > 0) {
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ error: "Act not found" });
-        }
+        await Wastage.deleteOne({ id: req.params.id, botId: req.tenant.botId });
+        res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
 });
 
-// --- INVENTORY ROUTES ---
-
 app.get('/api/inventory', resolveTenant, async (req, res) => {
-    try {
-        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
-        res.json(cycles);
-    } catch (e) { res.status(500).send(e.message); }
+    try { res.json(await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 })); } catch (e) { res.status(500).send(e.message); }
 });
 
 app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
@@ -409,21 +372,13 @@ app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
 });
 
 app.get('/api/inventory/global-items', resolveTenant, async (req, res) => {
-    try {
-        const items = await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 });
-        res.json(items);
-    } catch (e) { res.status(500).send(e.message); }
+    try { res.json(await GlobalInventoryItem.find({ botId: req.tenant.botId }).sort({ name: 1 })); } catch (e) { res.status(500).send(e.message); }
 });
 
 app.post('/api/inventory/global-items/upsert', resolveTenant, async (req, res) => {
     try {
-        const { items } = req.body;
-        for (const item of items) {
-            await GlobalInventoryItem.findOneAndUpdate(
-                { code: item.code, botId: req.tenant.botId },
-                { ...item, botId: req.tenant.botId },
-                { upsert: true }
-            );
+        for (const item of req.body.items) {
+            await GlobalInventoryItem.findOneAndUpdate({ code: item.code, botId: req.tenant.botId }, { ...item, botId: req.tenant.botId }, { upsert: true });
         }
         res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
@@ -433,18 +388,10 @@ app.post('/api/inventory/lock', resolveTenant, async (req, res) => {
     try {
         const { cycleId, sheetId, user } = req.body;
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
-        if (!cycle) return res.status(404).json({ success: false });
-
         const sheet = cycle.sheets.find(s => s.id === sheetId);
-        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) {
-            return res.json({ success: false, lockedBy: sheet.lockedBy });
-        }
-
-        if (sheet) {
-            sheet.lockedBy = user;
-            await cycle.save();
-            res.json({ success: true });
-        } else res.status(404).json({ success: false });
+        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) return res.json({ success: false, lockedBy: sheet.lockedBy });
+        if (sheet) { sheet.lockedBy = user; await cycle.save(); res.json({ success: true }); }
+        else res.status(404).json({ success: false });
     } catch (e) { res.status(500).send(e.message); }
 });
 
@@ -454,12 +401,9 @@ app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
         if (cycle) {
             const sheet = cycle.sheets.find(s => s.id === sheetId);
-            if (sheet) {
-                sheet.lockedBy = undefined;
-                await cycle.save();
-                res.json({ success: true });
-            } else res.status(404).json({ success: false });
-        } else res.status(404).json({ success: false });
+            if (sheet) { sheet.lockedBy = undefined; await cycle.save(); }
+        }
+        res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
 });
 
@@ -471,8 +415,7 @@ app.delete('/api/inventory/archive/all', resolveTenant, async (req, res) => {
 });
 
 app.post('/webhook/:token', async (req, res) => {
-    const { token } = req.params;
-    const bot = botInstances.get(token);
+    const bot = botInstances.get(req.params.token);
     if (bot) bot.processUpdate(req.body);
     res.sendStatus(200);
 });
@@ -480,4 +423,4 @@ app.post('/webhook/:token', async (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
