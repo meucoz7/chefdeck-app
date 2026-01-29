@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { TechCard, Ingredient } from '../types';
 import { useTelegram } from '../context/TelegramContext';
@@ -23,8 +24,17 @@ interface RecipeContextType {
 const RecipeContext = createContext<RecipeContextType | undefined>(undefined);
 
 export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [recipes, setRecipes] = useState<TechCard[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Пытаемся сразу загрузить из кэша для мгновенного отображения
+  const [recipes, setRecipes] = useState<TechCard[]>(() => {
+    return scopedStorage.getJson<TechCard[]>('recipes_cache', []);
+  });
+  
+  // Если кэш есть, помечаем, что мы не в состоянии первичной загрузки
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
+    return cached.length === 0;
+  });
+
   const { user } = useTelegram();
   const { addToast } = useToast();
 
@@ -33,21 +43,22 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const res = await apiFetch('/api/recipes');
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
+      
       const safeData = Array.isArray(data) ? data.map((r: TechCard) => ({ 
         ...r, 
         isArchived: r.isArchived === true,
         isFavorite: r.isFavorite === true
       })) : [];
+      
       setRecipes(safeData);
       scopedStorage.setJson('recipes_cache', safeData);
     } catch (e) {
-      console.warn("API unavailable, switching to offline mode.");
-      const parsed = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
-      setRecipes(Array.isArray(parsed) ? parsed.map((r: any) => ({ 
-        ...r, 
-        isArchived: r.isArchived === true,
-        isFavorite: r.isFavorite === true
-      })) : []);
+      console.warn("API slow or unavailable, keeping cached data.");
+      // Если кэша не было вообще, пробуем еще раз достать то что есть
+      if (recipes.length === 0) {
+        const parsed = scopedStorage.getJson<TechCard[]>('recipes_cache', []);
+        setRecipes(parsed);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -175,7 +186,6 @@ export const RecipeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateRecipe = async (updated: TechCard, notifyAll = false, silent = false) => {
     const oldRecipe = recipes.find(r => r.id === updated.id);
     
-    // ВАЖНО: Всегда сохраняем флаг архивации и актуальный URL
     const enriched = { 
       ...updated, 
       isArchived: updated.isArchived ?? oldRecipe?.isArchived ?? false,
