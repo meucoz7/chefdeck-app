@@ -32,6 +32,15 @@ export interface TechCard {
 // --- Inventory Types ---
 export type InventoryStatus = 'draft' | 'active' | 'submitted' | 'finalized';
 
+export interface AuditEntry {
+    timestamp: number;
+    userName: string;
+    itemName: string;
+    oldValue: number | string;
+    newValue: number | string;
+    sheetTitle: string;
+}
+
 export interface InventoryItem {
     id: string;
     name: string;
@@ -60,6 +69,7 @@ export interface InventorySheet {
         id: number;
         name: string;
     };
+    lockedAt?: number;
 }
 
 export interface InventoryCycle {
@@ -68,6 +78,7 @@ export interface InventoryCycle {
     sheets: InventorySheet[];
     isFinalized: boolean;
     createdBy: string;
+    auditLog?: AuditEntry[];
 }
 
 export type Theme = 'light' | 'dark';
