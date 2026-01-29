@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WebApp, TelegramUser } from '../types';
 import { ADMIN_IDS } from '../config';
@@ -24,25 +23,17 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const tg = window.Telegram.WebApp;
             tg.ready();
             
-            // Modern Fullscreen & Swipe Logic (Mini Apps 7.7+)
+            // Расширяем приложение сразу
             try {
-                // Check if methods exist AND version is high enough
                 if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.7')) {
-                    // ONLY request fullscreen on mobile devices to prevent weird desktop behavior
                     if (['android', 'ios'].includes(tg.platform)) {
-                        if (typeof tg.requestFullscreen === 'function') {
-                            tg.requestFullscreen();
-                        }
+                        tg.requestFullscreen?.();
                     }
-                    
-                    if (typeof tg.disableVerticalSwipes === 'function') {
-                        tg.disableVerticalSwipes();
-                    }
+                    tg.disableVerticalSwipes?.();
                 } else {
-                    tg.expand(); // Fallback for older versions
+                    tg.expand();
                 }
             } catch (e) {
-                console.warn('Fullscreen/Swipe API not supported:', e);
                 tg.expand();
             }
             
@@ -51,9 +42,13 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             
             if (tg.initDataUnsafe?.user) {
                 const tgUser = tg.initDataUnsafe.user;
-                const isConfigAdmin = ADMIN_IDS.includes(tgUser.id);
                 
-                // SYNC USER WITH BACKEND AND FETCH ADMIN STATUS
+                // КРИТИЧЕСКИЙ ФИКС: Ставим пользователя СРАЗУ.
+                // Не ждем ответа от сервера, чтобы UI не висел.
+                setUser(tgUser);
+                setIsAdmin(ADMIN_IDS.includes(tgUser.id));
+
+                // Фоновая синхронизация
                 apiFetch('/api/sync-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -62,23 +57,13 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 .then(res => res.json())
                 .then(data => {
                     if (data.success && data.user) {
-                        setUser(data.user); // Contains isAdmin from DB
-                        setIsAdmin(isConfigAdmin || !!data.user.isAdmin);
-                    } else {
-                        // Fallback
-                        setUser(tgUser);
-                        setIsAdmin(isConfigAdmin);
+                        // Обновляем статус админа, если сервер подтвердил его
+                        setIsAdmin(prev => prev || !!data.user.isAdmin);
                     }
                 })
                 .catch(err => {
-                    console.error("Sync failed", err);
-                    setUser(tgUser);
-                    setIsAdmin(isConfigAdmin);
+                    console.warn("User sync background failed, using local TG data", err);
                 });
-
-            } else {
-                // Dev mode
-                 // setIsAdmin(true); 
             }
         }
     }, []);
