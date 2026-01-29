@@ -155,7 +155,7 @@ const setupBotListeners = (bot, token) => {
             }
             
             const botName = config.name || 'ChefDeck';
-            const appUrl = `${WEBHOOK_URL || 'https://chefdeck.ru'}/?bot_id=${config.botId}`;
+            const appUrl = `${WEBHOOK_URL || 'https://prochef.pixalt.ru'}/?bot_id=${config.botId}`;
             
             await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ${botName}!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
