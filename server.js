@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import TelegramBot from 'node-telegram-bot-api';
@@ -99,7 +100,8 @@ const inventoryCycleSchema = new mongoose.Schema({
     date: { type: Number, required: true },
     sheets: Array,
     isFinalized: { type: Boolean, default: false },
-    createdBy: String
+    createdBy: String,
+    auditLog: { type: Array, default: [] }
 });
 
 const globalInventoryItemSchema = new mongoose.Schema({
@@ -155,7 +157,7 @@ const setupBotListeners = (bot, token) => {
             }
             
             const botName = config.name || 'ChefDeck';
-            const appUrl = `${WEBHOOK_URL || 'https://prochef.pixalt.ru'}/?bot_id=${config.botId}`;
+            const appUrl = `${WEBHOOK_URL || 'https://chefdeck.ru'}/?bot_id=${config.botId}`;
             
             await bot.sendMessage(chatId, `👋 <b>Добро пожаловать в ${botName}!</b>\n\nВаша кулинарная база знаний готова к работе.`, {
                 parse_mode: 'HTML',
@@ -359,14 +361,66 @@ app.delete('/api/wastage/:id', resolveTenant, async (req, res) => {
 });
 
 app.get('/api/inventory', resolveTenant, async (req, res) => {
-    try { res.json(await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 })); } catch (e) { res.status(500).send(e.message); }
+    try { 
+        const cycles = await InventoryCycle.find({ botId: req.tenant.botId }).sort({ date: -1 });
+        const now = Date.now();
+        const timeout = 30 * 60 * 1000; // 30 mins
+        
+        let changed = false;
+        cycles.forEach(c => {
+            if (!c.isFinalized) {
+                c.sheets.forEach(s => {
+                    if (s.lockedBy && s.lockedAt && (now - s.lockedAt > timeout)) {
+                        s.lockedBy = undefined;
+                        s.lockedAt = undefined;
+                        changed = true;
+                    }
+                });
+            }
+        });
+        
+        if (changed) {
+            for (const c of cycles) {
+                if (!c.isFinalized) await InventoryCycle.updateOne({ _id: c._id }, { sheets: c.sheets });
+            }
+        }
+        
+        res.json(cycles); 
+    } catch (e) { res.status(500).send(e.message); }
 });
 
 app.post('/api/inventory/cycle', resolveTenant, async (req, res) => {
     try {
-        const data = req.body;
-        data.botId = req.tenant.botId;
-        await InventoryCycle.findOneAndUpdate({ id: data.id, botId: req.tenant.botId }, data, { upsert: true });
+        const incoming = req.body;
+        incoming.botId = req.tenant.botId;
+        
+        const oldCycle = await InventoryCycle.findOne({ id: incoming.id, botId: req.tenant.botId });
+        if (oldCycle && !incoming.isFinalized) {
+            const auditEntries = incoming.auditLog || [];
+            const userName = incoming.updatedBy || 'Повар';
+            
+            incoming.sheets.forEach(newSheet => {
+                const oldSheet = oldCycle.sheets.find(s => s.id === newSheet.id);
+                if (oldSheet) {
+                    newSheet.items.forEach(newItem => {
+                        const oldItem = oldSheet.items.find(i => i.id === newItem.id);
+                        if (oldItem && newItem.actual !== undefined && oldItem.actual !== newItem.actual) {
+                            auditEntries.push({
+                                timestamp: Date.now(),
+                                userName: userName,
+                                itemName: newItem.name,
+                                oldValue: oldItem.actual ?? '—',
+                                newValue: newItem.actual,
+                                sheetTitle: newSheet.title
+                            });
+                        }
+                    });
+                }
+            });
+            incoming.auditLog = auditEntries.slice(-100); // Keep last 100
+        }
+
+        await InventoryCycle.findOneAndUpdate({ id: incoming.id, botId: req.tenant.botId }, incoming, { upsert: true });
         res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
 });
@@ -389,9 +443,20 @@ app.post('/api/inventory/lock', resolveTenant, async (req, res) => {
         const { cycleId, sheetId, user } = req.body;
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
         const sheet = cycle.sheets.find(s => s.id === sheetId);
-        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) return res.json({ success: false, lockedBy: sheet.lockedBy });
-        if (sheet) { sheet.lockedBy = user; await cycle.save(); res.json({ success: true }); }
-        else res.status(404).json({ success: false });
+        
+        if (sheet && sheet.lockedBy && sheet.lockedBy.id !== user.id) {
+            const now = Date.now();
+            if (sheet.lockedAt && (now - sheet.lockedAt < 30 * 60 * 1000)) {
+                return res.json({ success: false, lockedBy: sheet.lockedBy });
+            }
+        }
+        
+        if (sheet) { 
+            sheet.lockedBy = user; 
+            sheet.lockedAt = Date.now();
+            await cycle.save(); 
+            res.json({ success: true }); 
+        } else res.status(404).json({ success: false });
     } catch (e) { res.status(500).send(e.message); }
 });
 
@@ -401,7 +466,11 @@ app.post('/api/inventory/unlock', resolveTenant, async (req, res) => {
         const cycle = await InventoryCycle.findOne({ id: cycleId, botId: req.tenant.botId });
         if (cycle) {
             const sheet = cycle.sheets.find(s => s.id === sheetId);
-            if (sheet) { sheet.lockedBy = undefined; await cycle.save(); }
+            if (sheet) { 
+                sheet.lockedBy = undefined; 
+                sheet.lockedAt = undefined;
+                await cycle.save(); 
+            }
         }
         res.json({ success: true });
     } catch (e) { res.status(500).send(e.message); }
