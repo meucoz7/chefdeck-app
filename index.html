@@ -8,9 +8,8 @@
     <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)" />
     <title>ChefDeck</title>
-    <!-- Загружаем Telegram JS немедленно -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js" defer></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -18,11 +17,19 @@
         darkMode: 'class',
         theme: {
           extend: {
-            fontFamily: { sans: ['Inter', 'sans-serif'] },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
             colors: {
               background: "var(--background)",
               foreground: "var(--foreground)",
-              primary: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1' }
+              primary: {
+                50: '#f0f9ff',
+                100: '#e0f2fe',
+                500: '#0ea5e9',
+                600: '#0284c7',
+                700: '#0369a1',
+              }
             },
             animation: {
               'fade-in': 'fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -31,12 +38,28 @@
               'wiggle': 'wiggle 0.3s ease-in-out infinite',
             },
             keyframes: {
-              fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
-              slideUp: { '0%': { transform: 'translateY(30px)', opacity: '0' }, '100%': { transform: 'translateY(0)', opacity: '1' } },
-              scaleIn: { '0%': { transform: 'scale(0.9)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } },
-              wiggle: { '0%, 100%': { transform: 'rotate(-2deg)' }, '50%': { transform: 'rotate(2deg)' } }
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(30px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              scaleIn: {
+                 '0%': { transform: 'scale(0.9)', opacity: '0' },
+                 '100%': { transform: 'scale(1)', opacity: '1' }
+              },
+              wiggle: {
+                '0%, 100%': { transform: 'rotate(-2deg)' },
+                '50%': { transform: 'rotate(2deg)' },
+              }
             },
-            padding: { 'safe-bottom': 'env(safe-area-inset-bottom)', 'safe-top': 'calc(env(safe-area-inset-top) + 1.5rem)' }
+            padding: {
+              'safe-bottom': 'env(safe-area-inset-bottom)',
+              // Added 1.5rem to the safe area
+              'safe-top': 'calc(env(safe-area-inset-top) + 1.5rem)',
+            }
           },
         },
       }
@@ -44,9 +67,37 @@
     <style>
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      body { -webkit-tap-highlight-color: transparent; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; background-color: #f2f4f7; margin: 0; }
-      .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-      input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #0ea5e9; margin-top: -8px; box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4); }
+      
+      body {
+        -webkit-tap-highlight-color: transparent;
+        font-family: 'Inter', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f2f4f7;
+        margin: 0;
+      }
+      
+      /* Glassmorphism utilities */
+      .glass {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+      .glass-dark {
+        background: rgba(30, 30, 36, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+      
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        height: 20px;
+        width: 20px;
+        border-radius: 50%;
+        background: #0ea5e9;
+        margin-top: -8px;
+        box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
+      }
     </style>
 <script type="importmap">
 {
@@ -77,23 +128,14 @@
 </head>
   <body class="bg-[#f2f4f7] dark:bg-[#0f1115] text-gray-900 dark:text-gray-100 transition-colors duration-300">
     <div id="root">
-        <div id="initial-loader" style="display:flex;justify-content:center;align-items:center;height:100vh;background-color:#f2f4f7;color:#0ea5e9;font-family:sans-serif;font-weight:bold;flex-direction:column;gap:1rem;">
+        <!-- Initial Loading State to prevent white screen flash -->
+        <div style="display:flex;justify-content:center;align-items:center;height:100vh;background-color:#f2f4f7;color:#0ea5e9;font-family:sans-serif;font-weight:bold;flex-direction:column;gap:1rem;">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:3rem;height:3rem;animation:spin 1s linear infinite;">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
             </svg>
-            <span id="loader-text">Загрузка ...</span>
             <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
         </div>
     </div>
     <script type="module" src="/index.tsx"></script>
-    <script>
-      // Если через 10 секунд приложение не ожило, показываем кнопку перезагрузки
-      setTimeout(() => {
-        const loaderText = document.getElementById('loader-text');
-        if (loaderText) {
-          loaderText.innerHTML = 'Сервер прогревается... <br/><button onclick="window.location.reload()" style="margin-top:10px;padding:8px 16px;background:#0ea5e9;color:white;border:none;border-radius:12px;font-weight:bold;">Обновить</button>';
-        }
-      }, 10000);
-    </script>
   </body>
 </html>
