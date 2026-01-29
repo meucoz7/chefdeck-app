@@ -24,25 +24,21 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const tg = window.Telegram.WebApp;
             tg.ready();
             
-            // Modern Fullscreen & Swipe Logic (Mini Apps 7.7+)
+            // Настройка полноэкранного режима
             try {
-                // Check if methods exist AND version is high enough
                 if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.7')) {
-                    // ONLY request fullscreen on mobile devices to prevent weird desktop behavior
                     if (['android', 'ios'].includes(tg.platform)) {
                         if (typeof tg.requestFullscreen === 'function') {
                             tg.requestFullscreen();
                         }
                     }
-                    
                     if (typeof tg.disableVerticalSwipes === 'function') {
                         tg.disableVerticalSwipes();
                     }
                 } else {
-                    tg.expand(); // Fallback for older versions
+                    tg.expand();
                 }
             } catch (e) {
-                console.warn('Fullscreen/Swipe API not supported:', e);
                 tg.expand();
             }
             
@@ -53,7 +49,11 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const tgUser = tg.initDataUnsafe.user;
                 const isConfigAdmin = ADMIN_IDS.includes(tgUser.id);
                 
-                // SYNC USER WITH BACKEND AND FETCH ADMIN STATUS
+                // СРАЗУ устанавливаем пользователя из Telegram, не дожидаясь бэкенда
+                setUser(tgUser);
+                setIsAdmin(isConfigAdmin);
+                
+                // Фоновая синхронизация
                 apiFetch('/api/sync-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -62,23 +62,14 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 .then(res => res.json())
                 .then(data => {
                     if (data.success && data.user) {
-                        setUser(data.user); // Contains isAdmin from DB
+                        setUser(data.user);
                         setIsAdmin(isConfigAdmin || !!data.user.isAdmin);
-                    } else {
-                        // Fallback
-                        setUser(tgUser);
-                        setIsAdmin(isConfigAdmin);
                     }
                 })
                 .catch(err => {
-                    console.error("Sync failed", err);
-                    setUser(tgUser);
-                    setIsAdmin(isConfigAdmin);
+                    console.warn("User background sync failed, continuing with TG data");
                 });
 
-            } else {
-                // Dev mode
-                 // setIsAdmin(true); 
             }
         }
     }, []);
