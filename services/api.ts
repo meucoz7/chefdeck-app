@@ -1,4 +1,3 @@
-
 export const getBotId = () => {
     try {
         const params = new URLSearchParams(window.location.search);
@@ -10,18 +9,32 @@ export const getBotId = () => {
     } catch (e) {
         console.error("Error parsing URL params", e);
     }
-    // Fallback to localStorage, then default
     return localStorage.getItem('chefdeck_bot_id') || 'default';
 };
 
+/**
+ * Обертка над fetch с таймаутом и пробросом bot_id
+ */
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const headers = new Headers(init?.headers || {});
     headers.set('x-bot-id', getBotId());
 
-    const newInit = {
-        ...init,
-        headers
-    };
-    
-    return window.fetch(input, newInit);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 секунд таймаут
+
+    try {
+        const response = await window.fetch(input, {
+            ...init,
+            headers,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error: any) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            console.warn("API request timed out:", input);
+        }
+        throw error;
+    }
 };
