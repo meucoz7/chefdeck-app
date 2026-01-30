@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WebApp, TelegramUser } from '../types';
 import { ADMIN_IDS } from '../config';
@@ -23,13 +24,17 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const tg = window.Telegram.WebApp;
             tg.ready();
             
-            // Расширяем приложение сразу
+            // Modern Fullscreen & Swipe Logic (Mini Apps 7.7+)
             try {
                 if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.7')) {
                     if (['android', 'ios'].includes(tg.platform)) {
-                        tg.requestFullscreen?.();
+                        if (typeof tg.requestFullscreen === 'function') {
+                            tg.requestFullscreen();
+                        }
                     }
-                    tg.disableVerticalSwipes?.();
+                    if (typeof tg.disableVerticalSwipes === 'function') {
+                        tg.disableVerticalSwipes();
+                    }
                 } else {
                     tg.expand();
                 }
@@ -43,12 +48,11 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (tg.initDataUnsafe?.user) {
                 const tgUser = tg.initDataUnsafe.user;
                 
-                // КРИТИЧЕСКИЙ ФИКС: Ставим пользователя СРАЗУ.
-                // Не ждем ответа от сервера, чтобы UI не висел.
+                // СРАЗУ ставим пользователя из ТГ, чтобы UI не висел
                 setUser(tgUser);
                 setIsAdmin(ADMIN_IDS.includes(tgUser.id));
 
-                // Фоновая синхронизация
+                // Синхронизация в фоне (не блокирует поток)
                 apiFetch('/api/sync-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -57,12 +61,12 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 .then(res => res.json())
                 .then(data => {
                     if (data.success && data.user) {
-                        // Обновляем статус админа, если сервер подтвердил его
-                        setIsAdmin(prev => prev || !!data.user.isAdmin);
+                        setUser(data.user);
+                        if (data.user.isAdmin) setIsAdmin(true);
                     }
                 })
                 .catch(err => {
-                    console.warn("User sync background failed, using local TG data", err);
+                    console.warn("Background sync failed, using local TG data", err);
                 });
             }
         }
