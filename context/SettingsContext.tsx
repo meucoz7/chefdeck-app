@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { HomeSettings } from '../types';
 import { apiFetch } from '../services/api';
+import { useTelegram } from './TelegramContext';
 
 interface SettingsContextType {
     settings: HomeSettings;
@@ -21,34 +22,21 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [settings, setSettings] = useState<HomeSettings>(DEFAULT_SETTINGS);
     const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+    const { initialData, isInitialized } = useTelegram();
 
     useEffect(() => {
-        const fetchSettings = async () => {
-            try {
-                const res = await apiFetch('/api/settings');
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data) {
-                        // Ensure we use the clean data without mongo fields
-                        const { _id, __v, botId, ...cleanSettings } = data;
-                        setSettings({ ...DEFAULT_SETTINGS, ...cleanSettings });
-                    }
-                }
-            } catch (e) {
-                console.error("Failed to load settings from server", e);
-            } finally {
-                setIsLoadingSettings(false);
+        if (isInitialized) {
+            if (initialData?.settings) {
+                const { _id, __v, botId, ...cleanSettings } = initialData.settings as any;
+                setSettings({ ...DEFAULT_SETTINGS, ...cleanSettings });
             }
-        };
-
-        fetchSettings();
-    }, []);
+            setIsLoadingSettings(false);
+        }
+    }, [isInitialized, initialData]);
 
     const updateSettings = async (newSettings: Partial<HomeSettings>) => {
-        // Optimistic UI update
         const updated = { ...settings, ...newSettings };
         setSettings(updated);
-
         try {
             await apiFetch('/api/settings', {
                 method: 'POST',
@@ -56,9 +44,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 body: JSON.stringify(updated)
             });
         } catch (e) {
-            console.error("Failed to sync settings to server", e);
-            // Optionally revert on error? 
-            // For now keep optimistic for better UX
+            console.error("Failed to sync settings", e);
         }
     };
 
