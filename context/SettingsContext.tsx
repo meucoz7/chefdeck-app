@@ -1,64 +1,41 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { HomeSettings } from '../types';
-import { apiFetch } from '../services/api';
-import { useTelegram } from './TelegramContext';
-
-interface SettingsContextType {
-    settings: HomeSettings;
-    updateSettings: (newSettings: Partial<HomeSettings>) => Promise<void>;
-    isLoadingSettings: boolean;
-}
-
-const DEFAULT_SETTINGS: HomeSettings = {
-    showInventory: true,
-    showSchedule: true,
-    showWastage: true,
-    showArchive: true
-};
-
-const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
-
-export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [settings, setSettings] = useState<HomeSettings>(DEFAULT_SETTINGS);
-    const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-    const { initialData, isInitialized } = useTelegram();
-
-    useEffect(() => {
-        if (isInitialized) {
-            if (initialData?.settings) {
-                const { _id, __v, botId, ...cleanSettings } = initialData.settings as any;
-                setSettings({ ...DEFAULT_SETTINGS, ...cleanSettings });
+export const getBotId = () => {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        let botId = params.get('bot_id');
+        
+        if (botId) {
+            localStorage.setItem('chefdeck_bot_id', botId);
+            return botId;
+        }
+        
+        // Попытка восстановить из hash-роутинга, если Telegram перенаправил криво
+        if (window.location.hash.includes('bot_id=')) {
+            const hashParts = window.location.hash.split('?');
+            if (hashParts[1]) {
+                const hashParams = new URLSearchParams(hashParts[1]);
+                botId = hashParams.get('bot_id');
+                if (botId) {
+                    localStorage.setItem('chefdeck_bot_id', botId);
+                    return botId;
+                }
             }
-            setIsLoadingSettings(false);
         }
-    }, [isInitialized, initialData]);
-
-    const updateSettings = async (newSettings: Partial<HomeSettings>) => {
-        const updated = { ...settings, ...newSettings };
-        setSettings(updated);
-        try {
-            await apiFetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updated)
-            });
-        } catch (e) {
-            console.error("Failed to sync settings", e);
-        }
-    };
-
-    return (
-        <SettingsContext.Provider value={{ settings, updateSettings, isLoadingSettings }}>
-            {children}
-        </SettingsContext.Provider>
-    );
+    } catch (e) {
+        console.error("Error parsing URL params", e);
+    }
+    
+    return localStorage.getItem('chefdeck_bot_id') || 'default';
 };
 
-export const useSettings = () => {
-    const context = useContext(SettingsContext);
-    if (context === undefined) {
-        throw new Error('useSettings must be used within a SettingsProvider');
-    }
-    return context;
+export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const headers = new Headers(init?.headers || {});
+    headers.set('x-bot-id', getBotId());
+
+    const newInit = {
+        ...init,
+        headers
+    };
+    
+    return window.fetch(input, newInit);
 };
